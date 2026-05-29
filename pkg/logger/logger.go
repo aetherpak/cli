@@ -6,6 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/charmbracelet/x/term"
+	"github.com/mattn/go-isatty"
 	"github.com/muesli/termenv"
 )
 
@@ -77,6 +79,17 @@ func SuccessBanner(title, message string) {
 		Padding(1, 2).
 		Margin(1, 0)
 
+	width := 80
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		if w, _, err := term.GetSize(uintptr(os.Stdout.Fd())); err == nil && w > 15 {
+			width = w
+		}
+	}
+	if width > 100 {
+		width = 100
+	}
+	boxStyle = boxStyle.Width(width - 8)
+
 	content := fmt.Sprintf("%s\n%s", titleStyle.Render("✔  "+title), message)
 	fmt.Fprintln(os.Stdout, boxStyle.Render(content))
 }
@@ -101,6 +114,17 @@ func ErrorBanner(title, message string) {
 		BorderForeground(lipgloss.Color("203")).
 		Padding(1, 2).
 		Margin(1, 0)
+
+	width := 80
+	if isatty.IsTerminal(os.Stderr.Fd()) {
+		if w, _, err := term.GetSize(uintptr(os.Stderr.Fd())); err == nil && w > 15 {
+			width = w
+		}
+	}
+	if width > 100 {
+		width = 100
+	}
+	boxStyle = boxStyle.Width(width - 8)
 
 	content := fmt.Sprintf("%s\n%s", titleStyle.Render("✘  "+title), message)
 	fmt.Fprintln(os.Stderr, boxStyle.Render(content))

@@ -12,15 +12,16 @@ import (
 )
 
 var (
-	buildAppID      string
-	buildManifest   string
-	buildArch       string
-	buildBranch     string
-	buildCCacheDir  string
-	buildStateDir   string
-	buildRepoPath   string
-	buildOutputFile string
-	buildRunLinter  bool
+	buildAppID       string
+	buildManifest    string
+	buildArch        string
+	buildBranch      string
+	buildCCacheDir   string
+	buildStateDir    string
+	buildRepoPath    string
+	buildOutputFile  string
+	buildBuilderArgs []string
+	buildRunLinter   bool
 )
 
 var buildCmd = &cobra.Command{
@@ -142,6 +143,7 @@ var buildCmd = &cobra.Command{
 			RunLinter:         appRunLinter,
 			LinterStrict:      appLinterStrict,
 			LinterIgnoreRules: appLinterIgnoreRules,
+			BuilderArgs:       buildBuilderArgs,
 		}
 
 		if err := builder.Build(opts); err != nil {
@@ -181,5 +183,6 @@ func init() {
 	buildCmd.Flags().StringVar(&buildStateDir, "state-dir", ".state", "builder state directory")
 	buildCmd.Flags().StringVar(&buildRepoPath, "repo-path", "repo", "destination OSTree repository path")
 	buildCmd.Flags().StringVar(&buildOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
+	buildCmd.Flags().StringArrayVar(&buildBuilderArgs, "builder-arg", nil, "extra argument passed through to flatpak-builder")
 	buildCmd.Flags().BoolVar(&buildRunLinter, "run-linter", false, "run flatpak-builder-lint before and after build")
 }

@@ -150,10 +150,11 @@ func TestConfigNormalize(t *testing.T) {
 	falseVal := false
 	cfg := Config{
 		Defaults: &DefaultsConfig{
-			CCache:    &trueVal,
-			CCacheDir: "/global/ccache",
-			StateDir:  "/global/state",
-			RunLinter: true,
+			CCache:      &trueVal,
+			CCacheDir:   "/global/ccache",
+			StateDir:    "/global/state",
+			RunLinter:   true,
+			BuilderArgs: []string{"--foo", "--bar"},
 		},
 		Linter: &LinterConfig{
 			Strict:      &falseVal,
@@ -165,10 +166,11 @@ func TestConfigNormalize(t *testing.T) {
 				Manifest: "apps/app1.yaml",
 			},
 			{
-				ID:        "org.example.App2",
-				Manifest:  "apps/app2.yaml",
-				CCache:    &falseVal,
-				CCacheDir: "/local/ccache",
+				ID:          "org.example.App2",
+				Manifest:    "apps/app2.yaml",
+				CCache:      &falseVal,
+				CCacheDir:   "/local/ccache",
+				BuilderArgs: []string{"--baz"},
 				Linter: &LinterConfig{
 					Strict:      &trueVal,
 					IgnoreRules: []string{"rule-2"},
@@ -196,6 +198,9 @@ func TestConfigNormalize(t *testing.T) {
 	if app1.Linter == nil || *app1.Linter.Strict != false || len(app1.Linter.IgnoreRules) != 1 || app1.Linter.IgnoreRules[0] != "rule-1" {
 		t.Errorf("App1: expected Linter settings inherited, got %+v", app1.Linter)
 	}
+	if len(app1.BuilderArgs) != 2 || app1.BuilderArgs[0] != "--foo" || app1.BuilderArgs[1] != "--bar" {
+		t.Errorf("App1: expected BuilderArgs inherited, got %v", app1.BuilderArgs)
+	}
 
 	// App 2 should preserve local values
 	app2 := cfg.Apps[1]
@@ -210,5 +215,8 @@ func TestConfigNormalize(t *testing.T) {
 	}
 	if app2.Linter == nil || *app2.Linter.Strict != true || len(app2.Linter.IgnoreRules) != 1 || app2.Linter.IgnoreRules[0] != "rule-2" {
 		t.Errorf("App2: expected Linter settings overridden, got %+v", app2.Linter)
+	}
+	if len(app2.BuilderArgs) != 1 || app2.BuilderArgs[0] != "--baz" {
+		t.Errorf("App2: expected BuilderArgs overridden/preserved, got %v", app2.BuilderArgs)
 	}
 }

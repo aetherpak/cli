@@ -84,12 +84,14 @@ var buildCmd = &cobra.Command{
 		var appRunLinter = false
 		var appLinterStrict = true
 		var appLinterIgnoreRules []string
+		var appBuilderArgs []string
 
 		if cfg != nil {
 			if appConfig != nil {
 				appCCacheDir = appConfig.CCacheDir
 				appStateDir = appConfig.StateDir
 				appRunLinter = appConfig.RunLinter
+				appBuilderArgs = appConfig.BuilderArgs
 				if appConfig.Linter != nil {
 					appLinterStrict = *appConfig.Linter.Strict
 					appLinterIgnoreRules = appConfig.Linter.IgnoreRules
@@ -108,6 +110,7 @@ var buildCmd = &cobra.Command{
 						appStateDir = ".state"
 					}
 					appRunLinter = cfg.Defaults.RunLinter
+					appBuilderArgs = cfg.Defaults.BuilderArgs
 					if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
 						appCCacheDir = ""
 					}
@@ -131,6 +134,9 @@ var buildCmd = &cobra.Command{
 		if cmd.Flags().Changed("run-linter") {
 			appRunLinter = buildRunLinter
 		}
+		if cmd.Flags().Changed("builder-arg") {
+			appBuilderArgs = buildBuilderArgs
+		}
 
 		opts := builder.BuildOptions{
 			AppID:             buildAppID,
@@ -143,7 +149,7 @@ var buildCmd = &cobra.Command{
 			RunLinter:         appRunLinter,
 			LinterStrict:      appLinterStrict,
 			LinterIgnoreRules: appLinterIgnoreRules,
-			BuilderArgs:       buildBuilderArgs,
+			BuilderArgs:       appBuilderArgs,
 		}
 
 		if err := builder.Build(opts); err != nil {

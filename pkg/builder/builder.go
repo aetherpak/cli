@@ -1,14 +1,14 @@
 package builder
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -25,10 +25,14 @@ type BuildOptions struct {
 	RunLinter         bool
 	LinterStrict      bool
 	LinterIgnoreRules []string
+	Executor          executil.Executor
 }
 
 // Build wraps the flatpak-builder execution.
 func Build(opts BuildOptions) error {
+	if opts.Executor == nil {
+		opts.Executor = executil.NewOSExecutor()
+	}
 	logger.Info("Executing build for application: %s (arch: %s, branch: %s)", opts.AppID, opts.Arch, opts.Branch)
 
 	var tempPath string
@@ -38,6 +42,7 @@ func Build(opts BuildOptions) error {
 			return fmt.Errorf("failed to create temp file for linter exceptions: %w", err)
 		}
 		defer os.Remove(tempFile.Name())
+		defer tempFile.Close()
 		tempPath = tempFile.Name()
 
 		appKey := opts.AppID
@@ -73,7 +78,7 @@ func Build(opts BuildOptions) error {
 		if tempPath != "" {
 			lintArgs = append(lintArgs, "--exceptions", "--user-exceptions", tempPath)
 		}
-		if err := runLinter(lintArgs, lintPrefix); err != nil {
+		if err := runLinter(opts.Executor, lintArgs, lintPrefix); err != nil {
 			if opts.LinterStrict {
 				return fmt.Errorf("manifest linting failed: %w", err)
 			}
@@ -113,7 +118,7 @@ func Build(opts BuildOptions) error {
 	args = append(args, buildDir, opts.Manifest)
 
 	logger.Debug("Running command: flatpak-builder %v", args)
-	cmd := exec.Command("flatpak-builder", args...)
+	cmd := opts.Executor.Command("flatpak-builder", args...)
 
 	var stdoutPrefix, stderrPrefix string
 	if logger.IsPlain() {
@@ -124,24 +129,43 @@ func Build(opts BuildOptions) error {
 		stderrPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true).Render("flatpak-builder") + lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
 	}
 
-	stdoutWriter := newPrefixedWriter(stdoutPrefix)
-	stderrWriter := newPrefixedWriter(stderrPrefix)
-
-	cmd.Stdout = stdoutWriter
-	cmd.Stderr = stderrWriter
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		stdoutPipe.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
 
 	if opts.CCacheDir != "" {
-		cmd.Env = append(os.Environ(), "CCACHE_DIR="+opts.CCacheDir)
+		cmd.SetEnv(append(os.Environ(), "CCACHE_DIR="+opts.CCacheDir))
 	}
 
-	if err := cmd.Run(); err != nil {
-		stdoutWriter.Flush()
-		stderrWriter.Flush()
+	if err := cmd.Start(); err != nil {
+		stdoutPipe.Close()
+		stderrPipe.Close()
+		return fmt.Errorf("failed to start flatpak-builder: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer stdoutPipe.Close()
+		executil.StreamWithPrefix(stdoutPipe, os.Stdout, stdoutPrefix)
+	}()
+	go func() {
+		defer wg.Done()
+		defer stderrPipe.Close()
+		executil.StreamWithPrefix(stderrPipe, os.Stdout, stderrPrefix)
+	}()
+
+	wg.Wait()
+	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("flatpak-builder failed: %w", err)
 	}
-
-	stdoutWriter.Flush()
-	stderrWriter.Flush()
 
 	if opts.RunLinter {
 		var lintPrefix string
@@ -155,7 +179,7 @@ func Build(opts BuildOptions) error {
 		if tempPath != "" {
 			lintArgs = append(lintArgs, "--exceptions", "--user-exceptions", tempPath)
 		}
-		if err := runLinter(lintArgs, lintPrefix); err != nil {
+		if err := runLinter(opts.Executor, lintArgs, lintPrefix); err != nil {
 			if opts.LinterStrict {
 				return fmt.Errorf("repository linting failed: %w", err)
 			}
@@ -167,58 +191,50 @@ func Build(opts BuildOptions) error {
 	return nil
 }
 
-func runLinter(args []string, prefix string) error {
-	cmdName, cmdArgs := resolveLinterCmd()
+func runLinter(executor executil.Executor, args []string, prefix string) error {
+	cmdName, cmdArgs := resolveLinterCmd(executor)
 	fullArgs := append(cmdArgs, args...)
-	cmd := exec.Command(cmdName, fullArgs...)
-	writer := newPrefixedWriter(prefix)
-	cmd.Stdout = writer
-	cmd.Stderr = writer
-	if err := cmd.Run(); err != nil {
-		writer.Flush()
+	cmd := executor.Command(cmdName, fullArgs...)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		stdoutPipe.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		stdoutPipe.Close()
+		stderrPipe.Close()
+		return fmt.Errorf("failed to start linter: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer stdoutPipe.Close()
+		executil.StreamWithPrefix(stdoutPipe, os.Stdout, prefix)
+	}()
+	go func() {
+		defer wg.Done()
+		defer stderrPipe.Close()
+		executil.StreamWithPrefix(stderrPipe, os.Stdout, prefix)
+	}()
+
+	wg.Wait()
+	if err := cmd.Wait(); err != nil {
 		return err
 	}
-	writer.Flush()
 	return nil
 }
 
-func resolveLinterCmd() (string, []string) {
-	if _, err := exec.LookPath("flatpak-builder-lint"); err == nil {
+func resolveLinterCmd(executor executil.Executor) (string, []string) {
+	if _, err := executor.LookPath("flatpak-builder-lint"); err == nil {
 		return "flatpak-builder-lint", nil
 	}
 	return "flatpak", []string{"run", "--command=flatpak-builder-lint", "org.flatpak.Builder"}
-}
-
-type prefixedWriter struct {
-	prefix string
-	buffer []byte
-}
-
-func newPrefixedWriter(prefix string) *prefixedWriter {
-	return &prefixedWriter{prefix: prefix}
-}
-
-func (w *prefixedWriter) Write(p []byte) (n int, err error) {
-	w.buffer = append(w.buffer, p...)
-	for {
-		idx := bytes.IndexByte(w.buffer, '\n')
-		if idx == -1 {
-			break
-		}
-		line := string(w.buffer[:idx])
-		w.buffer = w.buffer[idx+1:]
-		line = strings.TrimSuffix(line, "\r")
-		fmt.Fprintf(os.Stdout, "%s %s\n", w.prefix, line)
-	}
-	return len(p), nil
-}
-
-func (w *prefixedWriter) Flush() {
-	if len(w.buffer) > 0 {
-		line := string(w.buffer)
-		line = strings.TrimSuffix(line, "\r")
-		line = strings.TrimSuffix(line, "\n")
-		fmt.Fprintf(os.Stdout, "%s %s\n", w.prefix, line)
-		w.buffer = nil
-	}
 }

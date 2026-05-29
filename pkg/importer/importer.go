@@ -7,10 +7,10 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 )
 
@@ -23,10 +23,14 @@ type ImportOptions struct {
 	BundleSHA256 string
 	BundlePath   string // local path override
 	RepoPath     string // destination OSTree repo (default "repo")
+	Executor     executil.Executor
 }
 
 // Import downloads (if necessary), verifies, and imports a bundle, performing channel rebinding.
 func Import(opts ImportOptions) error {
+	if opts.Executor == nil {
+		opts.Executor = executil.NewOSExecutor()
+	}
 	logger.Info("Executing import for application: %s (arch: %s, branch: %s)", opts.AppID, opts.Arch, opts.Branch)
 
 	targetPath := opts.BundlePath
@@ -100,28 +104,28 @@ func Import(opts ImportOptions) error {
 
 	// 2. Initialize scratch archive OSTree repo
 	logger.Debug("Initializing scratch OSTree repo at: %s", scratchDir)
-	initCmd := exec.Command("ostree", "--repo="+scratchDir, "init", "--mode=archive-z2")
+	initCmd := opts.Executor.Command("ostree", "--repo="+scratchDir, "init", "--mode=archive-z2")
 	var initStderr bytes.Buffer
-	initCmd.Stderr = &initStderr
+	initCmd.SetStderr(&initStderr)
 	if err := initCmd.Run(); err != nil {
 		return fmt.Errorf("failed to initialize scratch ostree repo (%w): %s", err, initStderr.String())
 	}
 
 	// 3. Import bundle into scratch repo
 	logger.Info("Importing Flatpak bundle %s into scratch repo...", targetPath)
-	importCmd := exec.Command("flatpak", "build-import-bundle", scratchDir, targetPath)
+	importCmd := opts.Executor.Command("flatpak", "build-import-bundle", scratchDir, targetPath)
 	var importStderr bytes.Buffer
-	importCmd.Stderr = &importStderr
+	importCmd.SetStderr(&importStderr)
 	if err := importCmd.Run(); err != nil {
 		return fmt.Errorf("failed to import bundle into scratch repo (%w): %s", err, importStderr.String())
 	}
 
 	// 4. Resolve imported application ref
 	logger.Debug("Resolving ref from scratch repo...")
-	refsCmd := exec.Command("ostree", "refs", "--repo="+scratchDir)
+	refsCmd := opts.Executor.Command("ostree", "refs", "--repo="+scratchDir)
 	var refsStdout, refsStderr bytes.Buffer
-	refsCmd.Stdout = &refsStdout
-	refsCmd.Stderr = &refsStderr
+	refsCmd.SetStdout(&refsStdout)
+	refsCmd.SetStderr(&refsStderr)
 	if err := refsCmd.Run(); err != nil {
 		return fmt.Errorf("failed to list refs in scratch repo (%w): %s", err, refsStderr.String())
 	}
@@ -171,7 +175,7 @@ func Import(opts ImportOptions) error {
 	// If dest repo config is missing, initialize it
 	if _, err := os.Stat(filepath.Join(repoPath, "config")); os.IsNotExist(err) {
 		logger.Debug("Initializing target OSTree repo at: %s", repoPath)
-		targetInitCmd := exec.Command("ostree", "--repo="+repoPath, "init", "--mode=archive-z2")
+		targetInitCmd := opts.Executor.Command("ostree", "--repo="+repoPath, "init", "--mode=archive-z2")
 		if err := targetInitCmd.Run(); err != nil {
 			return fmt.Errorf("failed to initialize target ostree repo: %w", err)
 		}
@@ -180,7 +184,7 @@ func Import(opts ImportOptions) error {
 	destRef := fmt.Sprintf("app/%s/%s/%s", appID, arch, branch)
 	logger.Info("Rebinding commit: %s -> %s", srcRef, destRef)
 
-	rebindCmd := exec.Command("flatpak", "build-commit-from",
+	rebindCmd := opts.Executor.Command("flatpak", "build-commit-from",
 		"--src-repo="+scratchDir,
 		"--src-ref="+srcRef,
 		"--update-appstream",
@@ -189,8 +193,8 @@ func Import(opts ImportOptions) error {
 		destRef,
 	)
 	var rebindStdout, rebindStderr bytes.Buffer
-	rebindCmd.Stdout = &rebindStdout
-	rebindCmd.Stderr = &rebindStderr
+	rebindCmd.SetStdout(&rebindStdout)
+	rebindCmd.SetStderr(&rebindStderr)
 	if err := rebindCmd.Run(); err != nil {
 		return fmt.Errorf("failed to rebind imported branch commit (%w): %s", err, rebindStderr.String())
 	}

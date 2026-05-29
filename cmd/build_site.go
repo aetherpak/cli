@@ -73,10 +73,21 @@ var buildSiteCmd = &cobra.Command{
 			}
 		}
 
-		passphrase := siteGPGPassphrase
-		if passphrase == "" {
-			passphrase = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
+		passphraseStr := siteGPGPassphrase
+		if passphraseStr == "" {
+			passphraseStr = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
 		}
+		var passphrase []byte
+		if passphraseStr != "" {
+			passphrase = []byte(passphraseStr)
+		}
+		defer func() {
+			if len(passphrase) > 0 {
+				for i := range passphrase {
+					passphrase[i] = 0
+				}
+			}
+		}()
 
 		var brandLogo, brandFavicon, brandAccent, brandFooter, brandTemplate string
 		if cfg != nil && cfg.Branding != nil {

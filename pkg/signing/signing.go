@@ -18,7 +18,7 @@ type Signer struct {
 
 // NewSigner creates a new Signer from armored or binary GPG private key strings.
 // A non-empty passphrase unlocks keys whose secret material is encrypted.
-func NewSigner(privateKeys []string, passphrase string) (*Signer, error) {
+func NewSigner(privateKeys []string, passphrase []byte) (*Signer, error) {
 	logger.Debug("Loading %d private GPG key(s) into memory.", len(privateKeys))
 
 	var mergedList openpgp.EntityList
@@ -43,9 +43,19 @@ func NewSigner(privateKeys []string, passphrase string) (*Signer, error) {
 		return nil, fmt.Errorf("no GPG keys loaded")
 	}
 
-	if passphrase != "" {
+	if len(passphrase) > 0 {
+		// Make a local copy of the passphrase to decrypt and unlock keys,
+		// and immediately clear it when exiting NewSigner.
+		passCopy := make([]byte, len(passphrase))
+		copy(passCopy, passphrase)
+		defer func() {
+			for i := range passCopy {
+				passCopy[i] = 0
+			}
+		}()
+
 		for i, entity := range mergedList {
-			if err := decryptEntity(entity, []byte(passphrase)); err != nil {
+			if err := decryptEntity(entity, passCopy); err != nil {
 				return nil, fmt.Errorf("failed to unlock GPG key at index %d: %w", i, err)
 			}
 		}

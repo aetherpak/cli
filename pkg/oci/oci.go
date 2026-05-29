@@ -30,7 +30,7 @@ type PushOptions struct {
 	RepoPath      string
 	RecordsDir    string
 	GPGKeys       []string // GPG private key blocks or file paths
-	GPGPassphrase string   // unlocks passphrase-protected keys
+	GPGPassphrase []byte   // unlocks passphrase-protected keys
 	Insecure      bool
 	Executor      executil.Executor
 	OCIUsername   string

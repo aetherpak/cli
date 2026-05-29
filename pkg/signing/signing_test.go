@@ -42,7 +42,7 @@ func TestSignerMultiKeyAndExport(t *testing.T) {
 	w2.Close()
 
 	// Load armored keys into Signer
-	signer, err := NewSigner([]string{privKey1.String(), privKey2.String()}, "")
+	signer, err := NewSigner([]string{privKey1.String(), privKey2.String()}, nil)
 	if err != nil {
 		t.Fatalf("failed to load multiple private keys: %v", err)
 	}
@@ -118,7 +118,7 @@ func generateProtectedKey(t *testing.T) (armored, passphrase string) {
 func TestNewSignerDecryptsProtectedKey(t *testing.T) {
 	armored, pass := generateProtectedKey(t)
 
-	signer, err := NewSigner([]string{armored}, pass)
+	signer, err := NewSigner([]string{armored}, []byte(pass))
 	if err != nil {
 		t.Fatalf("correct passphrase should unlock: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestNewSignerDecryptsProtectedKey(t *testing.T) {
 		t.Fatalf("signing with unlocked key should succeed: %v", err)
 	}
 
-	if _, err := NewSigner([]string{armored}, "wrong"); err == nil {
+	if _, err := NewSigner([]string{armored}, []byte("wrong")); err == nil {
 		t.Fatal("wrong passphrase must fail")
 	}
 }

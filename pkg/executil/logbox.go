@@ -39,6 +39,9 @@ func (lb *LogBox) Start() {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
 
+	// Disable line wrapping
+	fmt.Fprint(lb.writer, "\033[?7l")
+
 	lb.redrawLocked()
 	lb.initialized = true
 }
@@ -75,6 +78,9 @@ func (lb *LogBox) Close() error {
 		lb.addLineLocked(line)
 		lb.buf.Reset()
 	}
+
+	// Re-enable line wrapping
+	fmt.Fprint(lb.writer, "\033[?7h")
 	return nil
 }
 

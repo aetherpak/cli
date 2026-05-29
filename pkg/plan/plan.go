@@ -2,7 +2,6 @@ package plan
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -292,8 +291,5 @@ func getChangedFiles(baseSHA string) ([]string, error) {
 
 // appConfigsEqual compares two App configs structurally to detect differences.
 func appConfigsEqual(a, b config.App) bool {
-	// Simple serialization comparison for precision
-	aBytes, _ := json.Marshal(a)
-	bBytes, _ := json.Marshal(b)
-	return bytes.Equal(aBytes, bBytes)
+	return a.Equal(b)
 }

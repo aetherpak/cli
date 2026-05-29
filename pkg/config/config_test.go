@@ -220,3 +220,72 @@ func TestConfigNormalize(t *testing.T) {
 		t.Errorf("App2: expected BuilderArgs overridden/preserved, got %v", app2.BuilderArgs)
 	}
 }
+
+func TestAppEqual(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	appA := App{
+		ID:        "org.example.App",
+		Branch:    "stable",
+		Arches:    []string{"x86_64", "aarch64"},
+		Manifest:  "apps/app.yaml",
+		Runtime:   "gnome-40",
+		RunLinter: true,
+		Linter: &LinterConfig{
+			Strict:      &trueVal,
+			IgnoreRules: []string{"rule-1", "rule-2"},
+		},
+		CCache:      &trueVal,
+		CCacheDir:   "/ccache",
+		StateDir:    "/state",
+		BuilderArgs: []string{"--arg1"},
+		Bundles: map[string]Bundle{
+			"x86_64": {URL: "https://example.com/b.flatpak", SHA256: "abcdef"},
+		},
+	}
+
+	appB := appA
+	if !appA.Equal(appB) {
+		t.Error("identical App configs should be equal")
+	}
+
+	// Change string field
+	appB.Branch = "beta"
+	if appA.Equal(appB) {
+		t.Error("differing Branch should not be equal")
+	}
+
+	// Reset and change slice
+	appB = appA
+	appB.Arches = []string{"x86_64"}
+	if appA.Equal(appB) {
+		t.Error("differing Arches should not be equal")
+	}
+
+	// Reset and change pointer bool
+	appB = appA
+	appB.CCache = &falseVal
+	if appA.Equal(appB) {
+		t.Error("differing CCache value should not be equal")
+	}
+
+	// Reset and change Linter
+	appB = appA
+	appB.Linter = &LinterConfig{
+		Strict:      &trueVal,
+		IgnoreRules: []string{"rule-1"},
+	}
+	if appA.Equal(appB) {
+		t.Error("differing Linter should not be equal")
+	}
+
+	// Reset and change bundle
+	appB = appA
+	appB.Bundles = map[string]Bundle{
+		"x86_64": {URL: "https://example.com/b.flatpak", SHA256: "different"},
+	}
+	if appA.Equal(appB) {
+		t.Error("differing Bundles should not be equal")
+	}
+}

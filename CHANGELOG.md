@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/aetherpak/cli/compare/v0.3.0...v0.4.0) (2026-05-29)
+
+
+### Features
+
+* **builder:** fail early on uninitialized git submodules ([b44b539](https://github.com/aetherpak/cli/commit/b44b539ef1c629a71af1287a2bc3638e5bb99c91))
+* **config:** support builder_args in configuration ([7b71b2e](https://github.com/aetherpak/cli/commit/7b71b2eab2cf5f7d993bd96a3c5810c5957b23fd))
+* **logger:** automatically enable plain output in CI environments ([46b0e3b](https://github.com/aetherpak/cli/commit/46b0e3b42be869f2f20c689e0160b70d9732d04f))
+* **tui:** support scrolling log box in rich UI mode ([92b4846](https://github.com/aetherpak/cli/commit/92b4846fd9c25c1b36f7adc3c26bed59f9271707))
+
+
+### Bug Fixes
+
+* **tui:** resolve terminal resizing wonkiness in banners and logbox ([f3bfd17](https://github.com/aetherpak/cli/commit/f3bfd176673fe8b4c36c4a9956b1ee069c1ca1e0))
+
 ## [0.3.0](https://github.com/aetherpak/cli/compare/v0.2.2...v0.3.0) (2026-05-29)
 
 

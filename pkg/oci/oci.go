@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
 	"github.com/aetherpak/aetherpak/pkg/signing"
@@ -32,6 +32,7 @@ type PushOptions struct {
 	GPGKeys       []string // GPG private key blocks or file paths
 	GPGPassphrase string   // unlocks passphrase-protected keys
 	Insecure      bool
+	Executor      executil.Executor
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -44,6 +45,9 @@ type PushResult struct {
 // Push converts the OSTree repo branch to OCI, signs it with each GPGKey, pushes to registry,
 // and writes the parallel execution record packages.
 func Push(opts PushOptions) (PushResult, error) {
+	if opts.Executor == nil {
+		opts.Executor = executil.NewOSExecutor()
+	}
 	logger.Info("Pushing application to OCI: %s/%s (arch: %s, branch: %s)", opts.Registry, opts.OCIRepository, opts.Arch, opts.Branch)
 
 	// Format OCI tag as <app-id>-<branch>-<arch>, converting '.' to '_' in app-id to prevent
@@ -60,7 +64,7 @@ func Push(opts PushOptions) (PushResult, error) {
 	defer os.RemoveAll(ociDir)
 
 	logger.Info("Exporting application from OSTree to OCI bundle...")
-	bundleCmd := exec.Command("flatpak", "build-bundle",
+	bundleCmd := opts.Executor.Command("flatpak", "build-bundle",
 		"--oci",
 		"--arch="+opts.Arch,
 		opts.RepoPath,
@@ -69,7 +73,7 @@ func Push(opts PushOptions) (PushResult, error) {
 		opts.Branch,
 	)
 	var bundleStderr bytes.Buffer
-	bundleCmd.Stderr = &bundleStderr
+	bundleCmd.SetStderr(&bundleStderr)
 	if err := bundleCmd.Run(); err != nil {
 		return PushResult{}, fmt.Errorf("failed to build OCI bundle layout (%w): %s", err, bundleStderr.String())
 	}

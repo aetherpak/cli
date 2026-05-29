@@ -23,7 +23,61 @@ For details on the Go package layout:
 
 ## Configuration
 
-The CLI parses settings from an optional `aetherpak.yaml` (or `aetherpak.yml`) file. All settings can be overridden at runtime using environment variables prefixed with `AETHERPAK_` (e.g. `AETHERPAK_REGISTRY` or `AETHERPAK_DEFAULTS_RUN_LINTER`).
+The CLI parses settings from a configuration file, looking for `aetherpak.yaml` or `aetherpak.yml` in the local working directory by default.
+
+> [!NOTE]
+> The configuration file can use both `.yaml` and `.yml` extensions. You can also specify a custom configuration file path at runtime using the `--config` flag or override any configuration parameter using environment variables prefixed with `AETHERPAK_` (e.g. `AETHERPAK_REGISTRY`).
+
+### Configuration Schema
+
+#### Global Settings
+* **`registry`** (string): The target OCI registry host (e.g., `ghcr.io` or `quay.io`).
+* **`pages_url`** (string): The public URL where the repository landing page and index files are hosted.
+* **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`).
+* **`signing_mode`** (string): The signature verification strategy. Supported values: `auto` (sign if keys are present), `gpg` (enforce GPG signing), or `off` (default).
+* **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to `"Flatpak Repository"`).
+* **`repo_homepage`** (string): URL link for repository homepage metadata.
+* **`runtime_repo`** (string): Fallback `.flatpakrepo` URL used to resolve dependencies (defaults to Flathub).
+* **`channel_mappings`** (map[string]string): Key-value pairs mapping Git references (supporting glob wildcards like `staging/*`) to target flatpak branches.
+
+#### `branding`
+Customizes the look and feel of the generated landing page:
+* **`logo_url`** (string): URL to a custom repository header logo.
+* **`favicon_url`** (string): URL to a page favicon file.
+* **`accent_color`** (string): Hex color code defining the primary brand accent (defaults to `#8b5cf6`).
+* **`footer_text`** (string): Custom text/HTML to display in the footer (defaults to `"Powered by AetherPak"`).
+* **`index_template`** (string): Local path to an alternative HTML file template to override index generation entirely.
+
+#### `linter`
+Global linter behavior configuration:
+* **`strict`** (boolean): Set to `true` to fail builds if any linter warnings or errors are raised.
+* **`ignore_rules`** (list[string]): Specific `flatpak-builder-lint` rule IDs to bypass.
+
+#### `defaults`
+Fallback build configurations applied when individual application settings are omitted:
+* **`ccache`** (boolean): Enable compiler cache to speed up compilation.
+* **`ccache_dir`** (string): Custom folder directory to store compiler cache assets.
+* **`state_dir`** (string): Path to store intermediate state outputs (defaults to `.state`).
+* **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
+* **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
+
+#### `apps`
+A list of applications managed in the repository. Each entry supports the following settings:
+* **`id`** (string, required): The reverse-DNS Flatpak application identifier (e.g. `org.example.App`).
+* **`branch`** (string): The release channel branch (defaults to `stable`).
+* **`arches`** (list[string]): Target architectures to compile/import (defaults to `[x86_64]`).
+* **`manifest`** (string): Local relative path to the Flatpak manifest file (required for source-based builds).
+* **`runtime`** (string): Upstream runtime dependencies list (required for source-based builds).
+* **`run-linter`** (boolean): Local toggle to execute linter validation checks.
+* **`linter`** (block): Override block for linter strictness and exceptions.
+* **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`**: Application-specific overrides for compilation parameters.
+* **`bundles`** (map[string]Bundle): Prebuilt Flatpak bundle inputs mapped per architecture. Under each arch (e.g. `x86_64`):
+  * **`url`** (string, required): Download link to the `.flatpak` bundle.
+  * **`sha256`** (string, required): 64-character SHA-256 validation checksum of the file.
+
+---
+
+### Example Configuration (`aetherpak.yaml`)
 
 ```yaml
 registry: ghcr.io
@@ -31,35 +85,38 @@ pages_url: https://flatpak.example.com
 remote_name: example-repo
 repo_title: "My Custom Flatpak Repository"
 
-# Channel mappings supporting exact and wildcard matching
 channel_mappings:
   "main": "beta"
   "staging/*": "alpha"
 
-# Global linter options
 linter:
   strict: true
   ignore_rules: ["appstream-screenshot-missing"]
 
-# Build defaults
 defaults:
   ccache: true
   run_linter: true
   state_dir: ".builder-state"
   builder_args: ["--sandbox", "--disable-rofiles-fuse"]
 
-# HTML landing page customization
 branding:
   logo_url: "https://example.com/logo.png"
   accent_color: "#a855f7"
   footer_text: "Custom Repo Landing Page Footer"
-  index_template: "templates/custom_index.html" # Path to custom repository index HTML template
 
 apps:
   - id: org.example.App
     manifest: apps/org.example.App/manifest.json
     runtime: gnome-50
-    builder_args: ["--sandbox", "--disable-rofiles-fuse", "--copy-keep-newer-files"]
+    arches: [x86_64, aarch64]
+    run-linter: true
+
+  - id: com.example.Other
+    branch: beta
+    bundles:
+      x86_64:
+        url: https://upstream.com/Other_x86_64.flatpak
+        sha256: 2159fc643175dcf54f8b9293f48fb8b11577fa0ea5514ea47d4e3ef4431f13b1
 ```
 
 ---
@@ -107,7 +164,7 @@ aetherpak build-site --pages-url https://flatpak.my-org.com --site-dir _site --r
 ```
 
 #### `resolve-channel`
-Resolves the flatpak channel name from git ref metadata (supports GitHub Actions, GitLab CI, and AetherPak env overrides):
+Resolves the flatpak channel name from git ref metadata:
 ```bash
 aetherpak resolve-channel --ref-type tag --ref-name v1.0.0
 ```
@@ -136,35 +193,5 @@ aetherpak release --base-sha <sha> --workers 4 --index-template templates/custom
 
 ## Development
 
-### Requirements
-* Go 1.26+
-* `flatpak`, `ostree` (for local system execution)
-* `gpg` (required for signing and running integration tests)
-* `flatpak-builder-lint` (required if running build commands with `--run-linter` active on non-containerized runners)
+Guidelines on compilation setup, local prerequisites, test harness drivers, and coding styles are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### Build
-Compile the binary:
-```bash
-make build
-```
-The output binary will be written to `bin/aetherpak`.
-
-### Test
-Run unit tests:
-```bash
-make test
-```
-Run E2E integration tests (requires docker/podman and compose):
-```bash
-make test/integration
-```
-
-### Quality & Formatting
-Format the codebase:
-```bash
-make fmt
-```
-Vet the codebase:
-```bash
-make vet
-```

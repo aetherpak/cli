@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
@@ -123,7 +124,9 @@ func Push(opts PushOptions) (PushResult, error) {
 		if err != nil {
 			return PushResult{}, fmt.Errorf("failed to load signing GPG keys: %w", err)
 		}
-		// Construct the containers/image simple signing payload
+		// Construct the containers/image simple signing payload. The "optional"
+		// object is required by the format: verifiers such as skopeo and podman
+		// reject a payload without it.
 		payload := struct {
 			Critical struct {
 				Type  string `json:"type"`
@@ -134,10 +137,16 @@ func Push(opts PushOptions) (PushResult, error) {
 					DockerReference string `json:"docker-reference"`
 				} `json:"identity"`
 			} `json:"critical"`
+			Optional struct {
+				Creator   string `json:"creator,omitempty"`
+				Timestamp int64  `json:"timestamp,omitempty"`
+			} `json:"optional"`
 		}{}
 		payload.Critical.Type = "atomic container signature"
 		payload.Critical.Image.DockerManifestDigest = digest.String()
 		payload.Critical.Identity.DockerReference = fmt.Sprintf("%s/%s:%s", opts.Registry, opts.OCIRepository, tag)
+		payload.Optional.Creator = "aetherpak"
+		payload.Optional.Timestamp = time.Now().Unix()
 
 		payloadBytes, err := json.Marshal(payload)
 		if err != nil {

@@ -32,14 +32,51 @@ applications into OCI hosted repositories on GHCR with deployment sites on Pages
 		logger.Init(verbose, jsonLog, isPlain)
 		logger.Debug("Logger initialized with verbose=%v json=%v plain=%v", verbose, jsonLog, isPlain)
 	},
+	SilenceErrors: true,
+	SilenceUsage:  true,
+}
+
+// CmdError represents a command execution error containing an exit status code.
+type CmdError struct {
+	Err  error
+	Code int
+}
+
+func (e *CmdError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *CmdError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// NewCmdError wraps an error with an exit code.
+func NewCmdError(code int, err error) *CmdError {
+	return &CmdError{Err: err, Code: code}
+}
+
+// NewCmdErrorf wraps a formatted error message with an exit code.
+func NewCmdErrorf(code int, format string, args ...interface{}) *CmdError {
+	return &CmdError{Err: fmt.Errorf(format, args...), Code: code}
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
-func Execute() {
+// It returns the process exit code (0 on success).
+func Execute() int {
 	if err := RootCmd.Execute(); err != nil {
 		logger.ErrorBanner("Execution Failure", err.Error())
-		os.Exit(1)
+		if cmdErr, ok := err.(*CmdError); ok {
+			return cmdErr.Code
+		}
+		return 1
 	}
+	return 0
 }
 
 func init() {

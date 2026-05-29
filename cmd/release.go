@@ -40,11 +40,10 @@ var releaseCmd = &cobra.Command{
 	Use:   "release",
 	Short: "Runs plan, concurrent publish, and site index compilation",
 	Long:  `Fully orchestrates the AetherPak lifecycle: plans matrix deltas, builds/imports changed packages concurrently, pushes OCI layers, and rebuilds Pages static site references.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(2)
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
 		logger.Info("Phase 1: Planning release changes...")
@@ -62,8 +61,7 @@ var releaseCmd = &cobra.Command{
 
 		res, err := plan.ComputePlan(cfg, configPath, relBaseSHA, relForce, relWorkflowPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Release planning failed: %v\n", err)
-			os.Exit(1)
+			return NewCmdErrorf(1, "Release planning failed: %w", err)
 		}
 
 		// Load signing GPG keys
@@ -219,8 +217,7 @@ var releaseCmd = &cobra.Command{
 			}
 
 			if err := g.Wait(); err != nil {
-				fmt.Fprintf(os.Stderr, "Concurreny execution failed: %v\n", err)
-				os.Exit(1)
+				return NewCmdErrorf(1, "Concurrency execution failed: %w", err)
 			}
 			logger.Info("All application publications finished successfully.")
 		}
@@ -260,19 +257,18 @@ var releaseCmd = &cobra.Command{
 		}
 
 		if err := site.BuildSite(sOpts); err != nil {
-			fmt.Fprintf(os.Stderr, "Site index compilation failed: %v\n", err)
-			os.Exit(1)
+			return NewCmdErrorf(1, "Site index compilation failed: %w", err)
 		}
 
 		if err := ciout.Emit(relOutputFile, []ciout.KV{
 			{Key: "site-dir", Value: relSiteDir},
 			{Key: "records-dir", Value: relRecordsDir},
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Output emission failed: %v\n", err)
-			os.Exit(1)
+			return NewCmdErrorf(1, "Output emission failed: %w", err)
 		}
 
 		logger.Info("AetherPak Release completed successfully!")
+		return nil
 	},
 }
 

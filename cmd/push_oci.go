@@ -28,7 +28,7 @@ var pushOCICmd = &cobra.Command{
 	Use:   "push-oci",
 	Short: "Converts and pushes an OSTree branch to an OCI registry",
 	Long:  `Transforms local Flatpak applications built in an OSTree repo to OCI layer structures, signs the descriptors, and pushes them to GHCR.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err == nil {
 			// Populate from config fallbacks if flags are missing
@@ -57,12 +57,10 @@ var pushOCICmd = &cobra.Command{
 		}
 
 		if pushAppID == "" {
-			fmt.Fprintln(os.Stderr, "Error: app is required")
-			os.Exit(2)
+			return NewCmdError(2, fmt.Errorf("app is required"))
 		}
 		if pushRegistry == "" {
-			fmt.Fprintln(os.Stderr, "Error: registry is required")
-			os.Exit(2)
+			return NewCmdError(2, fmt.Errorf("registry is required"))
 		}
 
 		if pushArch == "" {
@@ -118,8 +116,7 @@ var pushOCICmd = &cobra.Command{
 
 		res, err := oci.Push(opts)
 		if err != nil {
-			logger.ErrorBanner("Push Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		if err := ciout.Emit(pushOutputFile, []ciout.KV{
 			{Key: "app-id", Value: pushAppID},
@@ -129,10 +126,10 @@ var pushOCICmd = &cobra.Command{
 			{Key: "digest", Value: res.Digest},
 			{Key: "tag", Value: res.Tag},
 		}); err != nil {
-			logger.ErrorBanner("Push Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		logger.SuccessBanner("Push Completed", fmt.Sprintf("Successfully exported and pushed %s (%s) to registry %s/%s.", pushAppID, pushArch, pushRegistry, pushOCIRepository))
+		return nil
 	},
 }
 

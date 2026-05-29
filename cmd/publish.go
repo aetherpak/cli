@@ -34,11 +34,10 @@ var publishCmd = &cobra.Command{
 	Use:   "publish",
 	Short: "Builds/imports and pushes a single app to OCI",
 	Long:  `Porcelain command that automatically executes the local build/import process and pushes the resulting application directly to the OCI registry.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(2)
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
 		if pubRegistry == "" {
@@ -54,8 +53,7 @@ var publishCmd = &cobra.Command{
 		}
 
 		if pubAppID == "" {
-			fmt.Fprintln(os.Stderr, "Error: app is required")
-			os.Exit(2)
+			return NewCmdError(2, fmt.Errorf("app is required"))
 		}
 
 		var targetApp *config.App
@@ -67,8 +65,7 @@ var publishCmd = &cobra.Command{
 		}
 
 		if targetApp == nil {
-			fmt.Fprintf(os.Stderr, "Error: app %q not found in config\n", pubAppID)
-			os.Exit(1)
+			return NewCmdErrorf(1, "app %q not found in config", pubAppID)
 		}
 
 		if pubBranch == "" {
@@ -131,14 +128,12 @@ var publishCmd = &cobra.Command{
 			}
 			logger.Info("Step 1: Building manifest application...")
 			if err := builder.Build(opts); err != nil {
-				logger.ErrorBanner("Publish Failed (Build Step)", err.Error())
-				os.Exit(1)
+				return NewCmdError(1, err)
 			}
 		} else {
 			bundle, exists := targetApp.Bundles[pubArch]
 			if !exists {
-				logger.ErrorBanner("Publish Failed (Config Step)", fmt.Sprintf("no bundle configured for architecture %q", pubArch))
-				os.Exit(1)
+				return NewCmdErrorf(1, "no bundle configured for architecture %q", pubArch)
 			}
 
 			opts := importer.ImportOptions{
@@ -150,8 +145,7 @@ var publishCmd = &cobra.Command{
 			}
 			logger.Info("Step 1: Importing bundle package...")
 			if err := importer.Import(opts); err != nil {
-				logger.ErrorBanner("Publish Failed (Import Step)", err.Error())
-				os.Exit(1)
+				return NewCmdError(1, err)
 			}
 		}
 
@@ -197,8 +191,7 @@ var publishCmd = &cobra.Command{
 
 		res, err := oci.Push(pushOpts)
 		if err != nil {
-			logger.ErrorBanner("Publish Failed (Push Step)", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 
 		if err := ciout.Emit(pubOutputFile, []ciout.KV{
@@ -209,11 +202,11 @@ var publishCmd = &cobra.Command{
 			{Key: "digest", Value: res.Digest},
 			{Key: "tag", Value: res.Tag},
 		}); err != nil {
-			logger.ErrorBanner("Publish Failed (Push Step)", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 
 		logger.SuccessBanner("Publish Completed", fmt.Sprintf("Successfully built and published %s (%s) to %s/%s.", pubAppID, pubArch, pubRegistry, pubOCIRepo))
+		return nil
 	},
 }
 

@@ -259,11 +259,7 @@ func BuildSite(opts SiteOptions) error {
 		}
 		title := opts.RepoTitle
 		if title == "" {
-			if opts.RemoteName != "" {
-				title = fmt.Sprintf("AetherPak (%s)", opts.RemoteName)
-			} else {
-				title = "AetherPak Repo"
-			}
+			title = "Flatpak Repository"
 		}
 
 		accent := opts.AccentColor
@@ -274,13 +270,11 @@ func BuildSite(opts SiteOptions) error {
 		logoHTML := ""
 		if opts.LogoURL != "" {
 			logoHTML = fmt.Sprintf(`<img src="%s" alt="Logo" style="max-height: 64px; margin-bottom: 1rem; border-radius: 8px;">`, opts.LogoURL)
-		} else {
-			logoHTML = `<div class="logo-badge">AETHERPAK PROJECT</div>`
 		}
 
 		footerText := opts.FooterText
 		if footerText == "" {
-			footerText = `Powered by <a href="https://aetherpak.org/" target="_blank" rel="noopener">AetherPak</a> &bull; GitHub Pages &amp; GHCR`
+			footerText = `Powered by <a href="https://aetherpak.org/" target="_blank" rel="noopener">AetherPak</a>`
 		}
 
 		html := indexHTMLTemplate

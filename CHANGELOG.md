@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/aetherpak/cli/compare/v0.5.0...v0.6.0) (2026-05-29)
+
+
+### Features
+
+* **site:** clean up remaining title and tagline fallbacks in repo generator ([2e83ac9](https://github.com/aetherpak/cli/commit/2e83ac9d71e3664c5aa006cbd3332e2385f23f5c))
+* **site:** rename 'repository registry' to 'repository' in meta description tags ([27fdda2](https://github.com/aetherpak/cli/commit/27fdda27ae00723c6acda5ac75a613460da2ec15))
+* **site:** restore interactive card hover light glow effect ([ec913ee](https://github.com/aetherpak/cli/commit/ec913ee83a038cf5bece6cd5129e60c27c4f489d))
+
 ## [0.5.0](https://github.com/aetherpak/cli/compare/v0.4.0...v0.5.0) (2026-05-29)
 
 

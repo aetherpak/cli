@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	appID        = "org.flatpak.MockApp"
+	appID = "org.flatpak.MockApp"
 )
 
 func TestEndToEndIntegration(t *testing.T) {
@@ -158,6 +158,7 @@ func TestEndToEndIntegration(t *testing.T) {
 	t.Log("Executing push-oci...")
 	pushCmd := exec.Command(binaryPath, "push-oci",
 		"--app="+appID,
+		"--branch=stable",
 		"--registry=localhost:"+registryPort,
 		"--oci-repository=aetherpak/mock-app",
 		"--repo-path="+repoPath,

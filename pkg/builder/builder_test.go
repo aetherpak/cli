@@ -1,10 +1,110 @@
 package builder
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
 )
+
+// writeGitmodules writes a .gitmodules declaring one submodule at the given
+// relative path inside dir.
+func writeGitmodules(t *testing.T, dir, submodulePath string) {
+	t.Helper()
+	content := "[submodule \"" + submodulePath + "\"]\n\tpath = " + submodulePath +
+		"\n\turl = https://example.invalid/" + submodulePath + ".git\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write .gitmodules: %v", err)
+	}
+}
+
+func TestCheckSubmodulesErrorsOnUninitialized(t *testing.T) {
+	appDir := t.TempDir()
+	writeGitmodules(t, appDir, "shared-modules")
+	// Uninitialized submodule = empty directory.
+	if err := os.Mkdir(filepath.Join(appDir, "shared-modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := checkSubmodules(filepath.Join(appDir, "manifest.json"))
+	if err == nil {
+		t.Fatalf("expected error for uninitialized submodule")
+	}
+	if !strings.Contains(err.Error(), "shared-modules") {
+		t.Errorf("error should name the submodule, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "git submodule update --init --recursive") {
+		t.Errorf("error should tell the user how to fix it, got: %v", err)
+	}
+}
+
+func TestCheckSubmodulesPassesWhenPopulated(t *testing.T) {
+	appDir := t.TempDir()
+	writeGitmodules(t, appDir, "shared-modules")
+	sub := filepath.Join(appDir, "shared-modules")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "module.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := checkSubmodules(filepath.Join(appDir, "manifest.json")); err != nil {
+		t.Fatalf("expected no error when submodule is populated, got: %v", err)
+	}
+}
+
+func TestCheckSubmodulesNoGitmodules(t *testing.T) {
+	appDir := t.TempDir()
+	if err := checkSubmodules(filepath.Join(appDir, "manifest.json")); err != nil {
+		t.Fatalf("expected no error without .gitmodules, got: %v", err)
+	}
+}
+
+func TestCheckSubmodulesDetectsNested(t *testing.T) {
+	appDir := t.TempDir()
+	writeGitmodules(t, appDir, "shared-modules")
+	shared := filepath.Join(appDir, "shared-modules")
+	if err := os.Mkdir(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// shared-modules is populated but declares its own uninitialized submodule.
+	writeGitmodules(t, shared, "nested")
+	if err := os.Mkdir(filepath.Join(shared, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := checkSubmodules(filepath.Join(appDir, "manifest.json"))
+	if err == nil || !strings.Contains(err.Error(), filepath.Join("shared-modules", "nested")) {
+		t.Fatalf("expected nested submodule to be reported, got: %v", err)
+	}
+}
+
+func TestBuildFailsOnUninitializedSubmodule(t *testing.T) {
+	appDir := t.TempDir()
+	writeGitmodules(t, appDir, "shared-modules")
+	if err := os.Mkdir(filepath.Join(appDir, "shared-modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mockExec := executil.NewMockExecutor()
+	err := Build(BuildOptions{
+		AppID: "org.example.App", Manifest: filepath.Join(appDir, "manifest.json"),
+		Arch: "x86_64", Branch: "stable", StateDir: ".state", RepoPath: "repo",
+		Executor: mockExec,
+	})
+	if err == nil {
+		t.Fatalf("build must fail when a required submodule is uninitialized")
+	}
+
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak-builder" {
+			t.Errorf("flatpak-builder must not run when submodules are uninitialized")
+		}
+	}
+}
 
 func TestResolveLinterCmd(t *testing.T) {
 	mockExec := executil.NewMockExecutor()

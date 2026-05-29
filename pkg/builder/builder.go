@@ -51,6 +51,10 @@ func Build(opts BuildOptions) error {
 	}
 	logger.Info("Executing build for application: %s (arch: %s, branch: %s)", opts.AppID, opts.Arch, opts.Branch)
 
+	if err := checkSubmodules(opts.Manifest); err != nil {
+		return err
+	}
+
 	var tempPath string
 	if len(opts.LinterIgnoreRules) > 0 {
 		tempFile, err := os.CreateTemp("", "aetherpak-linter-*.json")
@@ -207,6 +211,69 @@ func Build(opts BuildOptions) error {
 
 	logger.Info("Build completed successfully for %s.", opts.AppID)
 	return nil
+}
+
+// checkSubmodules returns an error naming any uninitialized submodule under the
+// manifest's directory, detected by reading .gitmodules rather than invoking git.
+func checkSubmodules(manifest string) error {
+	dir := filepath.Dir(manifest)
+	if dir == "" {
+		dir = "."
+	}
+
+	var uninitialized []string
+	collectUninitializedSubmodules(dir, "", &uninitialized, 0)
+	if len(uninitialized) > 0 {
+		return fmt.Errorf(
+			"uninitialized git submodule(s): %s — run 'git submodule update --init --recursive' before building",
+			strings.Join(uninitialized, ", "),
+		)
+	}
+	return nil
+}
+
+// collectUninitializedSubmodules records empty submodules from base/.gitmodules,
+// recursing into populated ones. prefix is base relative to the start directory.
+func collectUninitializedSubmodules(base, prefix string, out *[]string, depth int) {
+	const maxDepth = 10
+	if depth > maxDepth {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(base, ".gitmodules"))
+	if err != nil {
+		return
+	}
+	for _, rel := range parseSubmodulePaths(string(data)) {
+		path := filepath.Join(base, rel)
+		display := filepath.Join(prefix, rel)
+		if !isPopulated(path) {
+			*out = append(*out, display)
+			continue
+		}
+		collectUninitializedSubmodules(path, display, out, depth+1)
+	}
+}
+
+// parseSubmodulePaths extracts the `path` values from .gitmodules content.
+func parseSubmodulePaths(gitmodules string) []string {
+	var paths []string
+	for _, line := range strings.Split(gitmodules, "\n") {
+		line = strings.TrimSpace(line)
+		eq := strings.Index(line, "=")
+		if eq < 0 || strings.TrimSpace(line[:eq]) != "path" {
+			continue
+		}
+		if p := strings.TrimSpace(line[eq+1:]); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}
+
+// isPopulated reports whether dir exists and is non-empty.
+func isPopulated(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
 }
 
 func runLinter(executor executil.Executor, args []string, prefix string) error {

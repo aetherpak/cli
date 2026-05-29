@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/aetherpak/cli/compare/v0.2.2...v0.3.0) (2026-05-29)
+
+
+### Features
+
+* **builder:** pass extra flatpak-builder args and disable rofiles-fuse in CI ([875af7d](https://github.com/aetherpak/cli/commit/875af7d9efa0382f5a01f6adde544b1dae520044))
+
 ## [0.2.2](https://github.com/aetherpak/cli/compare/v0.2.1...v0.2.2) (2026-05-29)
 
 

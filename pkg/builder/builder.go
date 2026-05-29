@@ -3,6 +3,7 @@ package builder
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
 )
 
 // BuildOptions contains options for executing flatpak-builder.
@@ -171,20 +173,31 @@ func Build(opts BuildOptions) error {
 		return fmt.Errorf("failed to start flatpak-builder: %w", err)
 	}
 
+	var dest io.Writer = os.Stdout
+	var lb *executil.LogBox
+	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
+		lb = executil.NewLogBox(os.Stdout, 12)
+		lb.Start()
+		dest = lb
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, os.Stdout, stdoutPrefix)
+		executil.StreamWithPrefix(stdoutPipe, dest, stdoutPrefix)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, os.Stdout, stderrPrefix)
+		executil.StreamWithPrefix(stderrPipe, dest, stderrPrefix)
 	}()
 
 	wg.Wait()
+	if lb != nil {
+		lb.Close()
+	}
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("flatpak-builder failed: %w", err)
 	}
@@ -297,20 +310,31 @@ func runLinter(executor executil.Executor, args []string, prefix string) error {
 		return fmt.Errorf("failed to start linter: %w", err)
 	}
 
+	var dest io.Writer = os.Stdout
+	var lb *executil.LogBox
+	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
+		lb = executil.NewLogBox(os.Stdout, 8)
+		lb.Start()
+		dest = lb
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, os.Stdout, prefix)
+		executil.StreamWithPrefix(stdoutPipe, dest, prefix)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, os.Stdout, prefix)
+		executil.StreamWithPrefix(stderrPipe, dest, prefix)
 	}()
 
 	wg.Wait()
+	if lb != nil {
+		lb.Close()
+	}
 	if err := cmd.Wait(); err != nil {
 		return err
 	}

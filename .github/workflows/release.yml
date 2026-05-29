@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release Please & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate App Token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.AETHERPAK_ACTION_BOT_APP_PRIVATE_KEY }}
+
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout Code
+        if: ${{ steps.release.outputs.releases_created }}
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        if: ${{ steps.release.outputs.releases_created }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compile Release Binaries
+        if: ${{ steps.release.outputs.releases_created }}
+        run: make release/build
+
+      - name: Upload Release Assets
+        if: ${{ steps.release.outputs.releases_created }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release upload "${{ steps.release.outputs.tag_name }}" dist/*.tar.gz dist/*.zip

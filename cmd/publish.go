@@ -126,6 +126,7 @@ var publishCmd = &cobra.Command{
 				RunLinter:         appRunLinter,
 				LinterStrict:      appLinterStrict,
 				LinterIgnoreRules: appLinterIgnoreRules,
+				BuilderArgs:       targetApp.BuilderArgs,
 			}
 			logger.Info("Step 1: Building manifest application...")
 			if err := builder.Build(opts); err != nil {

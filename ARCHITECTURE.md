@@ -106,10 +106,12 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 ### `pkg/config`
 * Responsible for parsing, normalizing, and validating the `aetherpak.yaml` workspace configuration.
 * Asserts structural requirements (e.g., ensuring an app has either a manifest or a bundle URL, checking that app IDs follow reverse-DNS patterns, and preventing path-traversals).
+* Supports `builder_args` list parameters at both the global `defaults` level and the per-app level (facilitating inheritance of build arguments).
 
 ### `pkg/builder`
 * Wraps the `flatpak-builder` runtime compilation workflow.
 * Launches asynchronous goroutines to stream build output.
+* Accepts extra passthrough arguments (`BuilderArgs`) from configuration and CLI overrides to customize the execution of the compilation sandbox.
 * Explicitly cleans up/closes stdout and stderr pipe file descriptors after streaming, ensuring no leaks in long-running processes.
 
 ### `pkg/importer`

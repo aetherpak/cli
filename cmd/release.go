@@ -115,6 +115,7 @@ var releaseCmd = &cobra.Command{
 							var appRunLinter = row.RunLinter
 							var appLinterStrict = true
 							var appLinterIgnoreRules []string
+							var appBuilderArgs []string
 
 							var matchedApp *config.App
 							for idx := range cfg.Apps {
@@ -128,6 +129,7 @@ var releaseCmd = &cobra.Command{
 								appCCacheDir = matchedApp.CCacheDir
 								appStateDir = matchedApp.StateDir
 								appRunLinter = matchedApp.RunLinter
+								appBuilderArgs = matchedApp.BuilderArgs
 								if matchedApp.Linter != nil {
 									appLinterStrict = *matchedApp.Linter.Strict
 									appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
@@ -146,6 +148,7 @@ var releaseCmd = &cobra.Command{
 										appStateDir = ".state"
 									}
 									appRunLinter = cfg.Defaults.RunLinter
+									appBuilderArgs = cfg.Defaults.BuilderArgs
 									if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
 										appCCacheDir = ""
 									}
@@ -178,6 +181,7 @@ var releaseCmd = &cobra.Command{
 								RunLinter:         appRunLinter,
 								LinterStrict:      appLinterStrict,
 								LinterIgnoreRules: appLinterIgnoreRules,
+								BuilderArgs:       appBuilderArgs,
 							}
 							if err := builder.Build(bOpts); err != nil {
 								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, err)

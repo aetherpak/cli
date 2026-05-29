@@ -46,6 +46,7 @@ defaults:
   ccache: true
   run_linter: true
   state_dir: ".builder-state"
+  builder_args: ["--sandbox", "--disable-rofiles-fuse"]
 
 # HTML landing page customization
 branding:
@@ -58,6 +59,7 @@ apps:
   - id: org.example.App
     manifest: apps/org.example.App/manifest.json
     runtime: gnome-50
+    builder_args: ["--sandbox", "--disable-rofiles-fuse", "--copy-keep-newer-files"]
 ```
 
 ---

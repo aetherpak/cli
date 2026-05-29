@@ -25,20 +25,12 @@ clean: ## Remove build artifacts
 
 ##@ Release
 
-release/build: ## Cross-compile release binaries and archives into dist/
+release/build: ## Cross-compile release binaries and archives into dist/ (Linux only; Flatpak is Linux-only)
 	@mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/aetherpak-linux-amd64 main.go
 	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/aetherpak-linux-arm64 main.go
-	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/aetherpak-darwin-amd64 main.go
-	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/aetherpak-darwin-arm64 main.go
-	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/aetherpak-windows-amd64.exe main.go
-	GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/aetherpak-windows-arm64.exe main.go
 	cd dist && tar -czf aetherpak-linux-amd64.tar.gz aetherpak-linux-amd64
 	cd dist && tar -czf aetherpak-linux-arm64.tar.gz aetherpak-linux-arm64
-	cd dist && tar -czf aetherpak-darwin-amd64.tar.gz aetherpak-darwin-amd64
-	cd dist && tar -czf aetherpak-darwin-arm64.tar.gz aetherpak-darwin-arm64
-	cd dist && zip aetherpak-windows-amd64.zip aetherpak-windows-amd64.exe
-	cd dist && zip aetherpak-windows-arm64.zip aetherpak-windows-arm64.exe
 
 ##@ Utilities
 

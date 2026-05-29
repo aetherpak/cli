@@ -29,6 +29,9 @@ var (
 // Init configures the logger parameters.
 func Init(verbose, useJSON, usePlain bool) {
 	isJSON = useJSON
+	if os.Getenv("CI") != "" {
+		usePlain = true
+	}
 	isPlain = usePlain
 	if useJSON {
 		appLogger.SetFormatter(log.JSONFormatter)
@@ -42,7 +45,7 @@ func Init(verbose, useJSON, usePlain bool) {
 		appLogger.SetLevel(log.InfoLevel)
 	}
 
-	if usePlain {
+	if isPlain {
 		appLogger.SetColorProfile(termenv.Ascii)
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}

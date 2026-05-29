@@ -24,11 +24,10 @@ var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Computes changes and plans flatpak build matrix",
 	Long:  `Computes the diff between git refs and expands aetherpak.yaml to generate a matrix of target apps to build.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(2)
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
 		configPath := viper.ConfigFileUsed()
@@ -45,8 +44,7 @@ var planCmd = &cobra.Command{
 
 		res, err := plan.ComputePlan(cfg, configPath, baseSHA, forceFlag, workflowPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Plan computation error: %v\n", err)
-			os.Exit(1)
+			return NewCmdErrorf(1, "Plan computation error: %w", err)
 		}
 
 		var outBytes []byte
@@ -64,8 +62,7 @@ var planCmd = &cobra.Command{
 		}
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to marshal output: %v\n", err)
-			os.Exit(1)
+			return NewCmdErrorf(1, "Failed to marshal output: %w", err)
 		}
 
 		fmt.Println(string(outBytes))
@@ -88,10 +85,10 @@ var planCmd = &cobra.Command{
 				{Key: "count-manifest", Value: strconv.Itoa(res.CountManifest)},
 				{Key: "count-bundle", Value: strconv.Itoa(res.CountBundle)},
 			}); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to write output file: %v\n", err)
-				os.Exit(1)
+				return NewCmdErrorf(1, "Failed to write output file: %w", err)
 			}
 		}
+		return nil
 	},
 }
 

@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/spf13/cobra"
@@ -17,11 +14,10 @@ var (
 var inspectRepoCmd = &cobra.Command{
 	Use:   "inspect-repo",
 	Short: "Resolve app-id/arch/branch from an existing OSTree repo",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		info, err := repoinfo.Resolve(inspectRepoPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		if err := ciout.Emit(inspectOutputFile, []ciout.KV{
 			{Key: "app-id", Value: info.AppID},
@@ -29,9 +25,9 @@ var inspectRepoCmd = &cobra.Command{
 			{Key: "arch", Value: info.Arch},
 			{Key: "repo-path", Value: info.RepoPath},
 		}); err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
+		return nil
 	},
 }
 

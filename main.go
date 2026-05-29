@@ -1,9 +1,11 @@
 package main
 
 import (
+	"os"
+
 	"github.com/aetherpak/aetherpak/cmd"
 )
 
 func main() {
-	cmd.Execute()
+	os.Exit(cmd.Execute())
 }

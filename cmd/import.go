@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/importer"
@@ -26,7 +25,7 @@ var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Ingests external Flatpak bundles and rebinds branches",
 	Long:  `Downloads or processes a local Flatpak bundle (.flatpak), verifies its checksum, and rebinds its branch metadata to match the target channel.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		// Resolve the bundle source from config only when none was given
 		// explicitly; an explicit --bundle-url/--bundle-path always wins.
 		if importBundleURL == "" && importBundlePath == "" {
@@ -77,8 +76,7 @@ var importCmd = &cobra.Command{
 		}
 
 		if importBundleURL == "" && importBundlePath == "" {
-			fmt.Fprintln(os.Stderr, "Error: either bundle-url or bundle-path is required")
-			os.Exit(2)
+			return NewCmdError(2, fmt.Errorf("either bundle-url or bundle-path is required"))
 		}
 
 		// app-id, arch, and branch are optional: when unset they are derived
@@ -95,8 +93,7 @@ var importCmd = &cobra.Command{
 		}
 
 		if err := importer.Import(opts); err != nil {
-			logger.ErrorBanner("Import Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 
 		repoPath := importRepoPath
@@ -105,8 +102,7 @@ var importCmd = &cobra.Command{
 		}
 		info, err := repoinfo.Resolve(repoPath)
 		if err != nil {
-			logger.ErrorBanner("Import Failed", fmt.Sprintf("imported repo has no resolvable ref: %v", err))
-			os.Exit(1)
+			return NewCmdErrorf(1, "imported repo has no resolvable ref: %w", err)
 		}
 		if err := ciout.Emit(importOutputFile, []ciout.KV{
 			{Key: "app-id", Value: info.AppID},
@@ -114,10 +110,10 @@ var importCmd = &cobra.Command{
 			{Key: "arch", Value: info.Arch},
 			{Key: "repo-path", Value: repoPath},
 		}); err != nil {
-			logger.ErrorBanner("Import Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		logger.SuccessBanner("Import Completed", fmt.Sprintf("Successfully imported application %s (%s) for channel %s.", info.AppID, info.Arch, info.Branch))
+		return nil
 	},
 }
 

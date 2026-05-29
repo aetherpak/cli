@@ -31,7 +31,7 @@ var buildSiteCmd = &cobra.Command{
 	Use:   "build-site",
 	Short: "Assembles site index and generates deployable assets",
 	Long:  `Downloads active static index from hosting pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err == nil {
 			if sitePagesURL == "" {
@@ -112,16 +112,15 @@ var buildSiteCmd = &cobra.Command{
 		}
 
 		if err := site.BuildSite(opts); err != nil {
-			logger.ErrorBanner("Site Build Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		if err := ciout.Emit(siteOutputFile, []ciout.KV{
 			{Key: "site-dir", Value: siteDir},
 		}); err != nil {
-			logger.ErrorBanner("Site Build Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		logger.SuccessBanner("Site Build Completed", fmt.Sprintf("Successfully built static index site at: %s", siteDir))
+		return nil
 	},
 }
 

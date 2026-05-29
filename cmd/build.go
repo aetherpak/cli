@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -28,11 +27,10 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Executes flatpak-builder compilation sandbox",
 	Long:  `Invokes the flatpak-builder tool to compile and export the manifest application into a local OSTree repo.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(2)
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
 		// An explicit --manifest always wins; config only supplies the manifest
@@ -65,8 +63,7 @@ var buildCmd = &cobra.Command{
 		}
 
 		if buildManifest == "" {
-			fmt.Fprintln(os.Stderr, "Error: manifest is required (either via flag or config file)")
-			os.Exit(2)
+			return NewCmdError(2, fmt.Errorf("manifest is required (either via flag or config file)"))
 		}
 
 		if buildArch == "" {
@@ -148,8 +145,7 @@ var buildCmd = &cobra.Command{
 		}
 
 		if err := builder.Build(opts); err != nil {
-			logger.ErrorBanner("Build Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 
 		repoPath := buildRepoPath
@@ -167,10 +163,10 @@ var buildCmd = &cobra.Command{
 			{Key: "arch", Value: arch},
 			{Key: "repo-path", Value: repoPath},
 		}); err != nil {
-			logger.ErrorBanner("Build Failed", err.Error())
-			os.Exit(1)
+			return NewCmdError(1, err)
 		}
 		logger.SuccessBanner("Build Completed", fmt.Sprintf("Successfully built application %s (%s) for channel %s.", appID, arch, branch))
+		return nil
 	},
 }
 

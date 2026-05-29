@@ -227,9 +227,11 @@
             <div class="line"><span class="time">17:15:02</span> <span class="badge info">INFO</span> Changed files detected: apps/org.example.App/manifest.json</div>
             <div class="line"><span class="time">17:15:02</span> <span class="badge info">INFO</span> Phase 2: Processing 1 matrix row (workers=2)...</div>
             <div class="line"><span class="time">17:15:03</span> <span class="badge build">BUILD</span> [org.example.App] Building manifest application...</div>
-            <div class="line log-builder">flatpak-builder | Downloading source files...</div>
-            <div class="line log-builder">flatpak-builder | Compiling application...</div>
-            <div class="line log-builder">flatpak-builder | Exporting to repo...</div>
+            <div class="line" style="color: #71717a; margin-top: 0.5rem; margin-bottom: 0.1rem;">┌── flatpak-builder logs ────────────────────────────────────────────────────┐</div>
+            <div class="line" style="color: #a1a1aa; margin-bottom: 0.1rem;">│ <span style="color: #a855f7; font-weight: bold;">flatpak-builder</span> <span style="color: #71717a;">│</span> Downloading source files...                              │</div>
+            <div class="line" style="color: #a1a1aa; margin-bottom: 0.1rem;">│ <span style="color: #a855f7; font-weight: bold;">flatpak-builder</span> <span style="color: #71717a;">│</span> Compiling application...                                 │</div>
+            <div class="line" style="color: #a1a1aa; margin-bottom: 0.1rem;">│ <span style="color: #a855f7; font-weight: bold;">flatpak-builder</span> <span style="color: #71717a;">│</span> Exporting to repo...                                     │</div>
+            <div class="line" style="color: #71717a; margin-top: 0.1rem; margin-bottom: 0.5rem;">└────────────────────────────────────────────────────────────────────────────┘</div>
             <div class="line"><span class="time">17:15:12</span> <span class="badge info">INFO</span> Running flatpak-builder-lint for repository: repo</div>
             <div class="line"><span class="time">17:15:13</span> <span class="badge info">INFO</span> Step 2: Pushing to registry...</div>
             <div class="line"><span class="time">17:15:13</span> <span class="badge info">INFO</span> Pushing OCI index to remote registry: ghcr.io/aetherpak/org.example.App</div>

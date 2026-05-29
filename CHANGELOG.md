@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/aetherpak/cli/compare/v0.6.0...v0.6.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* **site:** use html/template for landing page and backfill signatures concurrently ([96d64c5](https://github.com/aetherpak/cli/commit/96d64c54911c9b32575871239a750142cc102d84))
+
 ## [0.6.0](https://github.com/aetherpak/cli/compare/v0.5.0...v0.6.0) (2026-05-29)
 
 

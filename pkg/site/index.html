@@ -27,6 +27,8 @@
     .subtitle { color: var(--text-muted); margin-top: 0.25rem; }
     #app-content { animation: slideUp 0.7s ease-out 0.15s both; }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; position: relative; overflow: hidden; transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), border-color 0.3s, box-shadow 0.3s; }
+    .card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(600px circle at var(--mouse-x, -200px) var(--mouse-y, -200px), rgba(255,255,255,0.04), transparent 40%); pointer-events: none; }
+    .card > * { position: relative; z-index: 1; }
     .card:hover { transform: translateY(-4px); border-color: rgba(139,92,246,0.4); box-shadow: 0 8px 30px rgba(0,0,0,0.3), 0 0 20px rgba(139,92,246,0.05); }
     .section-label { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
     .code-block { position: relative; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 3rem 0.75rem 0.9rem; font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.55; overflow-x: auto; }

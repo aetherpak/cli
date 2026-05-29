@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    name: Release Please & Build
+    name: Release Please
     runs-on: ubuntu-latest
     steps:
       - name: Generate App Token
@@ -28,25 +28,3 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      - name: Checkout Code
-        if: ${{ steps.release.outputs.releases_created }}
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        if: ${{ steps.release.outputs.releases_created }}
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Compile Release Binaries
-        if: ${{ steps.release.outputs.releases_created }}
-        run: make release/build
-
-      - name: Upload Release Assets
-        if: ${{ steps.release.outputs.releases_created }}
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          gh release upload "${{ steps.release.outputs.tag_name }}" dist/*.tar.gz dist/*.zip

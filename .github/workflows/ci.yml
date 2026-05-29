@@ -40,6 +40,22 @@ jobs:
       - name: Display Coverage Report
         run: go tool cover -func=coverage.txt
 
+  build:
+    name: Compile Release Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile Release Binaries
+        run: make release/build
+
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest

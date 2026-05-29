@@ -1,17 +1,19 @@
 package site
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
-
 	"strings"
+	"time"
 
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
@@ -20,6 +22,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
+	"golang.org/x/sync/errgroup"
 )
 
 //go:embed index.html
@@ -32,7 +35,7 @@ type SiteOptions struct {
 	SiteDir       string
 	Reconcile     bool
 	GPGKeys       []string // GPG private key blocks or file paths for public key export
-	GPGPassphrase string
+	GPGPassphrase []byte
 	SigDir        string // relative signature dir (defaults to "sigs")
 	RemoteName    string
 	RuntimeRepo   string
@@ -277,23 +280,50 @@ func BuildSite(opts SiteOptions) error {
 			footerText = `Powered by <a href="https://aetherpak.org/" target="_blank" rel="noopener">AetherPak</a>`
 		}
 
-		html := indexHTMLTemplate
+		htmlText := indexHTMLTemplate
 		if opts.IndexTemplate != "" {
 			data, err := os.ReadFile(opts.IndexTemplate)
 			if err != nil {
 				return fmt.Errorf("failed to read custom index template %q: %w", opts.IndexTemplate, err)
 			}
-			html = string(data)
+			htmlText = string(data)
 		}
-		html = strings.ReplaceAll(html, "__AETHERPAK_REMOTE_NAME__", remote)
-		html = strings.ReplaceAll(html, "__AETHERPAK_REPO_TITLE__", title)
-		html = strings.ReplaceAll(html, "__AETHERPAK_BRANDING_ACCENT_COLOR__", accent)
-		html = strings.ReplaceAll(html, "__AETHERPAK_BRANDING_FAVICON_URL__", opts.FaviconURL)
-		html = strings.ReplaceAll(html, "__AETHERPAK_BRANDING_LOGO_HTML__", logoHTML)
-		html = strings.ReplaceAll(html, "__AETHERPAK_BRANDING_FOOTER_TEXT__", footerText)
+
+		// Convert legacy placeholders to Go template syntax for full backward compatibility
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_REMOTE_NAME__", `{{.RemoteName}}`)
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_REPO_TITLE__", `{{.RepoTitle}}`)
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_ACCENT_COLOR__", `{{.AccentColor}}`)
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_FAVICON_URL__", `{{.FaviconURL}}`)
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_LOGO_HTML__", `{{.LogoHTML}}`)
+		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_FOOTER_TEXT__", `{{.FooterText}}`)
+
+		tmpl, err := template.New("index").Parse(htmlText)
+		if err != nil {
+			return fmt.Errorf("failed to parse landing page template: %w", err)
+		}
+
+		var buf bytes.Buffer
+		err = tmpl.Execute(&buf, struct {
+			RemoteName  string
+			RepoTitle   string
+			AccentColor string
+			FaviconURL  string
+			LogoHTML    template.HTML
+			FooterText  template.HTML
+		}{
+			RemoteName:  remote,
+			RepoTitle:   title,
+			AccentColor: accent,
+			FaviconURL:  opts.FaviconURL,
+			LogoHTML:    template.HTML(logoHTML),
+			FooterText:  template.HTML(footerText),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to execute landing page template: %w", err)
+		}
 
 		indexPath := filepath.Join(opts.SiteDir, "index.html")
-		if err := os.WriteFile(indexPath, []byte(html), 0644); err != nil {
+		if err := os.WriteFile(indexPath, buf.Bytes(), 0644); err != nil {
 			return fmt.Errorf("failed to write landing page index.html: %w", err)
 		}
 		logger.Debug("Landing page written to: %s", indexPath)
@@ -588,6 +618,13 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 	}
 	pagesURL := strings.TrimSuffix(opts.PagesURL, "/")
 
+	g := new(errgroup.Group)
+	g.SetLimit(10) // Limit concurrency to 10 HTTP requests
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
 	for _, pkg := range index.Results {
 		for _, img := range pkg.Images {
 			// Skip stubs without metadata
@@ -601,58 +638,64 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 			}
 			algo := parts[0]
 			hexd := parts[1]
+			pkgName := pkg.Name
 
-			// Try signature-1, signature-2, etc.
-			for i := 1; ; i++ {
-				stop := func() bool {
-					relPath := fmt.Sprintf("%s/%s@%s=%s/signature-%d", sigDirName, pkg.Name, algo, hexd, i)
-					localPath := filepath.Join(opts.SiteDir, relPath)
+			g.Go(func() error {
+				// Try signature-1, signature-2, etc.
+				for i := 1; ; i++ {
+					stop := func() bool {
+						relPath := fmt.Sprintf("%s/%s@%s=%s/signature-%d", sigDirName, pkgName, algo, hexd, i)
+						localPath := filepath.Join(opts.SiteDir, relPath)
 
-					// If it already exists, proceed to next signature index
-					if _, err := os.Stat(localPath); err == nil {
+						// If it already exists, proceed to next signature index
+						if _, err := os.Stat(localPath); err == nil {
+							return false
+						}
+
+						url := pagesURL + "/" + relPath
+						logger.Debug("Attempting to backfill signature: %s", url)
+
+						resp, err := client.Get(url)
+						if err != nil {
+							logger.Debug("Failed to fetch signature %s: %v", url, err)
+							return true
+						}
+						defer resp.Body.Close()
+
+						if resp.StatusCode != http.StatusOK {
+							// 404/other error means signature index is not present, stop sequential scan
+							return true
+						}
+
+						data, err := io.ReadAll(resp.Body)
+						if err != nil {
+							logger.Debug("Failed to read signature body from %s: %v", url, err)
+							return true
+						}
+
+						if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+							logger.Debug("Failed to create signature directory %s: %v", filepath.Dir(localPath), err)
+							return true
+						}
+
+						if err := os.WriteFile(localPath, data, 0644); err != nil {
+							logger.Debug("Failed to write signature file %s: %v", localPath, err)
+							return true
+						}
+
+						logger.Info("Backfilled signature: %s", relPath)
 						return false
+					}()
+					if stop {
+						break
 					}
-
-					url := pagesURL + "/" + relPath
-					logger.Debug("Attempting to backfill signature: %s", url)
-
-					resp, err := http.Get(url)
-					if err != nil {
-						logger.Debug("Failed to fetch signature %s: %v", url, err)
-						return true
-					}
-					defer resp.Body.Close()
-
-					if resp.StatusCode != http.StatusOK {
-						// 404/other error means signature index is not present, stop sequential scan
-						return true
-					}
-
-					data, err := io.ReadAll(resp.Body)
-					if err != nil {
-						logger.Debug("Failed to read signature body from %s: %v", url, err)
-						return true
-					}
-
-					if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-						logger.Debug("Failed to create signature directory %s: %v", filepath.Dir(localPath), err)
-						return true
-					}
-
-					if err := os.WriteFile(localPath, data, 0644); err != nil {
-						logger.Debug("Failed to write signature file %s: %v", localPath, err)
-						return true
-					}
-
-					logger.Info("Backfilled signature: %s", relPath)
-					return false
-				}()
-				if stop {
-					break
 				}
-			}
+				return nil
+			})
 		}
 	}
+
+	_ = g.Wait()
 }
 
 func appTitle(appdataXML string, appID string) string {

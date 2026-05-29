@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -105,14 +102,18 @@ func initConfig() {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	viper.AutomaticEnv()
 
+	// Bind custom non-prefixed env vars for OCI credentials
+	_ = viper.BindEnv("oci_username", "OCI_USERNAME")
+	_ = viper.BindEnv("oci_password", "OCI_PASSWORD")
+
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
 		// Look for aetherpak.yaml or aetherpak.yml in current working directory
 		viper.AddConfigPath(".")
 		viper.SetConfigName("aetherpak")
-		viper.SetConfigType("yaml")
 	}
+	viper.SetConfigType("yaml")
 
 	if err := viper.ReadInConfig(); err == nil {
 		logger.Debug("Using config file: %s", viper.ConfigFileUsed())
@@ -124,39 +125,23 @@ func initConfig() {
 func LoadConfig() (*config.Config, error) {
 	var cfg config.Config
 
-	cfgPath := viper.ConfigFileUsed()
-	if cfgPath == "" && cfgFile != "" {
-		cfgPath = cfgFile
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+	} else {
+		viper.AddConfigPath(".")
+		viper.SetConfigName("aetherpak")
 	}
+	viper.SetConfigType("yaml")
 
-	if cfgPath == "" {
-		// Attempt to resolve default name
-		defaultPath := "aetherpak.yaml"
-		if _, err := os.Stat(defaultPath); err == nil {
-			cfgPath = defaultPath
-		} else if _, err := os.Stat("aetherpak.yml"); err == nil {
-			cfgPath = "aetherpak.yml"
-		}
-	}
-
-	if cfgPath != "" {
-		absPath, err := filepath.Abs(cfgPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve absolute path of config file: %w", err)
-		}
-
-		data, err := os.ReadFile(absPath)
-		if err != nil {
-			// If explicitly requested file is missing, return error
+	err := viper.ReadInConfig()
+	if err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			if cfgFile != "" {
 				return nil, fmt.Errorf("configured file %q not found: %w", cfgFile, err)
 			}
-			logger.Debug("Configuration file %s unreadable or missing, proceeding in zero-config.", cfgPath)
+			logger.Debug("Configuration file not found, proceeding in zero-config.")
 		} else {
-			viper.SetConfigType("yaml")
-			if err := viper.ReadConfig(bytes.NewBuffer(data)); err != nil {
-				return nil, fmt.Errorf("failed to load config into viper: %w", err)
-			}
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
 

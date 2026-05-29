@@ -33,6 +33,8 @@ type PushOptions struct {
 	GPGPassphrase string   // unlocks passphrase-protected keys
 	Insecure      bool
 	Executor      executil.Executor
+	OCIUsername   string
+	OCIPassword   string
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -190,8 +192,15 @@ func Push(opts PushOptions) (PushResult, error) {
 
 	// Setup authentication options
 	var authOpt remote.Option
-	username := os.Getenv("OCI_USERNAME")
-	password := os.Getenv("OCI_PASSWORD")
+	username := opts.OCIUsername
+	password := opts.OCIPassword
+	if username == "" {
+		username = os.Getenv("OCI_USERNAME")
+	}
+	if password == "" {
+		password = os.Getenv("OCI_PASSWORD")
+	}
+
 	if username != "" && password != "" {
 		authOpt = remote.WithAuth(&authn.Basic{
 			Username: username,

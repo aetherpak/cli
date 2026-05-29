@@ -446,11 +446,7 @@ func writeFlatpakRepoFile(siteDir string, registry string, gpgKeyBase64 string, 
 
 	title := opts.RepoTitle
 	if title == "" {
-		if opts.RemoteName != "" {
-			title = fmt.Sprintf("AetherPak (%s)", opts.RemoteName)
-		} else {
-			title = "AetherPak Repo"
-		}
+		title = "Flatpak Repository"
 	}
 
 	homepage := opts.RepoHomepage

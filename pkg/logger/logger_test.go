@@ -47,6 +47,11 @@ func TestInitPlain(t *testing.T) {
 }
 
 func TestInitNonPlain(t *testing.T) {
+	if ci := os.Getenv("CI"); ci != "" {
+		os.Unsetenv("CI")
+		defer os.Setenv("CI", ci)
+	}
+
 	// Initialize with plain mode inactive
 	Init(false, false, false)
 	if IsPlain() {

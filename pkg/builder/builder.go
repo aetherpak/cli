@@ -25,7 +25,23 @@ type BuildOptions struct {
 	RunLinter         bool
 	LinterStrict      bool
 	LinterIgnoreRules []string
+	BuilderArgs       []string // extra flags passed through to flatpak-builder
 	Executor          executil.Executor
+}
+
+// extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
+// needs FUSE, absent in CI containers, so disable it under CI unless already set.
+func extraBuilderArgs(passthrough []string, ciEnv string) []string {
+	out := append([]string(nil), passthrough...)
+	if ciEnv == "" {
+		return out
+	}
+	for _, a := range out {
+		if a == "--disable-rofiles-fuse" {
+			return out
+		}
+	}
+	return append(out, "--disable-rofiles-fuse")
 }
 
 // Build wraps the flatpak-builder execution.
@@ -113,6 +129,8 @@ func Build(opts BuildOptions) error {
 	if opts.CCacheDir != "" {
 		args = append(args, "--ccache")
 	}
+
+	args = append(args, extraBuilderArgs(opts.BuilderArgs, os.Getenv("CI"))...)
 
 	// Append build directory and manifest file
 	args = append(args, buildDir, opts.Manifest)

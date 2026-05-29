@@ -225,3 +225,71 @@ func (app *App) Validate() error {
 
 	return nil
 }
+
+// Equal returns true if the App configuration is structurally identical to another App.
+func (app App) Equal(other App) bool {
+	if app.ID != other.ID || app.Branch != other.Branch || app.Manifest != other.Manifest ||
+		app.Runtime != other.Runtime || app.RunLinter != other.RunLinter ||
+		app.CCacheDir != other.CCacheDir || app.StateDir != other.StateDir {
+		return false
+	}
+
+	if !slicesEqual(app.Arches, other.Arches) {
+		return false
+	}
+
+	if !slicesEqual(app.BuilderArgs, other.BuilderArgs) {
+		return false
+	}
+
+	if (app.CCache == nil) != (other.CCache == nil) {
+		return false
+	}
+	if app.CCache != nil && *app.CCache != *other.CCache {
+		return false
+	}
+
+	if !linterConfigEqual(app.Linter, other.Linter) {
+		return false
+	}
+
+	if len(app.Bundles) != len(other.Bundles) {
+		return false
+	}
+	for k, v := range app.Bundles {
+		ov, ok := other.Bundles[k]
+		if !ok || v != ov {
+			return false
+		}
+	}
+
+	return true
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func linterConfigEqual(a, b *LinterConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if (a.Strict == nil) != (b.Strict == nil) {
+		return false
+	}
+	if a.Strict != nil && *a.Strict != *b.Strict {
+		return false
+	}
+	return slicesEqual(a.IgnoreRules, b.IgnoreRules)
+}

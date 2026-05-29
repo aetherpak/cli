@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/aetherpak/cli/compare/v0.2.1...v0.2.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* trigger release ([7319d62](https://github.com/aetherpak/cli/commit/7319d624962ab81a6f76bdc027d7c236cb4ad641))
+
 ## [0.2.1](https://github.com/aetherpak/cli/compare/v0.2.0...v0.2.1) (2026-05-29)
 
 

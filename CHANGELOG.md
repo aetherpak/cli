@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/aetherpak/cli/compare/v0.2.0...v0.2.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* **oci:** add required optional field to image signature payload ([8b91ffa](https://github.com/aetherpak/cli/commit/8b91ffafce7d7bc44347c03668c0fb44f305c7ce))
+
 ## [0.2.0](https://github.com/aetherpak/cli/compare/v0.1.0...v0.2.0) (2026-05-29)
 
 

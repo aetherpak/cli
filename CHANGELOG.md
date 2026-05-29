@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/aetherpak/cli/compare/v0.4.0...v0.5.0) (2026-05-29)
+
+
+### Features
+
+* **site:** customize default landing page styling and headers ([232525a](https://github.com/aetherpak/cli/commit/232525a9ff7c1e776506130b163e1ee9243757e4))
+
 ## [0.4.0](https://github.com/aetherpak/cli/compare/v0.3.0...v0.4.0) (2026-05-29)
 
 

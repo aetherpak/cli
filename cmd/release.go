@@ -207,6 +207,8 @@ var releaseCmd = &cobra.Command{
 							GPGKeys:       keys,
 							GPGPassphrase: passphrase,
 							Insecure:      relInsecure,
+							OCIUsername:   viper.GetString("oci_username"),
+							OCIPassword:   viper.GetString("oci_password"),
 						}
 						if _, err := oci.Push(pOpts); err != nil {
 							return fmt.Errorf("push-oci failed for %s (%s): %w", row.AppID, row.Arch, err)

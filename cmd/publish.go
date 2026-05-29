@@ -11,6 +11,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -187,6 +188,8 @@ var publishCmd = &cobra.Command{
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
 			Insecure:      pubInsecure,
+			OCIUsername:   viper.GetString("oci_username"),
+			OCIPassword:   viper.GetString("oci_password"),
 		}
 
 		res, err := oci.Push(pushOpts)

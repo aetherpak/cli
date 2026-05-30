@@ -11,15 +11,17 @@ import (
 
 // FlatpakManifest represents the metadata extracted from a Flatpak manifest.
 type FlatpakManifest struct {
-	ID      string
-	Runtime string
+	ID             string
+	Runtime        string
+	RuntimeVersion string
 }
 
 // flatpakManifestRaw represents the raw JSON/YAML structure of a Flatpak manifest.
 type flatpakManifestRaw struct {
-	ID      string `json:"id" yaml:"id"`
-	AppID   string `json:"app-id" yaml:"app-id"`
-	Runtime string `json:"runtime" yaml:"runtime"`
+	ID             string `json:"id" yaml:"id"`
+	AppID          string `json:"app-id" yaml:"app-id"`
+	Runtime        string `json:"runtime" yaml:"runtime"`
+	RuntimeVersion string `json:"runtime-version" yaml:"runtime-version"`
 }
 
 // ParseManifest parses a Flatpak manifest file (JSON or YAML) and extracts key metadata.
@@ -52,8 +54,11 @@ func ParseManifest(path string) (*FlatpakManifest, error) {
 		return nil, fmt.Errorf("manifest is missing 'runtime'")
 	}
 
+	runtimeVersion := strings.TrimSpace(m.RuntimeVersion)
+
 	return &FlatpakManifest{
-		ID:      id,
-		Runtime: runtime,
+		ID:             id,
+		Runtime:        runtime,
+		RuntimeVersion: runtimeVersion,
 	}, nil
 }

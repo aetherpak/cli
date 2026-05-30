@@ -61,18 +61,19 @@ type DefaultsConfig struct {
 
 // App represents an individual application configuration.
 type App struct {
-	ID          string            `yaml:"id" json:"id" mapstructure:"id"`
-	Branch      string            `yaml:"branch" json:"branch" mapstructure:"branch"`
-	Arches      []string          `yaml:"arches" json:"arches" mapstructure:"arches"`
-	Manifest    string            `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
-	Runtime     string            `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
-	RunLinter   bool              `yaml:"run-linter" json:"run-linter" mapstructure:"run-linter"`
-	Linter      *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
-	CCache      *bool             `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
-	CCacheDir   string            `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
-	StateDir    string            `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
-	Bundles     map[string]Bundle `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
-	BuilderArgs []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	ID             string            `yaml:"id" json:"id" mapstructure:"id"`
+	Branch         string            `yaml:"branch" json:"branch" mapstructure:"branch"`
+	Arches         []string          `yaml:"arches" json:"arches" mapstructure:"arches"`
+	Manifest       string            `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
+	Runtime        string            `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	RuntimeVersion string            `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
+	RunLinter      bool              `yaml:"run-linter" json:"run-linter" mapstructure:"run-linter"`
+	Linter         *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
+	CCache         *bool             `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
+	CCacheDir      string            `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
+	StateDir       string            `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
+	Bundles        map[string]Bundle `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
+	BuilderArgs    []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -234,7 +235,8 @@ func (app *App) Validate() error {
 // Equal returns true if the App configuration is structurally identical to another App.
 func (app App) Equal(other App) bool {
 	if app.ID != other.ID || app.Branch != other.Branch || app.Manifest != other.Manifest ||
-		app.Runtime != other.Runtime || app.RunLinter != other.RunLinter ||
+		app.Runtime != other.Runtime || app.RuntimeVersion != other.RuntimeVersion ||
+		app.RunLinter != other.RunLinter ||
 		app.CCacheDir != other.CCacheDir || app.StateDir != other.StateDir {
 		return false
 	}

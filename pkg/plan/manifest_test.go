@@ -15,7 +15,7 @@ func TestParseManifest(t *testing.T) {
 
 	t.Run("Valid JSON with id", func(t *testing.T) {
 		path := filepath.Join(tempDir, "app.json")
-		content := `{"id": "org.flatpak.TestApp", "runtime": "org.gnome.Platform"}`
+		content := `{"id": "org.flatpak.TestApp", "runtime": "org.gnome.Platform", "runtime-version": "45"}`
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatalf("failed to write test file: %v", err)
 		}
@@ -29,6 +29,9 @@ func TestParseManifest(t *testing.T) {
 		}
 		if m.Runtime != "org.gnome.Platform" {
 			t.Errorf("expected Runtime 'org.gnome.Platform', got %q", m.Runtime)
+		}
+		if m.RuntimeVersion != "45" {
+			t.Errorf("expected RuntimeVersion '45', got %q", m.RuntimeVersion)
 		}
 	})
 

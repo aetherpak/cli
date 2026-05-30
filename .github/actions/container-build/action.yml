@@ -63,6 +63,7 @@ runs:
       with:
         image: ${{ steps.build-cli.outputs.image }}
         tags: ${{ steps.build-cli.outputs.tags }}
+        registry: ghcr.io
         extra-args: |
           --tls-verify=true
 
@@ -84,5 +85,6 @@ runs:
       with:
         image: ${{ steps.build-builder.outputs.image }}
         tags: ${{ steps.build-builder.outputs.tags }}
+        registry: ghcr.io
         extra-args: |
           --tls-verify=true

@@ -509,10 +509,10 @@ Title=%s
 Url=oci+%s
 Homepage=%s
 Comment=Flatpak repository powered by AetherPak (Pages index + OCI registry blobs)
-`, title, opts.PagesURL, homepage)
+`, sanitizeINIValue(title), sanitizeINIValue(opts.PagesURL), sanitizeINIValue(homepage))
 
 	if gpgKeyBase64 != "" {
-		content += fmt.Sprintf("GPGKey=%s\n", gpgKeyBase64)
+		content += fmt.Sprintf("GPGKey=%s\n", sanitizeINIValue(gpgKeyBase64))
 	}
 
 	if err := os.WriteFile(repoPath, []byte(content), 0644); err != nil {
@@ -565,16 +565,16 @@ Branch=%s
 Url=%s
 IsRuntime=false
 SuggestRemoteName=%s
-`, title, appID, branch, refURL, remoteName)
+`, sanitizeINIValue(title), sanitizeINIValue(appID), sanitizeINIValue(branch), sanitizeINIValue(refURL), sanitizeINIValue(remoteName))
 
 			if opts.RuntimeRepo != "" {
-				content += fmt.Sprintf("RuntimeRepo=%s\n", opts.RuntimeRepo)
+				content += fmt.Sprintf("RuntimeRepo=%s\n", sanitizeINIValue(opts.RuntimeRepo))
 			}
 			if gpgKeyBase64 != "" {
-				content += fmt.Sprintf("GPGKey=%s\n", gpgKeyBase64)
+				content += fmt.Sprintf("GPGKey=%s\n", sanitizeINIValue(gpgKeyBase64))
 			}
 			if sigLookasideURL != "" {
-				content += fmt.Sprintf("SignatureLookaside=%s\n", sigLookasideURL)
+				content += fmt.Sprintf("SignatureLookaside=%s\n", sanitizeINIValue(sigLookasideURL))
 			}
 
 			if err := os.WriteFile(refPath, []byte(content), 0644); err != nil {
@@ -778,4 +778,10 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return nil
+}
+
+func sanitizeINIValue(val string) string {
+	val = strings.ReplaceAll(val, "\n", "")
+	val = strings.ReplaceAll(val, "\r", "")
+	return val
 }

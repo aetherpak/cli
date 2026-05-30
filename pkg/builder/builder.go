@@ -59,7 +59,7 @@ func Build(opts BuildOptions) error {
 
 	var tempPath string
 	if len(opts.LinterIgnoreRules) > 0 {
-		tempFile, err := os.CreateTemp("", "aetherpak-linter-*.json")
+		tempFile, err := os.CreateTemp(logger.TempDir(), "aetherpak-linter-*.json")
 		if err != nil {
 			return fmt.Errorf("failed to create temp file for linter exceptions: %w", err)
 		}

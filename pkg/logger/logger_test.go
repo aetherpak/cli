@@ -59,8 +59,35 @@ func TestInitNonPlain(t *testing.T) {
 	}
 }
 
+func TestTempDir(t *testing.T) {
+	origXdg := os.Getenv("XDG_RUNTIME_DIR")
+	defer os.Setenv("XDG_RUNTIME_DIR", origXdg)
+
+	dummyDir, err := os.MkdirTemp("", "aetherpak-xdg-test-*")
+	if err != nil {
+		t.Fatalf("failed to create dummy dir: %v", err)
+	}
+	defer os.RemoveAll(dummyDir)
+
+	os.Setenv("XDG_RUNTIME_DIR", dummyDir)
+	if td := TempDir(); td != dummyDir {
+		t.Errorf("expected TempDir to be %q, got %q", dummyDir, td)
+	}
+
+	nonExistent := dummyDir + "-non-existent"
+	os.Setenv("XDG_RUNTIME_DIR", nonExistent)
+	if td := TempDir(); td == nonExistent {
+		t.Errorf("expected TempDir to fallback from non-existent directory %q", nonExistent)
+	}
+
+	os.Unsetenv("XDG_RUNTIME_DIR")
+	if td := TempDir(); td != os.TempDir() {
+		t.Errorf("expected TempDir to be %q when XDG_RUNTIME_DIR is unset, got %q", os.TempDir(), td)
+	}
+}
+
 func TestInitFileLoggingExplicitPath(t *testing.T) {
-	tempFile, err := os.CreateTemp("", "logger-test-*.log")
+	tempFile, err := os.CreateTemp(TempDir(), "logger-test-*.log")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}

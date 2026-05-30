@@ -32,6 +32,18 @@ var (
 	isTempLogFile bool
 )
 
+// TempDir returns the directory path for temporary files.
+// It respects XDG_RUNTIME_DIR if set and pointing to an existing directory.
+// Otherwise, it falls back to os.TempDir().
+func TempDir() string {
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		if fi, err := os.Stat(xdg); err == nil && fi.IsDir() {
+			return xdg
+		}
+	}
+	return os.TempDir()
+}
+
 // InitFileLogging configures streaming logs to a file.
 // If filePath is empty, a temporary log file is created.
 func InitFileLogging(filePath string) error {
@@ -50,7 +62,7 @@ func InitFileLogging(filePath string) error {
 		}
 		isTemp = false
 	} else {
-		f, err = os.CreateTemp("", "aetherpak-*.log")
+		f, err = os.CreateTemp(TempDir(), "aetherpak-*.log")
 		if err != nil {
 			return fmt.Errorf("failed to create temporary log file: %w", err)
 		}

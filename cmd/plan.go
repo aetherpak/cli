@@ -7,17 +7,22 @@ import (
 	"strconv"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/plan"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	baseSHA        string
-	forceFlag      string
-	workflowPath   string
-	outputFormat   string
-	planOutputFile string
+	baseSHA           string
+	forceFlag         string
+	workflowPath      string
+	outputFormat      string
+	planOutputFile    string
+	planManifest      string
+	planArches        []string
+	planBranch        string
+	planDisableLinter bool
 )
 
 var planCmd = &cobra.Command{
@@ -25,26 +30,80 @@ var planCmd = &cobra.Command{
 	Short: "Computes changes and plans flatpak build matrix",
 	Long:  `Computes the diff between git refs and expands aetherpak.yaml to generate a matrix of target apps to build.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := LoadConfig()
-		if err != nil {
-			return NewCmdErrorf(2, "Configuration error: %w", err)
-		}
+		var cfg *config.Config
+		var configPath string
+		var localForce string
 
-		configPath := viper.ConfigFileUsed()
-		if configPath == "" {
-			if cfgFile != "" {
-				configPath = cfgFile
-			} else {
-				configPath = "aetherpak.yaml"
-				if _, err := os.Stat("aetherpak.yml"); err == nil {
-					configPath = "aetherpak.yml"
+		if planManifest != "" {
+			if cmd.Flags().Changed("force") {
+				return NewCmdError(2, fmt.Errorf("cannot use both --manifest and --force flags together"))
+			}
+
+			manifestData, err := plan.ParseManifest(planManifest)
+			if err != nil {
+				return NewCmdErrorf(2, "Manifest parsing error: %w", err)
+			}
+
+			// Default target architectures if empty
+			if len(planArches) == 0 {
+				planArches = []string{"x86_64"}
+			}
+
+			if planBranch == "" {
+				planBranch = "stable"
+			}
+
+			// Construct synthetic config
+			syntheticApp := config.App{
+				ID:        manifestData.ID,
+				Manifest:  planManifest,
+				Runtime:   manifestData.Runtime,
+				Arches:    planArches,
+				Branch:    planBranch,
+				RunLinter: !planDisableLinter,
+			}
+
+			if err := syntheticApp.ValidateBasic(); err != nil {
+				return NewCmdErrorf(2, "Manifest validation error: %w", err)
+			}
+
+			cfg = &config.Config{
+				Apps: []config.App{syntheticApp},
+			}
+			localForce = manifestData.ID
+		} else {
+			var err error
+			cfg, err = LoadConfig()
+			if err != nil {
+				return NewCmdErrorf(2, "Configuration error: %w", err)
+			}
+
+			configPath = viper.ConfigFileUsed()
+			if configPath == "" {
+				if cfgFile != "" {
+					configPath = cfgFile
+				} else {
+					configPath = "aetherpak.yaml"
+					if _, err := os.Stat("aetherpak.yml"); err == nil {
+						configPath = "aetherpak.yml"
+					}
 				}
 			}
+			localForce = forceFlag
 		}
 
-		res, err := plan.ComputePlan(cfg, configPath, baseSHA, forceFlag, workflowPath)
+		res, err := plan.ComputePlan(cfg, configPath, baseSHA, localForce, workflowPath)
 		if err != nil {
 			return NewCmdErrorf(1, "Plan computation error: %w", err)
+		}
+
+		if planDisableLinter {
+			for i := range res.Matrix {
+				res.Matrix[i].RunLinter = false
+			}
+			for i := range res.MatrixManifest {
+				res.MatrixManifest[i].RunLinter = false
+			}
 		}
 
 		var outBytes []byte
@@ -100,4 +159,8 @@ func init() {
 	planCmd.Flags().StringVar(&workflowPath, "workflow-path", "", "caller workflow file path (forces rebuild if changed)")
 	planCmd.Flags().StringVar(&outputFormat, "output", "json", "output format ('json', 'matrix', 'matrix-manifest', 'matrix-bundle', 'apps')")
 	planCmd.Flags().StringVar(&planOutputFile, "output-file", "", "write all plan keys as dotenv KEY=VALUE (- or empty = stdout)")
+	planCmd.Flags().StringVar(&planManifest, "manifest", "", "path to a single flatpak manifest file (bypasses config file)")
+	planCmd.Flags().StringSliceVar(&planArches, "arch", nil, "architectures to limit target build matrix to (e.g. x86_64, aarch64)")
+	planCmd.Flags().StringVar(&planBranch, "branch", "", "branch/channel to use (defaults to stable)")
+	planCmd.Flags().BoolVar(&planDisableLinter, "disable-linter", false, "disable linting for all planned apps in the matrix")
 }

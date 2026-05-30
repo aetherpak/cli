@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"html/template"
 	"io"
 	"net/http"
@@ -287,7 +288,7 @@ func BuildSite(opts SiteOptions) error {
 
 		logoHTML := ""
 		if opts.LogoURL != "" {
-			logoHTML = fmt.Sprintf(`<img src="%s" alt="Logo" style="max-height: 64px; margin-bottom: 1rem; border-radius: 8px;">`, opts.LogoURL)
+			logoHTML = fmt.Sprintf(`<img src="%s" alt="Logo" style="max-height: 64px; margin-bottom: 1rem; border-radius: 8px;">`, html.EscapeString(opts.LogoURL))
 		}
 
 		footerText := opts.FooterText

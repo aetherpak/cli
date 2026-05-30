@@ -131,3 +131,38 @@ func TestBuildSiteNoSignSucceedsUnsigned(t *testing.T) {
 		t.Fatalf("expected BuildSite to succeed when no-sign is enabled, got %v", err)
 	}
 }
+
+func TestBuildSiteEscapesLogoURL(t *testing.T) {
+	tempDir := t.TempDir()
+	templateFile := filepath.Join(tempDir, "custom.html")
+	templateContent := "Branding: __AETHERPAK_BRANDING_LOGO_HTML__"
+	if err := os.WriteFile(templateFile, []byte(templateContent), 0644); err != nil {
+		t.Fatalf("failed to write template: %v", err)
+	}
+
+	opts := SiteOptions{
+		SiteDir:       tempDir,
+		LandingPage:   true,
+		IndexTemplate: templateFile,
+		LogoURL:       `https://example.com/logo.png" onerror="alert(1)`,
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed: %v", err)
+	}
+
+	indexPath := filepath.Join(tempDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	expectedEscapedURL := `https://example.com/logo.png&#34; onerror=&#34;alert(1)`
+	if !strings.Contains(string(data), expectedEscapedURL) {
+		t.Errorf("expected escaped URL in output, got: %s", string(data))
+	}
+	if strings.Contains(string(data), `onerror="alert(1)"`) {
+		t.Errorf("found unescaped attributes in output: %s", string(data))
+	}
+}

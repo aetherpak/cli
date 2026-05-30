@@ -70,3 +70,16 @@ jobs:
 
       - name: Run E2E Integration Tests
         run: make test/integration
+
+  publish:
+    name: Build & Publish Container Images
+    needs: [test, integration-test]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-container-build.yml
+    with:
+      ref: ${{ github.sha }}
+      image-tags: ${{ github.ref == 'refs/heads/main' && 'main' || format('latest {0}', github.ref_name) }}
+      push: true

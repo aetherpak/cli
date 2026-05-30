@@ -35,6 +35,8 @@ type PushOptions struct {
 	Executor      executil.Executor
 	OCIUsername   string
 	OCIPassword   string
+	NoSign        bool
+	AllowUnsigned bool
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -115,7 +117,6 @@ func Push(opts PushOptions) (PushResult, error) {
 		labels = make(map[string]string)
 	}
 
-	// 3. Perform GPG signature(s) if private keys are supplied
 	// Filter out empty keys
 	var keys []string
 	for _, k := range opts.GPGKeys {
@@ -124,8 +125,21 @@ func Push(opts PushOptions) (PushResult, error) {
 		}
 	}
 
+	if opts.NoSign {
+		if len(keys) > 0 {
+			logger.Warn("GPG signing keys were provided, but signing is disabled because no-sign is enabled.")
+		}
+	} else {
+		if len(keys) == 0 {
+			if !opts.AllowUnsigned {
+				return PushResult{}, fmt.Errorf("GPG signing keys are missing. To publish unsigned images, you must explicitly enable the --allow-unsigned flag or set the AETHERPAK_ALLOW_UNSIGNED environment variable")
+			}
+			logger.Warn("WARNING: GPG signing keys are missing. Pushing an UNSIGNED image because --allow-unsigned is enabled.")
+		}
+	}
+
 	var signatures [][]byte
-	if len(keys) > 0 {
+	if !opts.NoSign && len(keys) > 0 {
 		signer, err := signing.NewSigner(keys, opts.GPGPassphrase)
 		if err != nil {
 			return PushResult{}, fmt.Errorf("failed to load signing GPG keys: %w", err)

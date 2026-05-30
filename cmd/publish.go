@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -29,6 +30,8 @@ var (
 	pubRecordsDir    string
 	pubRunLinter     bool
 	pubOutputFile    string
+	pubNoSign        bool
+	pubAllowUnsigned bool
 )
 
 var publishCmd = &cobra.Command{
@@ -188,6 +191,25 @@ var publishCmd = &cobra.Command{
 			}
 		}()
 
+		noSign := pubNoSign
+		if !noSign {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				noSign = true
+			}
+		}
+		if !noSign && cfg != nil {
+			noSign = cfg.NoSign
+		}
+
+		allowUnsigned := pubAllowUnsigned
+		if !allowUnsigned {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				allowUnsigned = true
+			}
+		}
+
 		logger.Info("Step 2: Pushing to registry...")
 		pushOpts := oci.PushOptions{
 			AppID:         pubAppID,
@@ -202,6 +224,8 @@ var publishCmd = &cobra.Command{
 			Insecure:      pubInsecure,
 			OCIUsername:   viper.GetString("oci_username"),
 			OCIPassword:   viper.GetString("oci_password"),
+			NoSign:        noSign,
+			AllowUnsigned: allowUnsigned,
 		}
 
 		res, err := oci.Push(pushOpts)
@@ -242,4 +266,6 @@ func init() {
 	publishCmd.Flags().BoolVar(&pubInsecure, "insecure", false, "allow connection to insecure OCI registry (HTTP)")
 	publishCmd.Flags().StringVar(&pubRepoPath, "repo-path", "repo", "path to local OSTree repository")
 	publishCmd.Flags().StringVar(&pubOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
+	publishCmd.Flags().BoolVar(&pubNoSign, "no-sign", false, "disable GPG signing of repositories/images")
+	publishCmd.Flags().BoolVar(&pubAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 }

@@ -18,6 +18,7 @@ type LogLevel string
 const (
 	LevelDebug LogLevel = "debug"
 	LevelInfo  LogLevel = "info"
+	LevelWarn  LogLevel = "warn"
 	LevelError LogLevel = "error"
 )
 
@@ -223,6 +224,8 @@ func Log(level LogLevel, format string, v ...interface{}) {
 	switch level {
 	case LevelDebug:
 		appLogger.Debugf(format, v...)
+	case LevelWarn:
+		appLogger.Warnf(format, v...)
 	case LevelError:
 		appLogger.Errorf(format, v...)
 	default:
@@ -233,6 +236,11 @@ func Log(level LogLevel, format string, v ...interface{}) {
 // Info logs an informational message.
 func Info(format string, v ...interface{}) {
 	appLogger.Infof(format, v...)
+}
+
+// Warn logs a warning message.
+func Warn(format string, v ...interface{}) {
+	appLogger.Warnf(format, v...)
 }
 
 // Debug logs a debug-level message.

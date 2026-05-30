@@ -6,7 +6,7 @@ This document describes the architectural design, component interactions, interf
 
 ## 1. Design Overview
 
-AetherPak CLI is a foundation-first Go toolchain designed to compile, lint, package, sign, push (to OCI registries), and publish (to static hosting/GitHub Pages) Flatpak applications. 
+AetherPak CLI is a foundation-first Go toolchain designed to compile, lint, package, sign, push (to OCI registries), and publish (to static hosting/GitHub Pages) Flatpak applications.
 
 The application architecture is structured to separate the **Command-Line Interface Boundary** (`cmd/`) from the **Core Business Logic** (`pkg/`). This decoupling ensures that the core features remain testable, reusable, and free from hard OS-level side effects (like direct `os.Exit` calls).
 
@@ -14,7 +14,7 @@ The application architecture is structured to separate the **Command-Line Interf
 graph TD
     CLI[cmd/ CLI Entrypoint] --> Config[pkg/config]
     CLI --> Executor[pkg/executil]
-    
+
     subgraph Core Logic [pkg/]
         Builder[pkg/builder] --> Executor
         Importer[pkg/importer] --> Executor
@@ -24,7 +24,7 @@ graph TD
         Signing[pkg/signing]
         Record[pkg/record]
     end
-    
+
     CLI --> Builder
     CLI --> Importer
     CLI --> OCI
@@ -149,9 +149,9 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 
 The CLI implements strict error-handling safety:
 
-1. **Decoupled Process Exiting**: 
+1. **Decoupled Process Exiting**:
    Subcommands are defined using Cobra's `RunE` pattern. Instead of calling `os.Exit` directly inside cmd packages, subcommands return errors. This guarantees that Go's deferred functions (such as temp directory cleanup and socket closes) run completely.
-   
+
 2. **`CmdError` Struct**:
    A custom `CmdError` type wraps internal errors with an associated process exit code:
    ```go

@@ -210,4 +210,3 @@ Options:
 ## Development
 
 Guidelines on compilation setup, local prerequisites, test harness drivers, and coding styles are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
-

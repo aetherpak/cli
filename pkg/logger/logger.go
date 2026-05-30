@@ -57,7 +57,7 @@ func InitFileLogging(filePath string) error {
 	var isTemp bool
 
 	if filePath != "" {
-		f, err = os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		f, err = os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
 			return fmt.Errorf("failed to open log file %q: %w", filePath, err)
 		}

@@ -128,19 +128,40 @@ var planCmd = &cobra.Command{
 		fmt.Println(string(outBytes))
 
 		if planOutputFile != "" {
-			mustJSON := func(v any) string {
-				b, _ := json.Marshal(v)
+			mustJSON := func(v any) (string, error) {
+				b, err := json.Marshal(v)
+				if err != nil {
+					return "", err
+				}
 				// Serialize empty lists as `[]` instead of `null` to ensure array outputs.
 				if string(b) == "null" {
-					return "[]"
+					return "[]", nil
 				}
-				return string(b)
+				return string(b), nil
 			}
+
+			appsJSON, err := mustJSON(res.Apps)
+			if err != nil {
+				return NewCmdErrorf(1, "Failed to marshal apps: %w", err)
+			}
+			matrixJSON, err := mustJSON(res.Matrix)
+			if err != nil {
+				return NewCmdErrorf(1, "Failed to marshal matrix: %w", err)
+			}
+			matrixManifestJSON, err := mustJSON(res.MatrixManifest)
+			if err != nil {
+				return NewCmdErrorf(1, "Failed to marshal matrix manifest: %w", err)
+			}
+			matrixBundleJSON, err := mustJSON(res.MatrixBundle)
+			if err != nil {
+				return NewCmdErrorf(1, "Failed to marshal matrix bundle: %w", err)
+			}
+
 			if err := ciout.Emit(planOutputFile, []ciout.KV{
-				{Key: "apps", Value: mustJSON(res.Apps)},
-				{Key: "matrix", Value: mustJSON(res.Matrix)},
-				{Key: "matrix-manifest", Value: mustJSON(res.MatrixManifest)},
-				{Key: "matrix-bundle", Value: mustJSON(res.MatrixBundle)},
+				{Key: "apps", Value: appsJSON},
+				{Key: "matrix", Value: matrixJSON},
+				{Key: "matrix-manifest", Value: matrixManifestJSON},
+				{Key: "matrix-bundle", Value: matrixBundleJSON},
 				{Key: "count", Value: strconv.Itoa(res.Count)},
 				{Key: "count-manifest", Value: strconv.Itoa(res.CountManifest)},
 				{Key: "count-bundle", Value: strconv.Itoa(res.CountBundle)},

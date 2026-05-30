@@ -81,6 +81,9 @@ func WriteRecord(root string, r Record, labels map[string]string) (string, error
 
 	// Write labels.json
 	lblPath := filepath.Join(cellDir, "labels.json")
+	if labels == nil {
+		labels = make(map[string]string)
+	}
 	lblBytes, err := json.MarshalIndent(labels, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal labels: %w", err)

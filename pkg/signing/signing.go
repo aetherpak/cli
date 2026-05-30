@@ -11,7 +11,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 )
 
-// Signer handles in-memory GPG detached signature generation.
+// Signer handles in-memory GPG simple container signature generation.
 type Signer struct {
 	entityList openpgp.EntityList
 }

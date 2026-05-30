@@ -5,6 +5,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -205,12 +206,12 @@ func TestEndToEndIntegration(t *testing.T) {
 		t.Fatalf("build-site command failed (%v): \nStdout: %s\nStderr: %s", err, siteStdout.String(), siteStderr.String())
 	}
 
-	// 8b. Out-of-band detached signature verification.
+	// 8b. Out-of-band GPG signature verification.
 	// Independent of the flatpak client (which only verifies lookaside
 	// signatures on 1.17+), assert the lookaside signatures were produced and
 	// are cryptographically valid against our key. This guarantees signing
 	// coverage even when the client install path below cannot verify them.
-	verifyDetachedSignatures(t, tempDir, siteDir, gpgKeyPath)
+	verifyGPGSignatures(t, tempDir, siteDir, gpgKeyPath, recordsDir, registryPort)
 
 	// 9. Client remote-add and install verification
 	t.Log("Verifying client installations...")
@@ -331,11 +332,11 @@ func TestEndToEndIntegration(t *testing.T) {
 	t.Log("GPG validation check rejected tampered signature correctly.")
 }
 
-// verifyDetachedSignatures asserts that the lookaside signature files exist and
+// verifyGPGSignatures asserts that the lookaside signature files exist and
 // are valid OpenPGP signatures produced by our key, without relying on the
 // flatpak client. Mirrors the out-of-band signature check used in CI for
 // older flatpak builds.
-func verifyDetachedSignatures(t *testing.T, tempDir, siteDir, gpgPubKeyPath string) {
+func verifyGPGSignatures(t *testing.T, tempDir, siteDir, gpgPubKeyPath, recordsDir, registryPort string) {
 	t.Helper()
 
 	matches, err := filepath.Glob(filepath.Join(siteDir, "sigs", "*", "*@sha256=*", "signature-1"))
@@ -343,7 +344,7 @@ func verifyDetachedSignatures(t *testing.T, tempDir, siteDir, gpgPubKeyPath stri
 		t.Fatalf("failed to glob lookaside signatures: %v", err)
 	}
 	if len(matches) == 0 {
-		t.Fatal("no lookaside signatures found under site/sigs; signing did not produce detached signatures")
+		t.Fatal("no lookaside signatures found under site/sigs; signing did not produce signatures")
 	}
 
 	// Import the public key into an isolated keyring so verification does not
@@ -356,7 +357,7 @@ func verifyDetachedSignatures(t *testing.T, tempDir, siteDir, gpgPubKeyPath stri
 	var importStderr bytes.Buffer
 	importCmd.Stderr = &importStderr
 	if err := importCmd.Run(); err != nil {
-		t.Fatalf("failed to import public key for detached verification (%v): %s", err, importStderr.String())
+		t.Fatalf("failed to import public key for verification (%v): %s", err, importStderr.String())
 	}
 
 	for _, sig := range matches {
@@ -364,10 +365,80 @@ func verifyDetachedSignatures(t *testing.T, tempDir, siteDir, gpgPubKeyPath stri
 		var verifyStderr bytes.Buffer
 		verifyCmd.Stderr = &verifyStderr
 		if err := verifyCmd.Run(); err != nil {
-			t.Fatalf("detached signature %s failed verification (%v): %s", sig, err, verifyStderr.String())
+			t.Fatalf("signature %s failed verification (%v): %s", sig, err, verifyStderr.String())
 		}
 	}
-	t.Logf("Verified %d detached lookaside signature(s).", len(matches))
+	t.Logf("Verified %d GPG signature(s).", len(matches))
+
+	// Optionally perform skopeo round-trip standalone-verify if skopeo is present.
+	if skopeoPath, err := exec.LookPath("skopeo"); err == nil {
+		t.Log("skopeo detected; running container signature standalone-verify round-trip...")
+		// Read record.json from recordsDir to get coordinates.
+		subdirs, err := os.ReadDir(recordsDir)
+		if err != nil {
+			t.Fatalf("failed to read records directory: %v", err)
+		}
+		for _, subdir := range subdirs {
+			if !subdir.IsDir() {
+				continue
+			}
+			recPath := filepath.Join(recordsDir, subdir.Name(), "record.json")
+			recBytes, err := os.ReadFile(recPath)
+			if err != nil {
+				t.Fatalf("failed to read record.json: %v", err)
+			}
+			var rec struct {
+				Registry string `json:"registry"`
+				Name     string `json:"name"`
+				Digest   string `json:"digest"`
+				Tag      string `json:"tag"`
+			}
+			if err := json.Unmarshal(recBytes, &rec); err != nil {
+				t.Fatalf("failed to parse record.json: %v", err)
+			}
+
+			// Read manifest from registry
+			regHost := rec.Registry
+			regHost = strings.TrimPrefix(regHost, "http://")
+			regHost = strings.TrimPrefix(regHost, "https://")
+
+			ref := fmt.Sprintf("docker://%s/%s@%s", regHost, rec.Name, rec.Digest)
+			inspectCmd := exec.Command(skopeoPath, "inspect", "--raw", "--tls-verify=false", ref)
+			var inspectStdout, inspectStderr bytes.Buffer
+			inspectCmd.Stdout = &inspectStdout
+			inspectCmd.Stderr = &inspectStderr
+			if err := inspectCmd.Run(); err != nil {
+				t.Fatalf("failed to fetch raw manifest from registry via skopeo (%v): %s", err, inspectStderr.String())
+			}
+
+			manifestFile := filepath.Join(tempDir, "manifest-"+rec.Digest[7:15]+".json")
+			if err := os.WriteFile(manifestFile, inspectStdout.Bytes(), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			// Find matching signature file
+			digestPathPart := strings.Replace(rec.Digest, ":", "=", 1)
+			sigFile := filepath.Join(siteDir, "sigs", fmt.Sprintf("%s@%s", rec.Name, digestPathPart), "signature-1")
+
+			// Run skopeo standalone-verify
+			dockerRef := fmt.Sprintf("%s/%s:%s", regHost, rec.Name, rec.Tag)
+			verifyCmd := exec.Command(skopeoPath, "standalone-verify",
+				manifestFile,
+				dockerRef,
+				"any",
+				sigFile,
+				"--public-key-file="+gpgPubKeyPath,
+			)
+			var verifyStderr bytes.Buffer
+			verifyCmd.Stderr = &verifyStderr
+			if err := verifyCmd.Run(); err != nil {
+				t.Fatalf("skopeo standalone-verify failed for ref %s (%v): %s", dockerRef, err, verifyStderr.String())
+			}
+			t.Logf("skopeo standalone-verify successfully validated signature for %s", dockerRef)
+		}
+	} else {
+		t.Log("skopeo is not installed; skipping container signature standalone-verify round-trip verification.")
+	}
 }
 
 // flatpakSupportsLookaside reports whether the local flatpak build understands

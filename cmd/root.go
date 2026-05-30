@@ -16,6 +16,7 @@ var (
 	jsonLog bool
 	plain   bool
 	noColor bool
+	logFile string
 )
 
 // RootCmd represents the base command when called without any subcommands.
@@ -24,10 +25,14 @@ var RootCmd = &cobra.Command{
 	Short: "AetherPak Core CLI is a tool for building, pushing and releasing Flatpak apps as OCI images",
 	Long: `AetherPak Core CLI replaces scripting pipelines for converting flatpak 
 applications into OCI hosted repositories on GHCR with deployment sites on Pages.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		isPlain := plain || noColor
 		logger.Init(verbose, jsonLog, isPlain)
+		if err := logger.InitFileLogging(logFile); err != nil {
+			return NewCmdErrorf(1, "failed to initialize logging: %w", err)
+		}
 		logger.Debug("Logger initialized with verbose=%v json=%v plain=%v", verbose, jsonLog, isPlain)
+		return nil
 	},
 	SilenceErrors: true,
 	SilenceUsage:  true,
@@ -66,8 +71,16 @@ func NewCmdErrorf(code int, format string, args ...interface{}) *CmdError {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // It returns the process exit code (0 on success).
 func Execute() int {
-	if err := RootCmd.Execute(); err != nil {
+	err := RootCmd.Execute()
+	hasError := err != nil
+
+	if hasError {
 		logger.ErrorBanner("Execution Failure", err.Error())
+	}
+
+	logger.CloseLogFile(hasError)
+
+	if hasError {
 		if cmdErr, ok := err.(*CmdError); ok {
 			return cmdErr.Code
 		}
@@ -88,6 +101,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&jsonLog, "json-log", false, "enable JSON formatted logging")
 	RootCmd.PersistentFlags().BoolVar(&plain, "plain", false, "disable colors and fancy formatting (plain text output)")
 	RootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colors and fancy formatting (alias for --plain)")
+	RootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "write logs to the specified file (retains logs on success)")
 
 	// Bind flags to viper
 	viper.BindPFlag("config", RootCmd.PersistentFlags().Lookup("config"))
@@ -95,6 +109,7 @@ func init() {
 	viper.BindPFlag("json-log", RootCmd.PersistentFlags().Lookup("json-log"))
 	viper.BindPFlag("plain", RootCmd.PersistentFlags().Lookup("plain"))
 	viper.BindPFlag("no-color", RootCmd.PersistentFlags().Lookup("no-color"))
+	viper.BindPFlag("log-file", RootCmd.PersistentFlags().Lookup("log-file"))
 }
 
 func initConfig() {

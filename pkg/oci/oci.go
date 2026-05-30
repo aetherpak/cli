@@ -179,7 +179,7 @@ func Push(opts PushOptions) (PushResult, error) {
 			return PushResult{}, fmt.Errorf("failed to sign manifest: %w", err)
 		}
 		signatures = sigs
-		logger.Info("Generated %d GPG detached signature(s) successfully.", len(signatures))
+		logger.Info("Generated %d GPG signature(s) successfully.", len(signatures))
 	}
 
 	// 4. Establish registry auth and push OCI layout index to registry

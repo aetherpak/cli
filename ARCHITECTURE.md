@@ -125,7 +125,7 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 ### `pkg/oci`
 * Bundles OSTree repositories into OCI images using `flatpak build-bundle`.
 * Interacts with container registries using the `go-containerregistry` library.
-* Generates an image manifest index and signs the manifest payload.
+* Generates an image manifest index and signs the manifest payload. Supports bypassing GPG signing when `no_sign` is set to `true`. When `no_sign` is `false`, it enforces that a GPG key must be provided, failing the push unless `allow_unsigned` is explicitly enabled.
 * Writes a uniform execution record (`record.json`) under `<records-dir>/<app-id>-<arch>/` tracking the OCI digest, registry, and label metadata.
 
 ### `pkg/site`
@@ -133,7 +133,7 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 * Fetches the current production index from the active Pages hosting to seed the update.
 * Merges execution records from parallel runner cells.
 * Reconciles the index by validating digest existence via registry `HEAD` checks (pruning entries only on definitive 404s).
-* Generates GPG public key material (`key.asc`), signing manifests (`signing.json`), `.flatpakrepo` configurations, and one-click `.flatpakref` installer files.
+* Generates GPG public key material (`key.asc`), signing manifests (`signing.json`), `.flatpakrepo` configurations, and one-click `.flatpakref` installer files. Bypasses key export and GPG validation checks when `no_sign` is set to `true`, and enforces GPG key existence unless `allow_unsigned` is explicitly enabled.
 
 ### `pkg/plan`
 * Compares Git trees (`git diff`) since a base SHA to detect changes in manifests, directories, and configuration settings.

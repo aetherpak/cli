@@ -3,6 +3,7 @@ package site
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,6 +83,7 @@ func TestBuildSiteCustomTemplate(t *testing.T) {
 		LandingPage:   true,
 		IndexTemplate: templateFile,
 		RepoTitle:     "TitleTest",
+		AllowUnsigned: true, // required for unsigned repository generation to succeed
 	}
 
 	if err := BuildSite(opts); err != nil {
@@ -97,5 +99,35 @@ func TestBuildSiteCustomTemplate(t *testing.T) {
 	expected := "Hello Custom TitleTest!"
 	if string(data) != expected {
 		t.Errorf("expected %q, got %q", expected, string(data))
+	}
+}
+
+func TestBuildSiteUnsignedFailsByDefault(t *testing.T) {
+	tempDir := t.TempDir()
+	opts := SiteOptions{
+		SiteDir:       tempDir,
+		AllowUnsigned: false, // default
+	}
+
+	err := BuildSite(opts)
+	if err == nil {
+		t.Fatalf("expected error when GPG keys are missing and unsigned repository is not allowed")
+	}
+	if !strings.Contains(err.Error(), "GPG signing keys are missing") {
+		t.Errorf("expected missing keys error, got: %v", err)
+	}
+}
+
+func TestBuildSiteNoSignSucceedsUnsigned(t *testing.T) {
+	tempDir := t.TempDir()
+	opts := SiteOptions{
+		SiteDir:       tempDir,
+		NoSign:        true,
+		AllowUnsigned: false, // no-sign mode bypasses allow-unsigned check
+	}
+
+	err := BuildSite(opts)
+	if err != nil {
+		t.Fatalf("expected BuildSite to succeed when no-sign is enabled, got %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/logger"
@@ -25,6 +26,8 @@ var (
 	siteInsecure      bool
 	siteOutputFile    string
 	siteIndexTemplate string
+	siteNoSign        bool
+	siteAllowUnsigned bool
 )
 
 var buildSiteCmd = &cobra.Command{
@@ -102,6 +105,25 @@ var buildSiteCmd = &cobra.Command{
 			siteIndexTemplate = brandTemplate
 		}
 
+		noSign := siteNoSign
+		if !noSign {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				noSign = true
+			}
+		}
+		if !noSign && cfg != nil {
+			noSign = cfg.NoSign
+		}
+
+		allowUnsigned := siteAllowUnsigned
+		if !allowUnsigned {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				allowUnsigned = true
+			}
+		}
+
 		opts := site.SiteOptions{
 			PagesURL:      sitePagesURL,
 			RecordsDir:    siteRecordsDir,
@@ -120,6 +142,8 @@ var buildSiteCmd = &cobra.Command{
 			AccentColor:   brandAccent,
 			FooterText:    brandFooter,
 			IndexTemplate: siteIndexTemplate,
+			NoSign:        noSign,
+			AllowUnsigned: allowUnsigned,
 		}
 
 		if err := site.BuildSite(opts); err != nil {
@@ -152,4 +176,6 @@ func init() {
 	buildSiteCmd.Flags().StringVar(&siteGPGPassphrase, "gpg-key-passphrase", "", "passphrase unlocking the GPG private key(s)")
 	buildSiteCmd.Flags().StringVar(&siteOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	buildSiteCmd.Flags().StringVar(&siteIndexTemplate, "index-template", "", "path to custom HTML repository index template")
+	buildSiteCmd.Flags().BoolVar(&siteNoSign, "no-sign", false, "disable GPG signing of repositories/images")
+	buildSiteCmd.Flags().BoolVar(&siteAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 }

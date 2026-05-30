@@ -48,6 +48,8 @@ type SiteOptions struct {
 	AccentColor   string
 	FooterText    string
 	IndexTemplate string
+	NoSign        bool
+	AllowUnsigned bool
 }
 
 // FlatpakIndex represents the JSON model of the Flatpak index/static.
@@ -93,7 +95,20 @@ func BuildSite(opts SiteOptions) error {
 		}
 	}
 
-	if len(filteredKeys) > 0 {
+	if opts.NoSign {
+		if len(filteredKeys) > 0 {
+			logger.Warn("GPG signing keys were provided, but signing is disabled because no-sign is enabled.")
+		}
+	} else {
+		if len(filteredKeys) == 0 {
+			if !opts.AllowUnsigned {
+				return fmt.Errorf("GPG signing keys are missing. To generate an unsigned repository, you must explicitly enable the --allow-unsigned flag or set the AETHERPAK_ALLOW_UNSIGNED environment variable")
+			}
+			logger.Warn("WARNING: GPG signing keys are missing. Generating an UNSIGNED repository because --allow-unsigned is enabled.")
+		}
+	}
+
+	if !opts.NoSign && len(filteredKeys) > 0 {
 		signer, err := signing.NewSigner(filteredKeys, opts.GPGPassphrase)
 		if err != nil {
 			return fmt.Errorf("failed to load GPG keys for public export: %w", err)

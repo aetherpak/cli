@@ -312,6 +312,8 @@
             <p style="margin-bottom: 1rem;">Persistent configuration flags applicable to all executions:</p>
             <div class="opts">
               <div class="opt"><code>--config &lt;path&gt;</code><span>Custom path to configuration file (default is <code>aetherpak.yaml</code> or <code>aetherpak.yml</code>).</span></div>
+              <div class="opt"><code>--no-sign</code><span>Disables GPG signing of repositories and OCI images entirely.</span></div>
+              <div class="opt"><code>--allow-unsigned</code><span>Allows publishing and building unsigned repositories/images if GPG keys are missing.</span></div>
               <div class="opt"><code>-v, --verbose</code><span>Enables granular log logging.</span></div>
               <div class="opt"><code>--json-log</code><span>Emits logs in structured JSON lines for logging backends.</span></div>
               <div class="opt"><code>--plain</code><span>Disables terminal color codes, emojis, and styling grids.</span></div>
@@ -328,6 +330,7 @@
           <pre><code>registry: ghcr.io
 pages_url: https://flatpak.example.com
 remote_name: example-repo
+no_sign: false
 repo_title: "My Custom Flatpak Repository"
 
 channel_mappings:

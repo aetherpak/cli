@@ -34,7 +34,7 @@ The CLI parses settings from a configuration file, looking for `aetherpak.yaml` 
 * **`registry`** (string): The target OCI registry host (e.g., `ghcr.io` or `quay.io`).
 * **`pages_url`** (string): The public URL where the repository landing page and index files are hosted.
 * **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`).
-* **`signing_mode`** (string): The signature verification strategy. Supported values: `auto` (sign if keys are present), `gpg` (enforce GPG signing), or `off` (default).
+* **`no_sign`** (boolean): Set to `true` to disable GPG signing of repositories and OCI images entirely (defaults to `false`).
 * **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to `"Flatpak Repository"`).
 * **`repo_homepage`** (string): URL link for repository homepage metadata.
 * **`runtime_repo`** (string): Fallback `.flatpakrepo` URL used to resolve dependencies (defaults to Flathub).
@@ -156,12 +156,20 @@ Converts repo branch to OCI image layer and pushes:
 ```bash
 aetherpak push-oci --app org.example.App --registry ghcr.io --oci-repository my-org/my-app
 ```
+Options:
+* `--gpg-key <path>`: Local path to GPG private key used to sign image manifests.
+* `--no-sign`: Disable GPG signing entirely (bypasses GPG signature step).
+* `--allow-unsigned`: Allow pushing unsigned images if signing keys are missing.
 
 #### `build-site`
 Downloads old static index, merges recent cell records, and regenerates index listings:
 ```bash
 aetherpak build-site --pages-url https://flatpak.my-org.com --site-dir _site --reconcile --index-template templates/custom_index.html
 ```
+Options:
+* `--gpg-key <path>`: Local path to GPG private key used to export GPG public keys.
+* `--no-sign`: Disable GPG signing and metadata export entirely.
+* `--allow-unsigned`: Allow building unsigned index if GPG keys are missing.
 
 #### `resolve-channel`
 Resolves the flatpak channel name from git ref metadata:
@@ -182,12 +190,20 @@ Chains compilation/importer and OCI push sequentially in-memory for a single tar
 ```bash
 aetherpak publish --app org.example.App --registry ghcr.io
 ```
+Options:
+* `--gpg-key <path>`: Local path to GPG private key.
+* `--no-sign`: Disable GPG signing entirely.
+* `--allow-unsigned`: Allow publishing unsigned images if GPG keys are missing.
 
 #### `release`
 Coordinates the entire lifecycle: runs matrix planner, compiles/imports changed records concurrently, pushes artifacts, and builds site index layouts:
 ```bash
 aetherpak release --base-sha <sha> --workers 4 --index-template templates/custom_index.html
 ```
+Options:
+* `--gpg-key <path>`: Local path to GPG private key.
+* `--no-sign`: Disable GPG signing entirely.
+* `--allow-unsigned`: Allow releasing unsigned images/index if GPG keys are missing.
 
 ---
 

@@ -24,7 +24,7 @@ type Config struct {
 	Registry        string            `yaml:"registry" json:"registry" mapstructure:"registry"`
 	PagesURL        string            `yaml:"pages_url" json:"pages_url" mapstructure:"pages_url"`
 	RemoteName      string            `yaml:"remote_name" json:"remote_name" mapstructure:"remote_name"`
-	SigningMode     string            `yaml:"signing_mode" json:"signing_mode" mapstructure:"signing_mode"`
+	NoSign          bool              `yaml:"no_sign" json:"no_sign" mapstructure:"no_sign"`
 	RepoTitle       string            `yaml:"repo_title" json:"repo_title" mapstructure:"repo_title"`
 	RepoHomepage    string            `yaml:"repo_homepage" json:"repo_homepage" mapstructure:"repo_homepage"`
 	RuntimeRepo     string            `yaml:"runtime_repo" json:"runtime_repo" mapstructure:"runtime_repo"`

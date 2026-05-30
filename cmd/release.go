@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -34,6 +35,8 @@ var (
 	relRunLinter     bool
 	relOutputFile    string
 	relIndexTemplate string
+	relNoSign        bool
+	relAllowUnsigned bool
 )
 
 var releaseCmd = &cobra.Command{
@@ -99,6 +102,25 @@ var releaseCmd = &cobra.Command{
 				}
 			}
 		}()
+
+		noSign := relNoSign
+		if !noSign {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				noSign = true
+			}
+		}
+		if !noSign && cfg != nil {
+			noSign = cfg.NoSign
+		}
+
+		allowUnsigned := relAllowUnsigned
+		if !allowUnsigned {
+			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
+			if envVal == "true" || envVal == "1" || envVal == "yes" {
+				allowUnsigned = true
+			}
+		}
 
 		if len(res.Matrix) == 0 {
 			logger.Info("No application changes detected. Proceeding to site index update.")
@@ -224,6 +246,8 @@ var releaseCmd = &cobra.Command{
 							Insecure:      relInsecure,
 							OCIUsername:   viper.GetString("oci_username"),
 							OCIPassword:   viper.GetString("oci_password"),
+							NoSign:        noSign,
+							AllowUnsigned: allowUnsigned,
 						}
 						if _, err := oci.Push(pOpts); err != nil {
 							return fmt.Errorf("push-oci failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -271,6 +295,8 @@ var releaseCmd = &cobra.Command{
 			AccentColor:   brandAccent,
 			FooterText:    brandFooter,
 			IndexTemplate: relIndexTemplate,
+			NoSign:        noSign,
+			AllowUnsigned: allowUnsigned,
 		}
 
 		if err := site.BuildSite(sOpts); err != nil {
@@ -307,4 +333,6 @@ func init() {
 	releaseCmd.Flags().StringVar(&relRepoPath, "repo-path", "repo", "path to local OSTree repository")
 	releaseCmd.Flags().StringVar(&relOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	releaseCmd.Flags().StringVar(&relIndexTemplate, "index-template", "", "path to custom HTML repository index template")
+	releaseCmd.Flags().BoolVar(&relNoSign, "no-sign", false, "disable GPG signing of repositories/images")
+	releaseCmd.Flags().BoolVar(&relAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 }

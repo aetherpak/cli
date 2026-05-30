@@ -129,10 +129,6 @@ func initConfig() {
 		viper.SetConfigName("aetherpak")
 	}
 	viper.SetConfigType("yaml")
-
-	if err := viper.ReadInConfig(); err == nil {
-		logger.Debug("Using config file: %s", viper.ConfigFileUsed())
-	}
 }
 
 // LoadConfig reads and parses the optional configuration file.
@@ -158,6 +154,8 @@ func LoadConfig() (*config.Config, error) {
 		} else {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
+	} else {
+		logger.Debug("Using config file: %s", viper.ConfigFileUsed())
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {

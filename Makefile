@@ -1,6 +1,10 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build test test/integration fmt vet clean release/build help
+IMAGE_NAME ?= ghcr.io/aetherpak/cli
+TAG ?= local
+CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+
+.PHONY: build test test/integration fmt vet clean release/build container container/cli container/builder help
 
 ##@ Build & Quality
 
@@ -23,9 +27,21 @@ vet: ## Report suspicious constructs
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/
 
+##@ Containers
+
+container: | container/cli container/builder ## Build both CLI and Builder container images
+
+container/cli: ## Build local single-architecture CLI image
+	@[ -n "$(CONTAINER_TOOL)" ] || { printf "Error: Neither podman nor docker found in PATH\n"; exit 1; }
+	$(CONTAINER_TOOL) build --target cli -t $(IMAGE_NAME):$(TAG) -f Containerfile .
+
+container/builder: ## Build local single-architecture builder image
+	@[ -n "$(CONTAINER_TOOL)" ] || { printf "Error: Neither podman nor docker found in PATH\n"; exit 1; }
+	$(CONTAINER_TOOL) build --target cli-builder -t $(IMAGE_NAME):$(TAG)-builder -f Containerfile .
+
 ##@ Release
 
-release/build: ## Cross-compile release binaries and archives into dist/ (Linux only; Flatpak is Linux-only)
+release/build: ## Cross-compile release binaries and archives into dist/ (Linux only)
 	@mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/aetherpak-linux-amd64 main.go
 	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/aetherpak-linux-arm64 main.go

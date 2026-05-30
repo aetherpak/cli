@@ -1,0 +1,38 @@
+name: Reusable Container Build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref/branch/tag/commit to checkout"
+        required: true
+        type: string
+      image-tags:
+        description: "Whitespace or newline separated list of image tags to apply"
+        required: true
+        type: string
+      push:
+        description: "Whether to push the images"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Build & Publish Container Images
+        uses: ./.github/actions/container-build
+        with:
+          tags: ${{ inputs.image-tags }}
+          push: ${{ inputs.push }}

@@ -1,0 +1,88 @@
+name: "AetherPak Container Build"
+description: "Opinionated action to build and push CLI and Builder container images"
+
+inputs:
+  tags:
+    description: "Whitespace or newline separated list of base tags (e.g. 'latest' or 'stable latest' or 'v0.7.0')"
+    required: true
+  username:
+    description: "Registry username"
+    required: false
+    default: ${{ github.actor }}
+  password:
+    description: "Registry password"
+    required: false
+    default: ${{ github.token }}
+  push:
+    description: "Whether to push the images"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Log in to the Container registry
+      if: ${{ inputs.push == 'true' && inputs.password != '' }}
+      uses: redhat-actions/podman-login@v1
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    - name: Prepare tags
+      id: prep
+      shell: bash
+      run: |
+        TAGS=$(echo "${{ inputs.tags }}" | xargs)
+        BUILDER_TAGS=""
+        for tag in $TAGS; do
+          BUILDER_TAGS="$BUILDER_TAGS ${tag}-builder"
+        done
+        BUILDER_TAGS=$(echo "$BUILDER_TAGS" | xargs)
+        echo "cli-tags=$TAGS" >> $GITHUB_OUTPUT
+        echo "builder-tags=$BUILDER_TAGS" >> $GITHUB_OUTPUT
+
+    - name: Build CLI image
+      id: build-cli
+      uses: redhat-actions/buildah-build@v2
+      with:
+        context: .
+        containerfiles: ./Containerfile
+        platforms: linux/amd64,linux/arm64
+        image: ghcr.io/aetherpak/cli
+        tags: ${{ steps.prep.outputs.cli-tags }}
+        extra-args: --target cli
+        oci: true
+
+    - name: Push CLI image
+      if: ${{ inputs.push == 'true' && inputs.password != '' }}
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-cli.outputs.image }}
+        tags: ${{ steps.build-cli.outputs.tags }}
+        extra-args: |
+          --tls-verify=true
+
+    - name: Build Builder CLI image
+      id: build-builder
+      uses: redhat-actions/buildah-build@v2
+      with:
+        context: .
+        containerfiles: ./Containerfile
+        platforms: linux/amd64,linux/arm64
+        image: ghcr.io/aetherpak/cli
+        tags: ${{ steps.prep.outputs.builder-tags }}
+        extra-args: --target cli-builder
+        oci: true
+
+    - name: Push Builder CLI image
+      if: ${{ inputs.push == 'true' && inputs.password != '' }}
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-builder.outputs.image }}
+        tags: ${{ steps.build-builder.outputs.tags }}
+        extra-args: |
+          --tls-verify=true

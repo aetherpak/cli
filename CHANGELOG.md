@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.7.0](https://github.com/aetherpak/cli/compare/v0.6.1...v0.7.0) (2026-05-30)
+
+
+### Features
+
+* add container images ([f97f5e0](https://github.com/aetherpak/cli/commit/f97f5e03e01dcf1a9dcb17da205d4ce9e50c888f))
+* add global log-file flag and error log preservation ([8136c4b](https://github.com/aetherpak/cli/commit/8136c4b1fa7798c7877a904b4e514997265c0d18))
+* extract and expose runtime-version from manifest ([feb0dab](https://github.com/aetherpak/cli/commit/feb0dab451e8519117964efc54d8cddd34f4640f))
+* respect XDG_RUNTIME_DIR for temporary file creation ([b17962c](https://github.com/aetherpak/cli/commit/b17962ca45b41dbffedeb090ab8994fae640e41c))
+* simplify Containerfile to inherit from flatpak and flatpak-builder base images ([4b8823b](https://github.com/aetherpak/cli/commit/4b8823b9f9bc250aa6a7f3c8f17fd00664218938))
+* simplify signature configuration to no-sign flag and enforce GPG by default ([51eb7eb](https://github.com/aetherpak/cli/commit/51eb7eb8f359410d8a56301bc3ff6ab71db04973))
+* support planning against a single Flatpak manifest directly ([6b15dee](https://github.com/aetherpak/cli/commit/6b15deed7319afa09ae58588e04db2b6e838cb5f))
+
+
+### Bug Fixes
+
+* add local nil-checks before dereferencing linter strict value ([a144316](https://github.com/aetherpak/cli/commit/a1443166adeb45b3a7c0cbb9a1a50c34016948dc))
+* consolidate config loading to read config file once ([ca636fb](https://github.com/aetherpak/cli/commit/ca636fb38386f7d7e868ee3f967fc488dfcde244))
+* enforce http timeout and max size limit on bundle download ([eeeed65](https://github.com/aetherpak/cli/commit/eeeed65415836de98afbf21b2195f0a557454e7e))
+* escape logo_url in logoHTML image builder to prevent html injection ([4ff06c5](https://github.com/aetherpak/cli/commit/4ff06c59f348484bcc90029373982d3d4fdd57a2))
+* omit empty --arch and --default-branch flags in builder ([6bba316](https://github.com/aetherpak/cli/commit/6bba316a7e95c67d217d3e98c26e226719b4b064))
+* propagate plan marshal errors, default nil labels to empty object, and restrict log file permission to 0600 ([12d8f79](https://github.com/aetherpak/cli/commit/12d8f79332ea0caf97265f82430ebb34a4339d46))
+* read global command flags via viper to enable environment variables ([23e942a](https://github.com/aetherpak/cli/commit/23e942a746f10448c6a7bc1ae79dafa57de2e805))
+* sanitize metadata fields to prevent INI injection in flatpakref and flatpakrepo ([0818226](https://github.com/aetherpak/cli/commit/08182261c74148bd183d500da2a260143aa219be))
+* specify registry in container build action push steps ([151ddb6](https://github.com/aetherpak/cli/commit/151ddb67bd146aa5f0905f305607477a5de27c83))
+* validate records on read in IterRecords ([acfcf97](https://github.com/aetherpak/cli/commit/acfcf97dc97645c6a581b8094babb21c78bf0b88))
+
 ## [0.6.1](https://github.com/aetherpak/cli/compare/v0.6.0...v0.6.1) (2026-05-29)
 
 

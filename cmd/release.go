@@ -52,8 +52,8 @@ var releaseCmd = &cobra.Command{
 		logger.Info("Phase 1: Planning release changes...")
 		configPath := viper.ConfigFileUsed()
 		if configPath == "" {
-			if cfgFile != "" {
-				configPath = cfgFile
+			if vCfgFile := viper.GetString("config"); vCfgFile != "" {
+				configPath = vCfgFile
 			} else {
 				configPath = "aetherpak.yaml"
 				if _, err := os.Stat("aetherpak.yml"); err == nil {

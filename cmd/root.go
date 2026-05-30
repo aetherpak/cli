@@ -26,12 +26,16 @@ var RootCmd = &cobra.Command{
 	Long: `AetherPak Core CLI replaces scripting pipelines for converting flatpak 
 applications into OCI hosted repositories on GHCR with deployment sites on Pages.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		isPlain := plain || noColor
-		logger.Init(verbose, jsonLog, isPlain)
-		if err := logger.InitFileLogging(logFile); err != nil {
+		vVerbose := viper.GetBool("verbose")
+		vJSONLog := viper.GetBool("json-log")
+		vPlain := viper.GetBool("plain") || viper.GetBool("no-color")
+		vLogFile := viper.GetString("log-file")
+
+		logger.Init(vVerbose, vJSONLog, vPlain)
+		if err := logger.InitFileLogging(vLogFile); err != nil {
 			return NewCmdErrorf(1, "failed to initialize logging: %w", err)
 		}
-		logger.Debug("Logger initialized with verbose=%v json=%v plain=%v", verbose, jsonLog, isPlain)
+		logger.Debug("Logger initialized with verbose=%v json=%v plain=%v", vVerbose, vJSONLog, vPlain)
 		return nil
 	},
 	SilenceErrors: true,
@@ -121,8 +125,8 @@ func initConfig() {
 	_ = viper.BindEnv("oci_username", "OCI_USERNAME")
 	_ = viper.BindEnv("oci_password", "OCI_PASSWORD")
 
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
+	if vCfgFile := viper.GetString("config"); vCfgFile != "" {
+		viper.SetConfigFile(vCfgFile)
 	} else {
 		// Look for aetherpak.yaml or aetherpak.yml in current working directory
 		viper.AddConfigPath(".")
@@ -136,8 +140,8 @@ func initConfig() {
 func LoadConfig() (*config.Config, error) {
 	var cfg config.Config
 
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
+	if vCfgFile := viper.GetString("config"); vCfgFile != "" {
+		viper.SetConfigFile(vCfgFile)
 	} else {
 		viper.AddConfigPath(".")
 		viper.SetConfigName("aetherpak")

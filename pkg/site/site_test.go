@@ -166,3 +166,34 @@ func TestBuildSiteEscapesLogoURL(t *testing.T) {
 		t.Errorf("found unescaped attributes in output: %s", string(data))
 	}
 }
+
+func TestSanitizeINIValue(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "Normal Value",
+			expected: "Normal Value",
+		},
+		{
+			input:    "Value\nWith\nNewlines",
+			expected: "ValueWithNewlines",
+		},
+		{
+			input:    "Value\r\nWith\r\nWindows\r\nNewlines",
+			expected: "ValueWithWindowsNewlines",
+		},
+		{
+			input:    "Value=With=Equals",
+			expected: "Value=With=Equals",
+		},
+	}
+
+	for _, tt := range tests {
+		actual := sanitizeINIValue(tt.input)
+		if actual != tt.expected {
+			t.Errorf("sanitizeINIValue(%q) = %q; expected %q", tt.input, actual, tt.expected)
+		}
+	}
+}

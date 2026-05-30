@@ -160,8 +160,8 @@ func (app *App) Normalize() {
 	}
 }
 
-// Validate asserts that the App configuration is structurally correct.
-func (app *App) Validate() error {
+// ValidateBasic validates basic metadata (ID, branch, runtime, and arches) without path checks.
+func (app *App) ValidateBasic() error {
 	if app.ID == "" {
 		return fmt.Errorf("app entry missing 'id'")
 	}
@@ -175,6 +175,24 @@ func (app *App) Validate() error {
 	}
 	if !branchRegexp.MatchString(branch) {
 		return fmt.Errorf("app %q: 'branch' must match format %s", app.ID, branchRegexp.String())
+	}
+
+	if app.Runtime == "" && app.Manifest != "" {
+		return fmt.Errorf("app %q: 'runtime' is required when 'manifest' is set", app.ID)
+	}
+
+	for _, arch := range app.Arches {
+		if !supportedArches[arch] {
+			return fmt.Errorf("app %q: unsupported arch %q", app.ID, arch)
+		}
+	}
+	return nil
+}
+
+// Validate asserts that the App configuration is structurally correct.
+func (app *App) Validate() error {
+	if err := app.ValidateBasic(); err != nil {
+		return err
 	}
 
 	hasManifest := app.Manifest != ""
@@ -192,19 +210,6 @@ func (app *App) Validate() error {
 		cleanPath := filepath.Clean(app.Manifest)
 		if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
 			return fmt.Errorf("app %q: 'manifest' must be a relative path with no '..' segments", app.ID)
-		}
-		if app.Runtime == "" {
-			return fmt.Errorf("app %q: 'runtime' is required when 'manifest' is set", app.ID)
-		}
-
-		arches := app.Arches
-		if len(arches) == 0 {
-			arches = []string{"x86_64"}
-		}
-		for _, arch := range arches {
-			if !supportedArches[arch] {
-				return fmt.Errorf("app %q: unsupported arch %q", app.ID, arch)
-			}
 		}
 	} else {
 		for arch, b := range app.Bundles {

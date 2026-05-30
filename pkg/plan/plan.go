@@ -21,16 +21,17 @@ var runnerByArch = map[string]string{
 
 // MatrixRow represents a row in the expanded build/import matrix.
 type MatrixRow struct {
-	Source       string `json:"source"`
-	AppID        string `json:"app-id"`
-	Manifest     string `json:"manifest,omitempty"`
-	Runtime      string `json:"runtime,omitempty"`
-	Branch       string `json:"branch"`
-	Arch         string `json:"arch"`
-	Runner       string `json:"runner"`
-	RunLinter    bool   `json:"run-linter,omitempty"`
-	BundleURL    string `json:"bundle-url,omitempty"`
-	BundleSHA256 string `json:"bundle-sha256,omitempty"`
+	Source         string `json:"source"`
+	AppID          string `json:"app-id"`
+	Manifest       string `json:"manifest,omitempty"`
+	Runtime        string `json:"runtime,omitempty"`
+	RuntimeVersion string `json:"runtime-version,omitempty"`
+	Branch         string `json:"branch"`
+	Arch           string `json:"arch"`
+	Runner         string `json:"runner"`
+	RunLinter      bool   `json:"run-linter,omitempty"`
+	BundleURL      string `json:"bundle-url,omitempty"`
+	BundleSHA256   string `json:"bundle-sha256,omitempty"`
 }
 
 // PlanResult holds the planned execution details.
@@ -186,14 +187,15 @@ func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force st
 			}
 			for _, arch := range arches {
 				row := MatrixRow{
-					Source:    "manifest",
-					AppID:     id,
-					Manifest:  app.Manifest,
-					Runtime:   app.Runtime,
-					Branch:    branch,
-					Arch:      arch,
-					Runner:    runnerByArch[arch],
-					RunLinter: app.RunLinter,
+					Source:         "manifest",
+					AppID:          id,
+					Manifest:       app.Manifest,
+					Runtime:        app.Runtime,
+					RuntimeVersion: app.RuntimeVersion,
+					Branch:         branch,
+					Arch:           arch,
+					Runner:         runnerByArch[arch],
+					RunLinter:      app.RunLinter,
 				}
 				rows = append(rows, row)
 				manifestRows = append(manifestRows, row)

@@ -50,14 +50,15 @@ func TestE2EPlanManifest(t *testing.T) {
 		}
 
 		type MatrixRow struct {
-			Source    string `json:"source"`
-			AppID     string `json:"app-id"`
-			Manifest  string `json:"manifest"`
-			Runtime   string `json:"runtime"`
-			Branch    string `json:"branch"`
-			Arch      string `json:"arch"`
-			Runner    string `json:"runner"`
-			RunLinter bool   `json:"run-linter"`
+			Source         string `json:"source"`
+			AppID          string `json:"app-id"`
+			Manifest       string `json:"manifest"`
+			Runtime        string `json:"runtime"`
+			RuntimeVersion string `json:"runtime-version"`
+			Branch         string `json:"branch"`
+			Arch           string `json:"arch"`
+			Runner         string `json:"runner"`
+			RunLinter      bool   `json:"run-linter"`
 		}
 
 		type PlanResult struct {
@@ -83,7 +84,7 @@ func TestE2EPlanManifest(t *testing.T) {
 		if r0.AppID != "org.flatpak.DemoApp" || r0.Source != "manifest" || r0.Manifest != manifestPath {
 			t.Errorf("row 0 mismatch: %+v", r0)
 		}
-		if r0.Runtime != "org.freedesktop.Platform" || r0.Branch != "beta" || r0.Arch != "x86_64" {
+		if r0.Runtime != "org.freedesktop.Platform" || r0.RuntimeVersion != "23.08" || r0.Branch != "beta" || r0.Arch != "x86_64" {
 			t.Errorf("row 0 details mismatch: %+v", r0)
 		}
 
@@ -92,7 +93,7 @@ func TestE2EPlanManifest(t *testing.T) {
 		if r1.AppID != "org.flatpak.DemoApp" || r1.Source != "manifest" || r1.Manifest != manifestPath {
 			t.Errorf("row 1 mismatch: %+v", r1)
 		}
-		if r1.Runtime != "org.freedesktop.Platform" || r1.Branch != "beta" || r1.Arch != "aarch64" {
+		if r1.Runtime != "org.freedesktop.Platform" || r1.RuntimeVersion != "23.08" || r1.Branch != "beta" || r1.Arch != "aarch64" {
 			t.Errorf("row 1 details mismatch: %+v", r1)
 		}
 	})

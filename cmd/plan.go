@@ -55,12 +55,13 @@ var planCmd = &cobra.Command{
 
 			// Construct synthetic config
 			syntheticApp := config.App{
-				ID:        manifestData.ID,
-				Manifest:  planManifest,
-				Runtime:   manifestData.Runtime,
-				Arches:    planArches,
-				Branch:    planBranch,
-				RunLinter: !planDisableLinter,
+				ID:             manifestData.ID,
+				Manifest:       planManifest,
+				Runtime:        manifestData.Runtime,
+				RuntimeVersion: manifestData.RuntimeVersion,
+				Arches:         planArches,
+				Branch:         planBranch,
+				RunLinter:      !planDisableLinter,
 			}
 
 			if err := syntheticApp.ValidateBasic(); err != nil {

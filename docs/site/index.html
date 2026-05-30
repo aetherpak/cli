@@ -39,7 +39,7 @@
     ul.points li::before { content: '→'; position: absolute; left: 0; color: var(--primary); }
 
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; }
-    
+
     .tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
     .tab { padding: 0.6rem 1rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--text-muted); font: inherit; font-weight: 600; font-size: 0.92rem; cursor: pointer; transition: color 0.2s; }
     .tab:hover { color: var(--text); }
@@ -55,12 +55,12 @@
     .code-block .s { color: #86efac; }
     .code-block .e { color: #e9d5ff; }
     .code-block .c { color: #71717a; font-style: italic; }
-    
+
     .btn-copy { position: absolute; top: 0.55rem; right: 0.55rem; background: rgba(255,255,255,0.04); border: 1px solid var(--border); cursor: pointer; color: var(--text-muted); padding: 0.3rem; border-radius: 6px; display: flex; transition: all 0.2s; }
     .btn-copy:hover { color: var(--text); background: rgba(255,255,255,0.08); }
     .btn-copy.success { color: var(--success); border-color: var(--success); }
     .hint { font-size: 0.85rem; color: var(--text-muted); margin: -0.5rem 0 1rem; }
-    
+
     .opts { display: grid; gap: 0.5rem; }
     .opt { display: grid; grid-template-columns: 10rem 1fr; gap: 0.75rem; font-size: 0.92rem; padding: 0.5rem 0; border-top: 1px solid var(--border); }
     .opt:first-child { border-top: none; }
@@ -211,7 +211,7 @@
       <section>
         <h2>Interactive CLI Execution</h2>
         <p>AetherPak CLI outputs status logs using structured timing metrics and beautiful Lipgloss-styled status banners during execution:</p>
-        
+
         <div class="terminal-window">
           <div class="terminal-header">
             <div class="terminal-dots">
@@ -245,7 +245,7 @@
             <div class="line"><span class="prompt">$</span> <span class="cursor">_</span></div>
           </div>
         </div>
-        
+
         <p class="caption">Real execution logs simulation displaying AetherPak release stages.</p>
       </section>
 
@@ -260,7 +260,7 @@
 
           <div class="panel" data-tab="cmd-porcelain">
             <p style="margin-bottom: 1rem;">High-level convenience workflows coordinating processes in-memory:</p>
-            
+
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">release</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Plans changed matrix entries, builds/imports concurrently, pushes OCI packages, and regenerates index sites:</p>
             <div class="code-block">
@@ -278,7 +278,7 @@
 
           <div class="panel" data-tab="cmd-plumbing" hidden>
             <p style="margin-bottom: 1rem;">Independent single-responsibility commands for custom pipeline steps:</p>
-            
+
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">plan</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.5rem;">Computes app changes compared to a base commit:</p>
             <div class="code-block"><pre><code>aetherpak plan --base-sha HEAD~1 --output-file plan.env</code></pre><button class="btn-copy" title="Copy" onclick="copyBlock(this)"></button></div>

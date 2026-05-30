@@ -27,20 +27,20 @@ jobs:
           REF_NAME: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
           SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: |
-          SHORT_SHA=${SHA:0:7}
+          SHORT_SHA="${SHA:0:7}"
 
           if [ "$REF_NAME" = "main" ]; then
-            echo "tags=main" >> $GITHUB_OUTPUT
-            echo "push=true" >> $GITHUB_OUTPUT
+            echo "tags=main" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
           elif [[ "$REF_NAME" =~ ^v[0-9] ]]; then
-            echo "tags=latest $REF_NAME" >> $GITHUB_OUTPUT
-            echo "push=true" >> $GITHUB_OUTPUT
+            echo "tags=latest $REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "push=true" >> "$GITHUB_OUTPUT"
           else
-            echo "tags=sha-$SHORT_SHA" >> $GITHUB_OUTPUT
-            echo "push=false" >> $GITHUB_OUTPUT
+            echo "tags=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+            echo "push=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "ref=$SHA" >> $GITHUB_OUTPUT
+          echo "ref=$SHA" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build

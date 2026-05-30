@@ -4,7 +4,7 @@ IMAGE_NAME ?= ghcr.io/aetherpak/cli
 TAG ?= local
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
-.PHONY: build test test/integration fmt vet clean release/build container container/cli container/builder help
+.PHONY: build test test/integration fmt vet clean release/build container container/cli container/builder setup lint help
 
 ##@ Build & Quality
 
@@ -26,6 +26,14 @@ vet: ## Report suspicious constructs
 
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/
+
+##@ Quality
+
+setup: ## Install the pre-commit git hooks
+	pre-commit install || uvx pre-commit install
+
+lint: ## Run all pre-commit checks
+	pre-commit run --all-files || uvx pre-commit run --all-files
 
 ##@ Containers
 

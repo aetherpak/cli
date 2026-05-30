@@ -25,16 +25,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify Formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "::error::Go files are not formatted properly. Run 'make fmt' locally."
-            gofmt -d .
-            exit 1
-          fi
-
-      - name: Vet Code
-        run: go vet ./...
+      - name: Run Pre-Commit
+        uses: pre-commit/action@v3.0.1
 
       - name: Run Tests with Coverage
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...

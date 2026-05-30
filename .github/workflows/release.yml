@@ -18,7 +18,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          client-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
+          app-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
           private-key: ${{ secrets.AETHERPAK_ACTION_BOT_APP_PRIVATE_KEY }}
 
       - name: Run Release Please

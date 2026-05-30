@@ -93,7 +93,9 @@ var buildCmd = &cobra.Command{
 				appRunLinter = appConfig.RunLinter
 				appBuilderArgs = appConfig.BuilderArgs
 				if appConfig.Linter != nil {
-					appLinterStrict = *appConfig.Linter.Strict
+					if appConfig.Linter.Strict != nil {
+						appLinterStrict = *appConfig.Linter.Strict
+					}
 					appLinterIgnoreRules = appConfig.Linter.IgnoreRules
 				}
 				if appConfig.CCache != nil && !*appConfig.CCache {

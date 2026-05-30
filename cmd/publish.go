@@ -100,7 +100,9 @@ var publishCmd = &cobra.Command{
 				appStateDir = targetApp.StateDir
 				appRunLinter = targetApp.RunLinter
 				if targetApp.Linter != nil {
-					appLinterStrict = *targetApp.Linter.Strict
+					if targetApp.Linter.Strict != nil {
+						appLinterStrict = *targetApp.Linter.Strict
+					}
 					appLinterIgnoreRules = targetApp.Linter.IgnoreRules
 				}
 				if targetApp.CCache != nil && !*targetApp.CCache {

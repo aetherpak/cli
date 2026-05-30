@@ -164,7 +164,9 @@ var releaseCmd = &cobra.Command{
 								appRunLinter = matchedApp.RunLinter
 								appBuilderArgs = matchedApp.BuilderArgs
 								if matchedApp.Linter != nil {
-									appLinterStrict = *matchedApp.Linter.Strict
+									if matchedApp.Linter.Strict != nil {
+										appLinterStrict = *matchedApp.Linter.Strict
+									}
 									appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
 								}
 								if matchedApp.CCache != nil && !*matchedApp.CCache {

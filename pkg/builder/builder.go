@@ -127,10 +127,14 @@ func Build(opts BuildOptions) error {
 	args := []string{
 		"--force-clean",
 		"--repo=" + repoPath,
-		"--arch=" + opts.Arch,
-		"--default-branch=" + opts.Branch,
-		"--state-dir=" + flatpakBuilderStateDir,
 	}
+	if opts.Arch != "" {
+		args = append(args, "--arch="+opts.Arch)
+	}
+	if opts.Branch != "" {
+		args = append(args, "--default-branch="+opts.Branch)
+	}
+	args = append(args, "--state-dir="+flatpakBuilderStateDir)
 
 	if opts.CCacheDir != "" {
 		args = append(args, "--ccache")

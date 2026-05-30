@@ -183,6 +183,44 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+func TestBuildOmitEmptyFlags(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	opts := BuildOptions{
+		AppID:    "org.example.App",
+		Manifest: "apps/org.example.App.json",
+		Arch:     "",
+		Branch:   "",
+		StateDir: ".state",
+		RepoPath: "repo",
+		Executor: mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	var builderRan bool
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak-builder" {
+			builderRan = true
+			for _, arg := range cmd.Args {
+				if strings.HasPrefix(arg, "--arch=") {
+					t.Errorf("found --arch= flag, expected it to be omitted when empty: %s", arg)
+				}
+				if strings.HasPrefix(arg, "--default-branch=") {
+					t.Errorf("found --default-branch= flag, expected it to be omitted when empty: %s", arg)
+				}
+			}
+		}
+	}
+
+	if !builderRan {
+		t.Errorf("expected flatpak-builder to have run")
+	}
+}
+
 func TestExtraBuilderArgs(t *testing.T) {
 	cases := []struct {
 		name     string

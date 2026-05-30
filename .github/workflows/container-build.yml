@@ -1,0 +1,55 @@
+name: Container Build
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    name: Resolve Tags & Push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      tags: ${{ steps.resolve.outputs.tags }}
+      push: ${{ steps.resolve.outputs.push }}
+    steps:
+      - name: Resolve
+        id: resolve
+        env:
+          REF_NAME: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          SHORT_SHA=${SHA:0:7}
+
+          if [ "$REF_NAME" = "main" ]; then
+            echo "tags=main" >> $GITHUB_OUTPUT
+            echo "push=true" >> $GITHUB_OUTPUT
+          elif [[ "$REF_NAME" =~ ^v[0-9] ]]; then
+            echo "tags=latest $REF_NAME" >> $GITHUB_OUTPUT
+            echo "push=true" >> $GITHUB_OUTPUT
+          else
+            echo "tags=sha-$SHORT_SHA" >> $GITHUB_OUTPUT
+            echo "push=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "ref=$SHA" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build
+    needs: resolve
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-container-build.yml
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+      image-tags: ${{ needs.resolve.outputs.tags }}
+      push: ${{ needs.resolve.outputs.push == 'true' }}

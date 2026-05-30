@@ -1,0 +1,51 @@
+name: Refresh Latest Container Images
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    name: Resolve Latest Tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      latest_tag: ${{ steps.get-tag.outputs.latest_tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Get latest tag
+        id: get-tag
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git tag -l "v*" | sort -V | tail -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "Error: No release tags found!"
+            exit 1
+          fi
+          echo "Latest tag resolved: $LATEST_TAG"
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build
+    needs: resolve
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - ref: ${{ needs.resolve.outputs.latest_tag }}
+            tags: stable ${{ needs.resolve.outputs.latest_tag }}
+          - ref: main
+            tags: main
+    uses: ./.github/workflows/reusable-container-build.yml
+    with:
+      ref: ${{ matrix.ref }}
+      image-tags: ${{ matrix.tags }}
+      push: true

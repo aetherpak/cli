@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
@@ -26,7 +27,74 @@ var (
 	appLogger = log.NewWithOptions(os.Stderr, log.Options{
 		ReportTimestamp: true,
 	})
+	logFileHandle *os.File
+	logFilePath   string
+	isTempLogFile bool
 )
+
+// InitFileLogging configures streaming logs to a file.
+// If filePath is empty, a temporary log file is created.
+func InitFileLogging(filePath string) error {
+	if logFileHandle != nil {
+		_ = logFileHandle.Close()
+	}
+
+	var f *os.File
+	var err error
+	var isTemp bool
+
+	if filePath != "" {
+		f, err = os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open log file %q: %w", filePath, err)
+		}
+		isTemp = false
+	} else {
+		f, err = os.CreateTemp("", "aetherpak-*.log")
+		if err != nil {
+			return fmt.Errorf("failed to create temporary log file: %w", err)
+		}
+		filePath = f.Name()
+		isTemp = true
+	}
+
+	logFileHandle = f
+	logFilePath = filePath
+	isTempLogFile = isTemp
+
+	appLogger.SetOutput(io.MultiWriter(os.Stderr, f))
+	return nil
+}
+
+// CloseLogFile closes the file logging stream and cleans up temp files if successful.
+func CloseLogFile(hasError bool) {
+	if logFileHandle == nil {
+		return
+	}
+
+	_ = logFileHandle.Close()
+	appLogger.SetOutput(os.Stderr)
+
+	path := logFilePath
+	isTemp := isTempLogFile
+
+	logFileHandle = nil
+	logFilePath = ""
+	isTempLogFile = false
+
+	if isTemp {
+		if hasError {
+			if isPlain {
+				fmt.Fprintf(os.Stderr, "\nDetailed logs written to: %s\n", path)
+			} else {
+				style := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
+				fmt.Fprintf(os.Stderr, "\nDetailed logs written to: %s\n", style.Render(path))
+			}
+		} else {
+			_ = os.Remove(path)
+		}
+	}
+}
 
 // Init configures the logger parameters.
 func Init(verbose, useJSON, usePlain bool) {
@@ -60,6 +128,10 @@ func IsPlain() bool {
 
 // SuccessBanner prints a beautiful success completion box to os.Stdout.
 func SuccessBanner(title, message string) {
+	if logFileHandle != nil {
+		fmt.Fprintf(logFileHandle, "\n✔  %s\n%s\n\n", title, message)
+	}
+
 	if isJSON {
 		appLogger.Infof("%s: %s", title, message)
 		return
@@ -96,6 +168,10 @@ func SuccessBanner(title, message string) {
 
 // ErrorBanner prints a beautiful error box to os.Stderr.
 func ErrorBanner(title, message string) {
+	if logFileHandle != nil {
+		fmt.Fprintf(logFileHandle, "\n✘  %s\n%s\n\n", title, message)
+	}
+
 	if isJSON {
 		appLogger.Errorf("%s: %s", title, message)
 		return

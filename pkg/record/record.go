@@ -149,6 +149,10 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 			continue
 		}
 
+		if err := r.Validate(); err != nil {
+			continue
+		}
+
 		lblBytes, err := os.ReadFile(lblPath)
 		if err != nil {
 			continue

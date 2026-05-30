@@ -138,3 +138,45 @@ func TestWriteAndIterRecords(t *testing.T) {
 		t.Errorf("incorrect label value: got %s", records[0].Labels["org.flatpak.commit"])
 	}
 }
+
+func TestIterRecordsSkipsInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Write a valid record first
+	recValid := Record{
+		AppID: "org.example.AppValid",
+		Arch:  "x86_64",
+	}
+	_, err := WriteRecord(tempDir, recValid, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write an invalid record manually to bypass WriteRecord validation
+	invalidCellDir := filepath.Join(tempDir, "org.example.AppInvalid-x86_64")
+	if err := os.MkdirAll(invalidCellDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Missing arch and has slash in AppID
+	invalidRecJSON := `{"app-id": "org.example/AppInvalid", "arch": ""}`
+	if err := os.WriteFile(filepath.Join(invalidCellDir, "record.json"), []byte(invalidRecJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidCellDir, "labels.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := IterRecords(tempDir)
+	if err != nil {
+		t.Fatalf("failed to iter records: %v", err)
+	}
+
+	// It should skip the invalid record, returning only 1 valid record
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+
+	if records[0].Record.AppID != "org.example.AppValid" {
+		t.Errorf("expected only valid record, got %s", records[0].Record.AppID)
+	}
+}

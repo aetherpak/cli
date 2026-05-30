@@ -40,7 +40,7 @@ func Import(opts ImportOptions) error {
 		}
 
 		// Download the bundle
-		tmpFile, err := os.CreateTemp("", fmt.Sprintf("aetherpak-%s-*.flatpak", opts.AppID))
+		tmpFile, err := os.CreateTemp(logger.TempDir(), fmt.Sprintf("aetherpak-%s-*.flatpak", opts.AppID))
 		if err != nil {
 			return fmt.Errorf("failed to create temporary file: %w", err)
 		}

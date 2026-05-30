@@ -9,10 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 )
+
+// maxBundleSize limits bundle download size to prevent resource exhaustion.
+// It is a variable so it can be overridden in tests.
+var maxBundleSize int64 = 10 * 1024 * 1024 * 1024 // 10 GB
 
 // ImportOptions contains options for importing external flatpak bundles.
 type ImportOptions struct {
@@ -48,7 +53,10 @@ func Import(opts ImportOptions) error {
 		defer tmpFile.Close()
 
 		logger.Info("Downloading bundle from: %s", opts.BundleURL)
-		resp, err := http.Get(opts.BundleURL)
+		client := &http.Client{
+			Timeout: 30 * time.Minute,
+		}
+		resp, err := client.Get(opts.BundleURL)
 		if err != nil {
 			return fmt.Errorf("failed to download bundle: %w", err)
 		}
@@ -62,8 +70,17 @@ func Import(opts ImportOptions) error {
 		hasher := sha256.New()
 		writer := io.MultiWriter(tmpFile, hasher)
 
-		if _, err := io.Copy(writer, resp.Body); err != nil {
+		limitReader := io.LimitReader(resp.Body, maxBundleSize)
+		n, err := io.Copy(writer, limitReader)
+		if err != nil {
 			return fmt.Errorf("failed to write bundle: %w", err)
+		}
+
+		if n >= maxBundleSize {
+			var oneByte [1]byte
+			if _, readErr := resp.Body.Read(oneByte[:]); readErr != io.EOF {
+				return fmt.Errorf("bundle download exceeded maximum size limit of %d bytes", maxBundleSize)
+			}
 		}
 
 		checksum := fmt.Sprintf("%x", hasher.Sum(nil))

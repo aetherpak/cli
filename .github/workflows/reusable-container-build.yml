@@ -48,6 +48,14 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
+      - name: Enable Unprivileged User Namespaces (Ubuntu 24.04+)
+        shell: bash
+        run: |
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            echo "Disabling AppArmor unprivileged user namespace restrictions..."
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Build & Test Container Image
         uses: ./.github/actions/container-build
         with:

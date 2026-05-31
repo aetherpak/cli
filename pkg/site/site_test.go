@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aetherpak/aetherpak/pkg/record"
 )
 
 func TestAppTitle(t *testing.T) {
@@ -195,5 +197,183 @@ func TestSanitizeINIValue(t *testing.T) {
 		if actual != tt.expected {
 			t.Errorf("sanitizeINIValue(%q) = %q; expected %q", tt.input, actual, tt.expected)
 		}
+	}
+}
+
+func TestBuildSiteStructuredTemplate(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records using record.WriteRecord
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: "ghcr.io",
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":                   "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata":              "[Application]\nname=org.example.app1",
+		"org.flatpak.timestamp":             "1717200000", // June 1, 2024 00:00:00 UTC
+		"org.flatpak.installed-size":        "20971520",   // 20 MB
+		"org.flatpak.download-size":         "5242880",    // 5 MB
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>Example App One</name><summary>This is example app one</summary></component>`,
+		"org.freedesktop.appstream.icon-64": "https://example.com/icon.png",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	rec2 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "aarch64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: "ghcr.io",
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":                   "app/org.example.app1/aarch64/stable",
+		"org.flatpak.metadata":              "[Application]\nname=org.example.app1",
+		"org.flatpak.timestamp":             "1717200000",
+		"org.flatpak.installed-size":        "20971520",
+		"org.flatpak.download-size":         "5242880",
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>Example App One</name><summary>This is example app one</summary></component>`,
+		"org.freedesktop.appstream.icon-64": "https://example.com/icon.png",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	// Set up mock record with edge cases (malformed timestamp, missing sizes, XML XSS injection)
+	rec3 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "beta",
+		Name:     "example/app2",
+		Registry: "ghcr.io",
+		Digest:   "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+	}
+	labels3 := map[string]string{
+		"org.flatpak.ref":                   "app/org.example.app2/x86_64/beta",
+		"org.flatpak.metadata":              "[Application]\nname=org.example.app2",
+		"org.flatpak.timestamp":             "not-a-number",
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>Example App Two &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</name><summary>Summary with &lt; XSS</summary></component>`,
+		"org.freedesktop.appstream.icon-64": "https://example.com/icon2.png",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec3, labels3); err != nil {
+		t.Fatalf("failed to write record 3: %v", err)
+	}
+
+	templateFile := filepath.Join(tempDir, "custom.html")
+	templateContent := `{{range .Apps}}
+App: {{.Name}} ({{.ID}}) - {{.Summary}} - {{.Icon}}
+{{range .Branches}}
+- Branch: {{.Branch}}
+  Date: {{.FormattedDate}}
+  HelperDate: {{formatDate .Timestamp "2006-01-02"}}
+  Arches: {{join .Arches "/"}}
+  InstalledSize: {{formatSize .InstalledSize}}
+  DownloadSize: {{formatSize .DownloadSize}}
+  InstallCommand: {{.InstallCmd}}
+  RefFile: {{.RefFile}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(templateFile, []byte(templateContent), 0644); err != nil {
+		t.Fatalf("failed to write template: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		LandingPage:   true,
+		IndexTemplate: templateFile,
+		RepoTitle:     "TitleTest",
+		RemoteName:    "myremote",
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed: %v", err)
+	}
+
+	indexPath := filepath.Join(siteDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	output := string(data)
+	t.Logf("Generated output:\n%s", output)
+
+	expectedAppLine := "App: Example App One (org.example.app1) - This is example app one - https://example.com/icon.png"
+	if !strings.Contains(output, expectedAppLine) {
+		t.Errorf("expected output to contain %q", expectedAppLine)
+	}
+
+	expectedBranchLine := "- Branch: stable"
+	if !strings.Contains(output, expectedBranchLine) {
+		t.Errorf("expected output to contain %q", expectedBranchLine)
+	}
+
+	expectedArchesLine := "Arches: aarch64/x86_64" // alphabetical
+	if !strings.Contains(output, expectedArchesLine) {
+		t.Errorf("expected output to contain %q", expectedArchesLine)
+	}
+
+	expectedDateLine := "Date: Jun 01, 2024"
+	if !strings.Contains(output, expectedDateLine) {
+		t.Errorf("expected output to contain %q", expectedDateLine)
+	}
+
+	expectedHelperDateLine := "HelperDate: 2024-06-01"
+	if !strings.Contains(output, expectedHelperDateLine) {
+		t.Errorf("expected output to contain %q", expectedHelperDateLine)
+	}
+
+	expectedInstalledSize := "InstalledSize: 20 MB"
+	if !strings.Contains(output, expectedInstalledSize) {
+		t.Errorf("expected output to contain %q", expectedInstalledSize)
+	}
+
+	expectedDownloadSize := "DownloadSize: 5.0 MB"
+	if !strings.Contains(output, expectedDownloadSize) {
+		t.Errorf("expected output to contain %q", expectedDownloadSize)
+	}
+
+	expectedInstallCmd := "InstallCommand: flatpak install --user myremote org.example.app1//stable"
+	if !strings.Contains(output, expectedInstallCmd) {
+		t.Errorf("expected output to contain %q", expectedInstallCmd)
+	}
+
+	expectedRefFile := "RefFile: refs/org.example.app1-stable.flatpakref"
+	if !strings.Contains(output, expectedRefFile) {
+		t.Errorf("expected output to contain %q", expectedRefFile)
+	}
+
+	// Edge case assertions for org.example.app2 (malformed timestamp/missing sizes/HTML injection safety)
+	// 1. HTML escaping: html/template should safely escape the script tag in App 2 name
+	expectedApp2EscapedName := "Example App Two &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+	if !strings.Contains(output, expectedApp2EscapedName) {
+		t.Errorf("expected output to contain HTML-escaped script tag: %q", expectedApp2EscapedName)
+	}
+
+	// 2. Malformed timestamp: should result in empty date fields and HelperDate being empty
+	expectedApp2Date := "Date: "
+	if !strings.Contains(output, expectedApp2Date) {
+		t.Errorf("expected output to contain empty Date field for malformed timestamp: %q", expectedApp2Date)
+	}
+	expectedApp2HelperDate := "HelperDate: "
+	if !strings.Contains(output, expectedApp2HelperDate) {
+		t.Errorf("expected output to contain empty HelperDate for malformed timestamp: %q", expectedApp2HelperDate)
+	}
+
+	// 3. Missing sizes: should render as "0 B"
+	expectedApp2Sizes := "InstalledSize: 0 B\n  DownloadSize: 0 B"
+	if !strings.Contains(output, expectedApp2Sizes) {
+		t.Errorf("expected output to contain 0 B for missing size fields: %q", expectedApp2Sizes)
 	}
 }

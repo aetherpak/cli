@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - ref: ${{ needs.resolve.outputs.latest_tag }}
-            tags: stable ${{ needs.resolve.outputs.latest_tag }}
+            tags: latest ${{ needs.resolve.outputs.latest_tag }}
           - ref: main
             tags: main
     uses: ./.github/workflows/reusable-container-build.yml

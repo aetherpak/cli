@@ -272,30 +272,6 @@ func BuildSite(opts SiteOptions) error {
 
 	// 8. Generate index.html landing page
 	if opts.LandingPage {
-		remote := opts.RemoteName
-		if remote == "" {
-			remote = "aetherpak"
-		}
-		title := opts.RepoTitle
-		if title == "" {
-			title = "Flatpak Repository"
-		}
-
-		accent := opts.AccentColor
-		if accent == "" {
-			accent = "#8b5cf6"
-		}
-
-		logoHTML := ""
-		if opts.LogoURL != "" {
-			logoHTML = fmt.Sprintf(`<img src="%s" alt="Logo" style="max-height: 64px; margin-bottom: 1rem; border-radius: 8px;">`, html.EscapeString(opts.LogoURL))
-		}
-
-		footerText := opts.FooterText
-		if footerText == "" {
-			footerText = `Powered by <a href="https://aetherpak.org/" target="_blank" rel="noopener">AetherPak</a>`
-		}
-
 		htmlText := indexHTMLTemplate
 		if opts.IndexTemplate != "" {
 			data, err := os.ReadFile(opts.IndexTemplate)
@@ -313,27 +289,19 @@ func BuildSite(opts SiteOptions) error {
 		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_LOGO_HTML__", `{{.LogoHTML}}`)
 		htmlText = strings.ReplaceAll(htmlText, "__AETHERPAK_BRANDING_FOOTER_TEXT__", `{{.FooterText}}`)
 
-		tmpl, err := template.New("index").Parse(htmlText)
+		tmpl, err := template.New("index").Funcs(template.FuncMap{
+			"join":       strings.Join,
+			"formatSize": formatSize,
+			"formatDate": formatDate,
+		}).Parse(htmlText)
 		if err != nil {
 			return fmt.Errorf("failed to parse landing page template: %w", err)
 		}
 
+		data := buildTemplateData(opts, index, fingerprint, gpgKeyBase64, sigDirName)
+
 		var buf bytes.Buffer
-		err = tmpl.Execute(&buf, struct {
-			RemoteName  string
-			RepoTitle   string
-			AccentColor string
-			FaviconURL  string
-			LogoHTML    template.HTML
-			FooterText  template.HTML
-		}{
-			RemoteName:  remote,
-			RepoTitle:   title,
-			AccentColor: accent,
-			FaviconURL:  opts.FaviconURL,
-			LogoHTML:    template.HTML(logoHTML),
-			FooterText:  template.HTML(footerText),
-		})
+		err = tmpl.Execute(&buf, data)
 		if err != nil {
 			return fmt.Errorf("failed to execute landing page template: %w", err)
 		}
@@ -715,50 +683,8 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 }
 
 func appTitle(appdataXML string, appID string) string {
-	fallback := appID
-	if idx := strings.LastIndex(appID, "."); idx != -1 {
-		fallback = appID[idx+1:]
-	}
-	if appdataXML == "" {
-		return fallback
-	}
-
-	type Component struct {
-		Names []struct {
-			Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
-			Value string `xml:",chardata"`
-		} `xml:"name"`
-	}
-
-	decoder := xml.NewDecoder(strings.NewReader(appdataXML))
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			break
-		}
-		if se, ok := token.(xml.StartElement); ok {
-			if se.Name.Local == "component" {
-				var comp Component
-				if err := decoder.DecodeElement(&comp, &se); err == nil {
-					for _, name := range comp.Names {
-						if name.Lang == "" {
-							val := strings.TrimSpace(name.Value)
-							if val != "" {
-								return val
-							}
-						}
-					}
-					if len(comp.Names) > 0 {
-						val := strings.TrimSpace(comp.Names[0].Value)
-						if val != "" {
-							return val
-						}
-					}
-				}
-			}
-		}
-	}
-	return fallback
+	name, _ := parseAppMetadata(appdataXML, appID)
+	return name
 }
 
 func copyFile(src, dst string) error {
@@ -784,4 +710,310 @@ func sanitizeINIValue(val string) string {
 	val = strings.ReplaceAll(val, "\n", "")
 	val = strings.ReplaceAll(val, "\r", "")
 	return val
+}
+
+// TemplateData represents the context passed to the custom HTML landing page template.
+type TemplateData struct {
+	RemoteName   string
+	RepoTitle    string
+	PagesURL     string
+	RepoHomepage string
+	RuntimeRepo  string
+
+	LogoURL     string
+	LogoHTML    template.HTML
+	FaviconURL  string
+	AccentColor string
+	FooterText  template.HTML
+
+	Signing struct {
+		Enabled     bool
+		Fingerprint string
+		PublicKey   string // e.g. "sigs/key.asc"
+		Lookaside   string // e.g. "sigs"
+	}
+
+	Index FlatpakIndex
+	Apps  []TemplateApp
+}
+
+type TemplateApp struct {
+	ID       string
+	Name     string
+	Summary  string
+	Icon     string
+	Branches []TemplateBranch
+}
+
+type TemplateBranch struct {
+	Branch        string
+	Arches        []string
+	Timestamp     int64
+	FormattedDate string
+	InstalledSize int64
+	DownloadSize  int64
+	Commit        string
+	RefFile       string
+	InstallCmd    string
+}
+
+type appdataComponent struct {
+	XMLName xml.Name `xml:"component"`
+	Names   []struct {
+		Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
+		Value string `xml:",chardata"`
+	} `xml:"name"`
+	Summaries []struct {
+		Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
+		Value string `xml:",chardata"`
+	} `xml:"summary"`
+}
+
+func parseAppMetadata(appdataXML string, appID string) (name string, summary string) {
+	fallbackName := appID
+	if idx := strings.LastIndex(appID, "."); idx != -1 {
+		fallbackName = appID[idx+1:]
+	}
+	if appdataXML == "" {
+		return fallbackName, ""
+	}
+
+	var comp appdataComponent
+	decoder := xml.NewDecoder(strings.NewReader(appdataXML))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		if se, ok := token.(xml.StartElement); ok && se.Name.Local == "component" {
+			if err := decoder.DecodeElement(&comp, &se); err == nil {
+				break
+			}
+		}
+	}
+
+	// Pick default name (empty lang preferred, then first)
+	for _, n := range comp.Names {
+		if n.Lang == "" {
+			name = strings.TrimSpace(n.Value)
+			break
+		}
+	}
+	if name == "" && len(comp.Names) > 0 {
+		name = strings.TrimSpace(comp.Names[0].Value)
+	}
+	if name == "" {
+		name = fallbackName
+	}
+
+	// Pick default summary
+	for _, s := range comp.Summaries {
+		if s.Lang == "" {
+			summary = strings.TrimSpace(s.Value)
+			break
+		}
+	}
+	if summary == "" && len(comp.Summaries) > 0 {
+		summary = strings.TrimSpace(comp.Summaries[0].Value)
+	}
+
+	return name, summary
+}
+
+func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string, gpgKeyBase64 string, sigDirName string) TemplateData {
+	data := TemplateData{
+		RemoteName:   opts.RemoteName,
+		RepoTitle:    opts.RepoTitle,
+		PagesURL:     opts.PagesURL,
+		RepoHomepage: opts.RepoHomepage,
+		RuntimeRepo:  opts.RuntimeRepo,
+		LogoURL:      opts.LogoURL,
+		FaviconURL:   opts.FaviconURL,
+		AccentColor:  opts.AccentColor,
+		Index:        index,
+	}
+
+	if data.RemoteName == "" {
+		data.RemoteName = "aetherpak"
+	}
+	if data.RepoTitle == "" {
+		data.RepoTitle = "Flatpak Repository"
+	}
+	if data.AccentColor == "" {
+		data.AccentColor = "#8b5cf6"
+	}
+	if opts.LogoURL != "" {
+		data.LogoHTML = template.HTML(fmt.Sprintf(`<img src="%s" alt="Logo" style="max-height: 64px; margin-bottom: 1rem; border-radius: 8px;">`, html.EscapeString(opts.LogoURL)))
+	}
+	if opts.FooterText != "" {
+		data.FooterText = template.HTML(opts.FooterText)
+	} else {
+		data.FooterText = template.HTML(`Powered by <a href="https://aetherpak.org/" target="_blank" rel="noopener">AetherPak</a>`)
+	}
+
+	if fingerprint != "" {
+		data.Signing.Enabled = true
+		data.Signing.Fingerprint = fingerprint
+		data.Signing.PublicKey = fmt.Sprintf("%s/key.asc", sigDirName)
+		data.Signing.Lookaside = sigDirName
+	} else {
+		data.Signing.Enabled = false
+	}
+
+	// Map to keep track of apps during grouping
+	appMap := make(map[string]*TemplateApp)
+
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			refVal := img.Labels["org.flatpak.ref"]
+			if refVal == "" || img.Labels["org.flatpak.metadata"] == "" {
+				continue
+			}
+
+			parts := strings.Split(refVal, "/")
+			if len(parts) < 4 || parts[0] != "app" {
+				continue
+			}
+
+			appID := parts[1]
+			arch := parts[2]
+			branch := parts[3]
+
+			app, exists := appMap[appID]
+			if !exists {
+				appName, appSummary := parseAppMetadata(img.Labels["org.freedesktop.appstream.appdata"], appID)
+				iconURL := img.Labels["org.freedesktop.appstream.icon-64"]
+
+				app = &TemplateApp{
+					ID:       appID,
+					Name:     appName,
+					Summary:  appSummary,
+					Icon:     iconURL,
+					Branches: []TemplateBranch{},
+				}
+				appMap[appID] = app
+			} else {
+				// Backfill metadata if a subsequent image has richer information
+				if app.Name == appID || app.Summary == "" {
+					if name, summary := parseAppMetadata(img.Labels["org.freedesktop.appstream.appdata"], appID); name != appID && name != "" {
+						app.Name = name
+						app.Summary = summary
+					}
+				}
+				if app.Icon == "" {
+					app.Icon = img.Labels["org.freedesktop.appstream.icon-64"]
+				}
+			}
+
+			// Find or create branch
+			var branchIdx = -1
+			for i, b := range app.Branches {
+				if b.Branch == branch {
+					branchIdx = i
+					break
+				}
+			}
+
+			var ts int64
+			if tsStr := img.Labels["org.flatpak.timestamp"]; tsStr != "" {
+				fmt.Sscanf(tsStr, "%d", &ts)
+			}
+			var isize int64
+			if isizeStr := img.Labels["org.flatpak.installed-size"]; isizeStr != "" {
+				fmt.Sscanf(isizeStr, "%d", &isize)
+			}
+			var dsize int64
+			if dsizeStr := img.Labels["org.flatpak.download-size"]; dsizeStr != "" {
+				fmt.Sscanf(dsizeStr, "%d", &dsize)
+			}
+			commit := img.Labels["org.flatpak.commit"]
+
+			if branchIdx == -1 {
+				newBranch := TemplateBranch{
+					Branch:        branch,
+					Arches:        []string{arch},
+					Timestamp:     ts,
+					InstalledSize: isize,
+					DownloadSize:  dsize,
+					Commit:        commit,
+				}
+				app.Branches = append(app.Branches, newBranch)
+			} else {
+				b := &app.Branches[branchIdx]
+				// Add arch if unique
+				foundArch := false
+				for _, a := range b.Arches {
+					if a == arch {
+						foundArch = true
+						break
+					}
+				}
+				if !foundArch {
+					b.Arches = append(b.Arches, arch)
+				}
+				if ts > b.Timestamp {
+					b.Timestamp = ts
+					b.InstalledSize = isize
+					b.DownloadSize = dsize
+					b.Commit = commit
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	apps := make([]TemplateApp, 0, len(appMap))
+	for _, app := range appMap {
+		// Postprocess each app's branches
+		for i := range app.Branches {
+			b := &app.Branches[i]
+			sort.Strings(b.Arches)
+			if b.Timestamp > 0 {
+				t := time.Unix(b.Timestamp, 0).UTC()
+				b.FormattedDate = t.Format("Jan 02, 2006")
+			}
+			b.RefFile = fmt.Sprintf("refs/%s-%s.flatpakref", app.ID, strings.ReplaceAll(b.Branch, "/", "-"))
+			b.InstallCmd = fmt.Sprintf("flatpak install --user %s %s//%s", data.RemoteName, app.ID, b.Branch)
+		}
+
+		// Sort branches by timestamp descending
+		sort.Slice(app.Branches, func(i, j int) bool {
+			return app.Branches[i].Timestamp > app.Branches[j].Timestamp
+		})
+
+		apps = append(apps, *app)
+	}
+
+	// Sort apps by ID (alphabetically)
+	sort.Slice(apps, func(i, j int) bool {
+		return apps[i].ID < apps[j].ID
+	})
+
+	data.Apps = apps
+	return data
+}
+
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"KB", "MB", "GB", "TB"}
+	val := float64(bytes) / float64(div)
+	if val < 10 {
+		return fmt.Sprintf("%.1f %s", val, units[exp])
+	}
+	return fmt.Sprintf("%.0f %s", val, units[exp])
+}
+
+func formatDate(timestamp int64, layout string) string {
+	if timestamp == 0 {
+		return ""
+	}
+	return time.Unix(timestamp, 0).UTC().Format(layout)
 }

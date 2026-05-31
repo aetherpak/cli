@@ -37,9 +37,6 @@ var buildSiteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err == nil {
-			if sitePagesURL == "" {
-				sitePagesURL = cfg.PagesURL
-			}
 			if siteRemoteName == "" {
 				siteRemoteName = cfg.RemoteName
 			}
@@ -52,6 +49,13 @@ var buildSiteCmd = &cobra.Command{
 			if siteRepoHP == "" {
 				siteRepoHP = cfg.RepoHomepage
 			}
+		}
+
+		if sitePagesURL == "" {
+			sitePagesURL = os.Getenv("AETHERPAK_PAGES_URL")
+		}
+		if sitePagesURL == "" && cfg != nil {
+			sitePagesURL = cfg.PagesURL
 		}
 
 		// Read GPG keys from files or environment variables if passed
@@ -101,6 +105,9 @@ var buildSiteCmd = &cobra.Command{
 			brandTemplate = cfg.Branding.IndexTemplate
 		}
 
+		if siteIndexTemplate == "" {
+			siteIndexTemplate = os.Getenv("AETHERPAK_INDEX_TEMPLATE")
+		}
 		if siteIndexTemplate == "" {
 			siteIndexTemplate = brandTemplate
 		}

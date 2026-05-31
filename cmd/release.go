@@ -276,11 +276,19 @@ var releaseCmd = &cobra.Command{
 		}
 
 		if relIndexTemplate == "" {
+			relIndexTemplate = os.Getenv("AETHERPAK_INDEX_TEMPLATE")
+		}
+		if relIndexTemplate == "" {
 			relIndexTemplate = brandTemplate
 		}
 
+		pagesURL := os.Getenv("AETHERPAK_PAGES_URL")
+		if pagesURL == "" && cfg != nil {
+			pagesURL = cfg.PagesURL
+		}
+
 		sOpts := site.SiteOptions{
-			PagesURL:      cfg.PagesURL,
+			PagesURL:      pagesURL,
 			RecordsDir:    relRecordsDir,
 			SiteDir:       relSiteDir,
 			Reconcile:     true,

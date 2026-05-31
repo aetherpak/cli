@@ -370,6 +370,96 @@ apps:
       </section>
 
       <section>
+        <h2>Custom Index Templating</h2>
+        <p>AetherPak CLI supports custom landing page templates using Go's <code>html/template</code> engine. This allows you to generate a fully customized HTML index page detailing all the repository applications, releases, and installation steps.</p>
+        <p style="margin-top: 0.5rem; margin-bottom: 1rem;">To use a custom template, configure <code>branding.index_template</code> in <code>aetherpak.yaml</code>, or pass the <code>--index-template</code> flag (or <code>AETHERPAK_INDEX_TEMPLATE</code> env var) to <code>aetherpak build-site</code> / <code>aetherpak release</code>.</p>
+
+        <div class="card">
+          <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.6rem;">Template Context Fields</h3>
+          <div class="opts" style="margin-bottom: 1.5rem;">
+            <div class="opt"><code>.RemoteName</code><span>Flatpak remote repository name.</span></div>
+            <div class="opt"><code>.RepoTitle</code><span>Repository title.</span></div>
+            <div class="opt"><code>.PagesURL</code><span>URL where static pages are hosted.</span></div>
+            <div class="opt"><code>.RepoHomepage</code><span>Homepage URL link.</span></div>
+            <div class="opt"><code>.RuntimeRepo</code><span>Upstream runtime dependency repository URL.</span></div>
+            <div class="opt"><code>.LogoURL</code><span>Logo image URL.</span></div>
+            <div class="opt"><code>.LogoHTML</code><span>Pre-formatted HTML image tag for the logo.</span></div>
+            <div class="opt"><code>.FaviconURL</code><span>Page favicon URL.</span></div>
+            <div class="opt"><code>.AccentColor</code><span>Hex color code brand accent.</span></div>
+            <div class="opt"><code>.FooterText</code><span>Custom footer HTML.</span></div>
+            <div class="opt"><code>.Signing.Enabled</code><span>Whether GPG signing is enabled (bool).</span></div>
+            <div class="opt"><code>.Signing.Fingerprint</code><span>GPG public key fingerprint.</span></div>
+            <div class="opt"><code>.Signing.PublicKey</code><span>Path to public key file (<code>sigs/key.asc</code>).</span></div>
+            <div class="opt"><code>.Apps</code><span>List of application records. Each app exposes:
+              <span style="display:block; margin-top:0.25rem; font-size:0.85rem; color:var(--text-muted);">
+                • <code>.ID</code>: App identifier (e.g. <code>org.example.App</code>)<br>
+                • <code>.Name</code>: App name from AppStream, falling back to ID<br>
+                • <code>.Summary</code>: App summary from AppStream metadata<br>
+                • <code>.Icon</code>: URL to 64x64 app icon<br>
+                • <code>.Branches</code>: Sorted list of release branches
+              </span>
+            </span></div>
+            <div class="opt"><code>.Apps.Branches</code><span>List of branches under an app. Each branch exposes:
+              <span style="display:block; margin-top:0.25rem; font-size:0.85rem; color:var(--text-muted);">
+                • <code>.Branch</code>: Branch name (e.g. <code>stable</code>, <code>beta</code>)<br>
+                • <code>.Arches</code>: List of supported architectures<br>
+                • <code>.Timestamp</code>: Latest release UNIX timestamp<br>
+                • <code>.FormattedDate</code>: Formatted release date (<code>Jan 02, 2006</code>)<br>
+                • <code>.InstalledSize</code>: Installed size in bytes<br>
+                • <code>.DownloadSize</code>: Download size in bytes<br>
+                • <code>.Commit</code>: Flatpak commit identifier<br>
+                • <code>.RefFile</code>: Path to download flatpakref file<br>
+                • <code>.InstallCmd</code>: Client-side installation command helper
+              </span>
+            </span></div>
+          </div>
+
+          <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.6rem;">Template Helper Functions</h3>
+          <div class="opts" style="margin-bottom: 1.5rem;">
+            <div class="opt"><code>join &lt;slice&gt; &lt;sep&gt;</code><span>Joins a string slice. Example: <code>{{join .Arches ", "}}</code></span></div>
+            <div class="opt"><code>formatSize &lt;bytes&gt;</code><span>Formats raw bytes to a human-readable size. Example: <code>{{formatSize .InstalledSize}}</code></span></div>
+            <div class="opt"><code>formatDate &lt;time&gt; &lt;layout&gt;</code><span>Formats a UNIX timestamp using a Go time layout. Example: <code>{{formatDate .Timestamp "2006-01-02"}}</code></span></div>
+          </div>
+
+          <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.6rem;">Example Custom Template</h3>
+          <div class="code-block">
+            <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;title&gt;&#123;&#123;.RepoTitle&#125;&#125;&lt;/title&gt;
+  &lt;link rel="icon" href="&#123;&#123;.FaviconURL&#125;&#125;"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;&#123;&#123;.RepoTitle&#125;&#125;&lt;/h1&gt;
+
+  &#123;&#123;range .Apps&#125;&#125;
+    &lt;div class="app-card"&gt;
+      &#123;&#123;if .Icon&#125;&#125;&lt;img src="&#123;&#123;.Icon&#125;&#125;" width="64"&gt;&#123;&#123;end&#125;&#125;
+      &lt;h2&gt;&#123;&#123;.Name&#125;&#125; (&#123;&#123;.ID&#125;&#125;)&lt;/h2&gt;
+      &lt;p&gt;&#123;&#123;.Summary&#125;&#125;&lt;/p&gt;
+
+      &lt;h3&gt;Releases&lt;/h3&gt;
+      &lt;ul&gt;
+        &#123;&#123;range .Branches&#125;&#125;
+          &lt;li&gt;
+            Branch: &lt;strong&gt;&#123;&#123;.Branch&#125;&#125;&lt;/strong&gt; | Arches: &#123;&#123;join .Arches ", "&#125;&#125;
+            &lt;br&gt;Released on: &#123;&#123;.FormattedDate&#125;&#125; | Size: &#123;&#123;formatSize .InstalledSize&#125;&#125;
+            &lt;br&gt;Install: &lt;code&gt;&#123;&#123;.InstallCmd&#125;&#125;&lt;/code&gt;
+          &lt;/li&gt;
+        &#123;&#123;end&#125;&#125;
+      &lt;/ul&gt;
+    &lt;/div&gt;
+  &#123;&#123;end&#125;&#125;
+
+  &lt;footer&gt;&#123;&#123;.FooterText&#125;&#125;&lt;/footer&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+            <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+          </div>
+        </div>
+      </section>
+
+      <section>
         <h2>Related Repositories</h2>
         <div class="links">
           <a class="link-card" href="https://github.com/aetherpak/cli"><div class="t">AetherPak CLI</div><div class="d">Go source code and release builds</div></a>

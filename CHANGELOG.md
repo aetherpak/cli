@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/aetherpak/cli/compare/v0.7.0...v0.8.0) (2026-05-31)
+
+
+### Features
+
+* **ci:** add e2e container smoke test for amd64 and arm64 ([867ea23](https://github.com/aetherpak/cli/commit/867ea23f39be117551ae2e9b517ddbf405f62b2b))
+* **ci:** cache go-build in container build action ([79ebefd](https://github.com/aetherpak/cli/commit/79ebefd2c2fe56dfbd6513b48be1fb002c27f762))
+* **ci:** parallelise multi-platform container builds using workflow matrix ([b0461f3](https://github.com/aetherpak/cli/commit/b0461f36893f5f0c5e8762fe47e7c2931598c060))
+
 ## [0.7.0](https://github.com/aetherpak/cli/compare/v0.6.1...v0.7.0) (2026-05-30)
 
 

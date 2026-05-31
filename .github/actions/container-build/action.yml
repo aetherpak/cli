@@ -17,6 +17,14 @@ inputs:
     description: "Whether to push the images"
     required: false
     default: "true"
+  platform:
+    description: "Target platform CPU architecture (e.g. linux/amd64, linux/arm64)"
+    required: false
+    default: "linux/amd64"
+  suffix:
+    description: "Optional suffix to append to final tags (e.g. '-amd64' or '-arm64')"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -36,13 +44,17 @@ runs:
       id: prep
       shell: bash
       run: |
-        TAGS=$(echo "${{ inputs.tags }}" | xargs)
+        BASE_TAGS=$(echo "${{ inputs.tags }}" | xargs)
+        SUFFIX="${{ inputs.suffix }}"
+        CLI_TAGS=""
         BUILDER_TAGS=""
-        for tag in $TAGS; do
-          BUILDER_TAGS="$BUILDER_TAGS ${tag}-builder"
+        for tag in $BASE_TAGS; do
+          CLI_TAGS="$CLI_TAGS ${tag}${SUFFIX}"
+          BUILDER_TAGS="$BUILDER_TAGS ${tag}-builder${SUFFIX}"
         done
+        CLI_TAGS=$(echo "$CLI_TAGS" | xargs)
         BUILDER_TAGS=$(echo "$BUILDER_TAGS" | xargs)
-        echo "cli-tags=$TAGS" >> $GITHUB_OUTPUT
+        echo "cli-tags=$CLI_TAGS" >> $GITHUB_OUTPUT
         echo "builder-tags=$BUILDER_TAGS" >> $GITHUB_OUTPUT
 
     - name: Create Buildah Cache Directory
@@ -65,7 +77,7 @@ runs:
       with:
         context: .
         containerfiles: ./Containerfile
-        platforms: linux/amd64,linux/arm64
+        platforms: ${{ inputs.platform }}
         image: ghcr.io/aetherpak/cli
         tags: ${{ steps.prep.outputs.cli-tags }}
         extra-args: --target cli
@@ -79,7 +91,7 @@ runs:
       with:
         context: .
         containerfiles: ./Containerfile
-        platforms: linux/amd64,linux/arm64
+        platforms: ${{ inputs.platform }}
         image: ghcr.io/aetherpak/cli
         tags: ${{ steps.prep.outputs.builder-tags }}
         extra-args: --target cli-builder

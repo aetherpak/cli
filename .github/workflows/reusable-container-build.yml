@@ -18,9 +18,19 @@ on:
         default: true
 
 jobs:
-  build:
-    name: Build & Publish
-    runs-on: ubuntu-latest
+  build-arch:
+    name: Build & Test (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: -amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: -arm64
     permissions:
       contents: read
       packages: write
@@ -31,8 +41,47 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
 
-      - name: Build & Publish Container Images
+      - name: Build & Test Container Image
         uses: ./.github/actions/container-build
         with:
           tags: ${{ inputs.image-tags }}
           push: ${{ inputs.push }}
+          platform: ${{ matrix.platform }}
+          suffix: ${{ matrix.suffix }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+  merge-manifests:
+    name: Merge Multi-Arch Manifests
+    needs: build-arch
+    if: ${{ inputs.push }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to the Container registry
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Create and Push Manifest Lists
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAGS=$(echo "${{ inputs.image-tags }}" | xargs)
+          for tag in $TAGS; do
+            echo "=== Merging tags for CLI image tag: ${tag} ==="
+            podman manifest create "ghcr.io/aetherpak/cli:${tag}"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${tag}-amd64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${tag}-arm64"
+            podman manifest push --tls-verify=true "ghcr.io/aetherpak/cli:${tag}"
+
+            echo "=== Merging tags for Builder image tag: ${tag}-builder ==="
+            podman manifest create "ghcr.io/aetherpak/cli:${tag}-builder"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${tag}-builder-amd64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${tag}-builder-arm64"
+            podman manifest push --tls-verify=true "ghcr.io/aetherpak/cli:${tag}-builder"
+          done

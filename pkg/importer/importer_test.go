@@ -1,6 +1,8 @@
 package importer
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +11,40 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
 )
+
+func TestFetchDownloadsAndHashes(t *testing.T) {
+	payload := []byte("hello-bundle")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	var lastDownloaded, lastTotal int64
+	path, sum, err := Fetch(srv.URL, func(downloaded, total int64) {
+		lastDownloaded = downloaded
+		lastTotal = total
+	})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	defer os.Remove(path)
+
+	want := fmt.Sprintf("%x", sha256.Sum256(payload))
+	if sum != want {
+		t.Errorf("sha256 = %s, want %s", sum, want)
+	}
+	if lastTotal != int64(len(payload)) {
+		t.Errorf("progress total = %d, want %d", lastTotal, len(payload))
+	}
+	if lastDownloaded != int64(len(payload)) {
+		t.Errorf("progress downloaded = %d, want %d", lastDownloaded, len(payload))
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != string(payload) {
+		t.Errorf("downloaded content mismatch")
+	}
+}
 
 func TestImport(t *testing.T) {
 	// Create dummy bundle file

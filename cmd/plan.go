@@ -8,6 +8,7 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/plan"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -39,7 +40,7 @@ var planCmd = &cobra.Command{
 				return NewCmdError(2, fmt.Errorf("cannot use both --manifest and --force flags together"))
 			}
 
-			manifestData, err := plan.ParseManifest(planManifest)
+			manifestData, err := manifest.ParseManifest(planManifest)
 			if err != nil {
 				return NewCmdErrorf(2, "Manifest parsing error: %w", err)
 			}

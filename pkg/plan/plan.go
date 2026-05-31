@@ -1,18 +1,20 @@
 package plan
 
 import (
-	"bytes"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/aetherpak/aetherpak/pkg/gitutil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"gopkg.in/yaml.v3"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"
+
+// defaultGit is the git client used by the plan change-detection helpers.
+var defaultGit gitutil.Git = gitutil.New()
 
 var runnerByArch = map[string]string{
 	"x86_64":  "ubuntu-latest",
@@ -232,24 +234,14 @@ func gitShow(commit, file string) ([]byte, error) {
 	if relFile, err := getRepoRelativePath(file); err == nil {
 		file = relFile
 	}
-	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", commit, file))
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git show failed (%s): %s", err, stderr.String())
-	}
-	return stdout.Bytes(), nil
+	return defaultGit.Show(commit, file)
 }
 
 func getRepoRelativePath(path string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
+	repoRoot, err := defaultGit.Toplevel()
+	if err != nil {
 		return path, err
 	}
-	repoRoot := strings.TrimSpace(stdout.String())
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return path, err
@@ -265,30 +257,10 @@ func getChangedFiles(baseSHA string) ([]string, error) {
 	if baseSHA == "" || baseSHA == zeroSHA {
 		return nil, nil
 	}
-
-	// Verify if commit exists in git
-	checkCmd := exec.Command("git", "cat-file", "-e", baseSHA)
-	if err := checkCmd.Run(); err != nil {
+	if !defaultGit.CatFileExists(baseSHA) {
 		return nil, nil // base commit unreachable
 	}
-
-	cmd := exec.Command("git", "diff", "--name-only", baseSHA, "HEAD")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git diff failed: %s", stderr.String())
-	}
-
-	lines := strings.Split(stdout.String(), "\n")
-	var files []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			files = append(files, trimmed)
-		}
-	}
-	return files, nil
+	return defaultGit.DiffNameOnly(baseSHA, "HEAD")
 }
 
 // appConfigsEqual compares two App configs structurally to detect differences.

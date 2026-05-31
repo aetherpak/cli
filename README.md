@@ -277,6 +277,36 @@ aetherpak inspect-repo --repo-path repo
 
 ### Porcelain Commands
 
+#### `add`
+Creates or modifies an `aetherpak.yaml` by adding one application from a local
+manifest, a remote bundle URL (downloaded and fingerprinted), or a git
+repository (added as a submodule, initialised recursively). Runs an interactive
+wizard on a TTY; otherwise reads flags. A colored diff is shown before changes
+are written unless `--confirm`/`-y` is given.
+```bash
+# Local manifest (app id detected from the manifest)
+aetherpak add --manifest org.example.App.yaml
+
+# Bundle URL (downloaded + fingerprinted; SHA-256 recorded)
+aetherpak add --bundle-url https://example.com/app.flatpak --id org.example.App
+
+# Git repository added as a submodule
+aetherpak add --git https://example.com/repo.git
+
+# Skip the diff confirmation
+aetherpak add --manifest org.example.App.yaml -y
+```
+Options:
+* `--manifest <path>` / `--bundle-url <url>` / `--git <url>`: the source (exactly one in non-interactive mode).
+* `--git-manifest <path>`: manifest path within the git repo (auto-detected if omitted).
+* `--submodule-path <path>`: submodule destination (default `manifests/<reponame>`).
+* `--id`, `--branch` (Flatpak release channel, default `stable`), `--arch` (repeatable, defaults to the host architecture): overrides; `id` is derived from the manifest when omitted (only the bundle source requires `--id`).
+* `--bundle-sha256 <hex>`: expected bundle checksum (verified; computed when omitted).
+* Build options (manifest/git sources only): `--install-deps-from-flathub` (default `true`, appends `--install-deps-from=flathub`), `--run-linter`, `--ccache`, and `--builder-arg <arg>` (repeatable, free-form).
+* `-y`, `--confirm`: skip the diff confirmation prompt.
+
+The app id is read from the manifest — you are never prompted for it when it can be detected; a manifest that is found but lacks an id is reported as an error. The target config is resolved from `--config`/`AETHERPAK_CONFIG`, else an existing `aetherpak.yaml`/`aetherpak.yml` in the working directory, else a new `aetherpak.yaml` is created.
+
 #### `publish`
 Chains compilation/importer and OCI push sequentially in-memory for a single target application:
 ```bash

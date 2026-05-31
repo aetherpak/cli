@@ -41,15 +41,23 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
 
+      - name: Resolve SHA Tag
+        id: resolve
+        shell: bash
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Build & Test Container Image
         uses: ./.github/actions/container-build
         with:
-          tags: ${{ inputs.image-tags }}
+          tags: ${{ steps.resolve.outputs.sha-tag }}
           push: ${{ inputs.push }}
           platform: ${{ matrix.platform }}
           suffix: ${{ matrix.suffix }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
+
 
   merge-manifests:
     name: Merge Multi-Arch Manifests
@@ -60,6 +68,18 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve SHA Tag
+        id: resolve
+        shell: bash
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Log in to the Container registry
         uses: redhat-actions/podman-login@v1
         with:
@@ -72,16 +92,28 @@ jobs:
         run: |
           set -euo pipefail
           TAGS=$(echo "${{ inputs.image-tags }}" | xargs)
+          SHA_TAG="${{ steps.resolve.outputs.sha-tag }}"
           for tag in $TAGS; do
             echo "=== Merging tags for CLI image tag: ${tag} ==="
             podman manifest create "ghcr.io/aetherpak/cli:${tag}"
-            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${tag}-amd64"
-            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${tag}-arm64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-amd64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-arm64"
             podman manifest push --tls-verify=true "ghcr.io/aetherpak/cli:${tag}"
 
             echo "=== Merging tags for Builder image tag: ${tag}-builder ==="
             podman manifest create "ghcr.io/aetherpak/cli:${tag}-builder"
-            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${tag}-builder-amd64"
-            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${tag}-builder-arm64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-builder-amd64"
+            podman manifest add "ghcr.io/aetherpak/cli:${tag}-builder" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-builder-arm64"
             podman manifest push --tls-verify=true "ghcr.io/aetherpak/cli:${tag}-builder"
+          done
+
+          # Promote single-arch rolling tags
+          for tag in $TAGS; do
+            echo "=== Promoting single-arch tags for CLI tag: ${tag} ==="
+            skopeo copy --all --src-creds "${{ github.actor }}:${{ github.token }}" --dest-creds "${{ github.actor }}:${{ github.token }}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-amd64" "docker://ghcr.io/aetherpak/cli:${tag}-amd64"
+            skopeo copy --all --src-creds "${{ github.actor }}:${{ github.token }}" --dest-creds "${{ github.actor }}:${{ github.token }}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-arm64" "docker://ghcr.io/aetherpak/cli:${tag}-arm64"
+
+            echo "=== Promoting single-arch tags for Builder tag: ${tag}-builder ==="
+            skopeo copy --all --src-creds "${{ github.actor }}:${{ github.token }}" --dest-creds "${{ github.actor }}:${{ github.token }}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-builder-amd64" "docker://ghcr.io/aetherpak/cli:${tag}-builder-amd64"
+            skopeo copy --all --src-creds "${{ github.actor }}:${{ github.token }}" --dest-creds "${{ github.actor }}:${{ github.token }}" "docker://ghcr.io/aetherpak/cli:${SHA_TAG}-builder-arm64" "docker://ghcr.io/aetherpak/cli:${tag}-builder-arm64"
           done

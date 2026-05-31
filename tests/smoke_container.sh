@@ -130,7 +130,7 @@ EOF
         --builder-arg --install-deps-from=flathub --builder-arg --disable-rofiles-fuse --plain
 
       echo '=== Pushing to Local Registry ==='
-      aetherpak push-oci --app org.aetherpak.Smoke --branch stable --registry localhost:${REGISTRY_PORT} \
+      aetherpak push-oci --app org.aetherpak.Smoke --arch ${flatpak_arch} --branch stable --registry localhost:${REGISTRY_PORT} \
         --oci-repository aetherpak/smoke --repo-path repo --records-dir records --gpg-key key.priv.asc --insecure
 
       echo '=== Building Site ==='

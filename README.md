@@ -46,7 +46,7 @@ Customizes the look and feel of the generated landing page:
 * **`favicon_url`** (string): URL to a page favicon file.
 * **`accent_color`** (string): Hex color code defining the primary brand accent (defaults to `#8b5cf6`).
 * **`footer_text`** (string): Custom text/HTML to display in the footer (defaults to `"Powered by AetherPak"`).
-* **`index_template`** (string): Local path to an alternative HTML file template to override index generation entirely.
+* **`index_template`** (string): Local path to an alternative HTML file template to override index generation entirely. Supports structured Go HTML templates with access to repository applications and formatting helper functions (see [Custom Index Templating](#custom-index-templating) below).
 
 #### `linter`
 Global linter behavior configuration:
@@ -117,6 +117,98 @@ apps:
       x86_64:
         url: https://upstream.com/Other_x86_64.flatpak
         sha256: 2159fc643175dcf54f8b9293f48fb8b11577fa0ea5514ea47d4e3ef4431f13b1
+```
+
+---
+
+### Custom Index Templating
+
+When using a custom template file via the `index_template` config option, the `--index-template` flag, or the `AETHERPAK_INDEX_TEMPLATE` environment variable, AetherPak executes the template using Go's `html/template` engine.
+
+The template is executed with a structured context containing all resolved repository, branding, signing, and application details.
+
+#### Template Context Structure
+
+The data structure passed to your custom template is defined as follows:
+
+* **`.RemoteName`** (string): The resolved Flatpak remote repository name.
+* **`.RepoTitle`** (string): The repository title.
+* **`.PagesURL`** (string): The URL where the repository static files are hosted.
+* **`.RepoHomepage`** (string): The homepage URL link.
+* **`.RuntimeRepo`** (string): The upstream runtime dependency repository URL.
+* **`.LogoURL`** (string): Custom repository header logo URL.
+* **`.LogoHTML`** (template.HTML): Pre-formatted HTML image element containing `LogoURL` if configured.
+* **`.FaviconURL`** (string): Custom page favicon file URL.
+* **`.AccentColor`** (string): Hex color code defining the brand accent color.
+* **`.FooterText`** (template.HTML): Custom footer HTML text.
+* **`.Signing`** (block):
+  * **`.Signing.Enabled`** (boolean): True if GPG signing is enabled.
+  * **`.Signing.Fingerprint`** (string): GPG public key fingerprint.
+  * **`.Signing.PublicKey`** (string): Path to the armored public key file (`sigs/key.asc`).
+  * **`.Signing.Lookaside`** (string): Path to the GPG signature lookaside directory (`sigs`).
+* **`.Apps`** (list): A list of preprocessed, structured application records:
+  * **`.ID`** (string): Reverse-DNS application identifier (e.g. `org.example.App`).
+  * **`.Name`** (string): Application name extracted from AppStream appdata, falling back to ID.
+  * **`.Summary`** (string): Application summary description extracted from AppStream appdata.
+  * **`.Icon`** (string): URL to the 64x64 application icon if defined.
+  * **`.Branches`** (list): List of release channel branches sorted newest first:
+    * **`.Branch`** (string): Flatpak branch channel (e.g. `stable`, `beta`).
+    * **`.Arches`** (list[string]): Alphabetic list of supported architectures (e.g. `[aarch64, x86_64]`).
+    * **`.Timestamp`** (int64): Latest build release Unix epoch timestamp.
+    * **`.FormattedDate`** (string): Human-readable release date formatted as `Jan 02, 2006`.
+    * **`.InstalledSize`** (int64): Latest build installed size in bytes.
+    * **`.DownloadSize`** (int64): Latest build download size in bytes.
+    * **`.Commit`** (string): Flatpak commit identifier.
+    * **`.RefFile`** (string): Path to target download flatpakref file (e.g. `refs/org.example.App-stable.flatpakref`).
+    * **`.InstallCmd`** (string): Helper command to install the application branch client-side.
+
+#### Template Helper Functions
+
+You can use the following custom Go template helpers inside your custom template:
+
+* **`join <slice> <separator>`**: Joins a slice of strings using the specified separator.
+  * Example: `{{join .Arches "/"}}` -> `aarch64/x86_64`
+* **`formatSize <bytes>`**: Formats raw bytes into a human-readable string representation.
+  * Example: `{{formatSize .InstalledSize}}` -> `20 MB`
+* **`formatDate <timestamp> <layout>`**: Formats a UNIX epoch timestamp using a standard Go time layout.
+  * Example: `{{formatDate .Timestamp "2006-01-02"}}` -> `2026-06-01`
+
+#### Example Custom Template
+
+Here is a simple example of a custom HTML template:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{.RepoTitle}}</title>
+  <link rel="icon" href="{{.FaviconURL}}">
+</head>
+<body>
+  <h1>{{.RepoTitle}}</h1>
+
+  {{range .Apps}}
+    <div class="app-card">
+      {{if .Icon}}<img src="{{.Icon}}" width="64">{{end}}
+      <h2>{{.Name}} ({{.ID}})</h2>
+      <p>{{.Summary}}</p>
+
+      <h3>Releases</h3>
+      <ul>
+        {{range .Branches}}
+          <li>
+            Branch: <strong>{{.Branch}}</strong> | Arches: {{join .Arches ", "}}
+            <br>Released on: {{.FormattedDate}} | Size: {{formatSize .InstalledSize}}
+            <br>Install: <code>{{.InstallCmd}}</code>
+          </li>
+        {{end}}
+      </ul>
+    </div>
+  {{end}}
+
+  <footer>{{.FooterText}}</footer>
+</body>
+</html>
 ```
 
 ---

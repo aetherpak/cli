@@ -45,9 +45,23 @@ runs:
         echo "cli-tags=$TAGS" >> $GITHUB_OUTPUT
         echo "builder-tags=$BUILDER_TAGS" >> $GITHUB_OUTPUT
 
+    - name: Create Buildah Cache Directory
+      shell: bash
+      run: mkdir -p "${{ github.workspace }}/.buildah-cache"
+
+    - name: Cache Buildah Cache Mounts
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.buildah-cache
+        key: ${{ runner.os }}-buildah-cache-${{ hashFiles('go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-buildah-cache-
+
     - name: Build CLI image
       id: build-cli
       uses: redhat-actions/buildah-build@v2
+      env:
+        TMPDIR: ${{ github.workspace }}/.buildah-cache
       with:
         context: .
         containerfiles: ./Containerfile
@@ -60,6 +74,8 @@ runs:
     - name: Build Builder CLI image
       id: build-builder
       uses: redhat-actions/buildah-build@v2
+      env:
+        TMPDIR: ${{ github.workspace }}/.buildah-cache
       with:
         context: .
         containerfiles: ./Containerfile

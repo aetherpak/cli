@@ -61,11 +61,13 @@ type DefaultsConfig struct {
 
 // App represents an individual application configuration.
 type App struct {
-	ID             string            `yaml:"id" json:"id" mapstructure:"id"`
-	Branch         string            `yaml:"branch" json:"branch" mapstructure:"branch"`
-	Arches         []string          `yaml:"arches" json:"arches" mapstructure:"arches"`
-	Manifest       string            `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
-	Runtime        string            `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	ID       string   `yaml:"id" json:"id" mapstructure:"id"`
+	Branch   string   `yaml:"branch" json:"branch" mapstructure:"branch"`
+	Arches   []string `yaml:"arches" json:"arches" mapstructure:"arches"`
+	Manifest string   `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
+	// Runtime is deprecated and is no longer required or used by the actions.
+	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	// RuntimeVersion is deprecated and is no longer required or used by the actions.
 	RuntimeVersion string            `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
 	RunLinter      bool              `yaml:"run-linter" json:"run-linter" mapstructure:"run-linter"`
 	Linter         *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
@@ -176,10 +178,6 @@ func (app *App) ValidateBasic() error {
 	}
 	if !branchRegexp.MatchString(branch) {
 		return fmt.Errorf("app %q: 'branch' must match format %s", app.ID, branchRegexp.String())
-	}
-
-	if app.Runtime == "" && app.Manifest != "" {
-		return fmt.Errorf("app %q: 'runtime' is required when 'manifest' is set", app.ID)
 	}
 
 	for _, arch := range app.Arches {

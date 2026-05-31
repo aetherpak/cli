@@ -327,6 +327,16 @@ Options:
 * `--no-sign`: Disable GPG signing entirely.
 * `--allow-unsigned`: Allow releasing unsigned images/index if GPG keys are missing.
 
+#### `status`
+Validates that required system dependencies are available, checks configuration files, and decrypts/verifies GPG keys:
+```bash
+aetherpak status
+```
+Options:
+* `--gpg-key <path>`: Local path to GPG private key block(s) or file(s) to verify signing.
+* `--gpg-key-passphrase <passphrase>`: GPG key passphrase to test decryption.
+* `--json`: Outputs raw diagnostics status as JSON for script parsing.
+
 ---
 
 ## Development

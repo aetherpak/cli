@@ -281,6 +281,13 @@
               <pre><code>aetherpak publish --app org.example.App --registry ghcr.io</code></pre>
               <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
             </div>
+
+            <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">status</h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Validates system dependencies, repository configuration files, and GPG signing credentials:</p>
+            <div class="code-block">
+              <pre><code>aetherpak status --gpg-key key.asc</code></pre>
+              <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+            </div>
           </div>
 
           <div class="panel" data-tab="cmd-plumbing" hidden>

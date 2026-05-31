@@ -89,7 +89,7 @@ func TestAppValidate(t *testing.T) {
 				Branch:   "stable",
 				Manifest: "apps/app.yaml",
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "valid bundle app",

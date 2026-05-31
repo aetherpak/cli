@@ -261,6 +261,13 @@
           <div class="panel" data-tab="cmd-porcelain">
             <p style="margin-bottom: 1rem;">High-level convenience workflows coordinating processes in-memory:</p>
 
+            <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">add</h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Onboards an app into aetherpak.yaml from a local manifest, a bundle URL, or a git repository (added as a submodule), with an interactive wizard and a pre-commit diff:</p>
+            <div class="code-block">
+              <pre><code>aetherpak add --manifest org.example.App.yaml</code></pre>
+              <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+            </div>
+
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">release</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Plans changed matrix entries, builds/imports concurrently, pushes OCI packages, and regenerates index sites:</p>
             <div class="code-block">

@@ -44,53 +44,17 @@ func Import(opts ImportOptions) error {
 			return fmt.Errorf("either bundle-url or bundle-path must be specified")
 		}
 
-		// Download the bundle
-		tmpFile, err := os.CreateTemp(logger.TempDir(), fmt.Sprintf("aetherpak-%s-*.flatpak", opts.AppID))
+		path, checksum, err := Fetch(opts.BundleURL, nil)
 		if err != nil {
-			return fmt.Errorf("failed to create temporary file: %w", err)
+			return err
 		}
-		defer os.Remove(tmpFile.Name())
-		defer tmpFile.Close()
-
-		logger.Info("Downloading bundle from: %s", opts.BundleURL)
-		client := &http.Client{
-			Timeout: 30 * time.Minute,
-		}
-		resp, err := client.Get(opts.BundleURL)
-		if err != nil {
-			return fmt.Errorf("failed to download bundle: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to download bundle, status: %s", resp.Status)
-		}
-
-		// Calculate SHA-256 during download
-		hasher := sha256.New()
-		writer := io.MultiWriter(tmpFile, hasher)
-
-		limitReader := io.LimitReader(resp.Body, maxBundleSize)
-		n, err := io.Copy(writer, limitReader)
-		if err != nil {
-			return fmt.Errorf("failed to write bundle: %w", err)
-		}
-
-		if n >= maxBundleSize {
-			var oneByte [1]byte
-			if _, readErr := resp.Body.Read(oneByte[:]); readErr != io.EOF {
-				return fmt.Errorf("bundle download exceeded maximum size limit of %d bytes", maxBundleSize)
-			}
-		}
-
-		checksum := fmt.Sprintf("%x", hasher.Sum(nil))
-		logger.Debug("Calculated SHA-256: %s", checksum)
+		defer os.Remove(path)
 
 		if opts.BundleSHA256 != "" && checksum != opts.BundleSHA256 {
 			return fmt.Errorf("checksum mismatch: expected %s, got %s", opts.BundleSHA256, checksum)
 		}
 		logger.Info("SHA-256 checksum verified successfully.")
-		targetPath = tmpFile.Name()
+		targetPath = path
 	} else {
 		logger.Info("Using local bundle path: %s", targetPath)
 		if opts.BundleSHA256 != "" {
@@ -218,4 +182,68 @@ func Import(opts ImportOptions) error {
 
 	logger.Info("Import and branch rebinding completed successfully.")
 	return nil
+}
+
+// ProgressFunc reports download progress. total is -1 when unknown.
+type ProgressFunc func(downloaded, total int64)
+
+// Fetch downloads url to a temp file under the logger temp dir, computing its
+// SHA-256 during transfer. It returns the temp file path (caller must remove it)
+// and the hex checksum. progress may be nil.
+func Fetch(url string, progress ProgressFunc) (string, string, error) {
+	tmpFile, err := os.CreateTemp(logger.TempDir(), "aetherpak-fetch-*.flatpak")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer tmpFile.Close()
+
+	logger.Info("Downloading from: %s", url)
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Get(url)
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		return "", "", fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		os.Remove(tmpFile.Name())
+		return "", "", fmt.Errorf("failed to download, status: %s", resp.Status)
+	}
+
+	hasher := sha256.New()
+	counter := &progressWriter{total: resp.ContentLength, fn: progress}
+	writer := io.MultiWriter(tmpFile, hasher, counter)
+
+	limitReader := io.LimitReader(resp.Body, maxBundleSize)
+	n, err := io.Copy(writer, limitReader)
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		return "", "", fmt.Errorf("failed to write download: %w", err)
+	}
+	if n >= maxBundleSize {
+		var oneByte [1]byte
+		if _, readErr := resp.Body.Read(oneByte[:]); readErr != io.EOF {
+			os.Remove(tmpFile.Name())
+			return "", "", fmt.Errorf("download exceeded maximum size limit of %d bytes", maxBundleSize)
+		}
+	}
+
+	checksum := fmt.Sprintf("%x", hasher.Sum(nil))
+	logger.Debug("Calculated SHA-256: %s", checksum)
+	return tmpFile.Name(), checksum, nil
+}
+
+// progressWriter counts bytes written and forwards progress updates.
+type progressWriter struct {
+	written int64
+	total   int64
+	fn      ProgressFunc
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	p.written += int64(len(b))
+	if p.fn != nil {
+		p.fn(p.written, p.total)
+	}
+	return len(b), nil
 }

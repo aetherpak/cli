@@ -42,6 +42,12 @@ Following the Git design philosophy, the CLI divides its commands into **Porcela
 ### Porcelain (High-Level Workflows)
 Porcelain commands orchestrate multiple plumbing modules to provide a seamless user experience.
 
+* **`aetherpak add`**: Creates or modifies `aetherpak.yaml`, adding one app from one of three sources:
+  1. A local manifest path (app id derived from the manifest, with sensible defaults).
+  2. A bundle URL, downloaded and fingerprinted (SHA-256 recorded).
+  3. A git repository, added as a recursively-initialised submodule with its manifest auto-detected.
+
+  It edits the config comment-preservingly, shows a colored diff, and gates on confirmation (interactive wizard on a TTY, or `--confirm`/`-y` to skip). Git submodule additions are rolled back if the user declines.
 * **`aetherpak build`**: Compiles flatpak manifests. It automatically:
   1. Installs/resolves `flatpak-builder-lint`.
   2. Runs pre-build linting on the manifest.
@@ -121,6 +127,24 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
   3. **Build Import**: Invokes `flatpak build-import-bundle` to import the `.flatpak` file.
   4. **Ref Resolution**: Lists refs in the scratch repository to resolve the bundle's application ID.
   5. **Branch Rebinding**: Invokes `flatpak build-commit-from` to copy the ref into the target repository while re-mapping it to the consumer-defined channel (e.g., rebinding `app/org.example.App/x86_64/master` to `app/org.example.App/x86_64/stable`).
+* Exposes a reusable `Fetch(url, progress)` helper (download to a temp file + SHA-256, with a progress callback) shared by `import` and `add`.
+
+### `pkg/adder`
+* Orchestrates the `aetherpak add` workflow: resolves a manifest/bundle/git source into a `config.App`, validates it, edits the config (comment-preserving), renders a diff, gates on confirmation, then writes or rolls back side effects.
+* All filesystem, git, and network IO is injected, keeping the orchestration unit-testable.
+* `options.go` is a DRY registry of boolean add options (`run-linter`, `ccache`, `install-deps-from-flathub`) — a single source of truth that drives the wizard checklist, the CLI flags, and the tooltips; adding an entry surfaces a new checkbox + flag automatically. Builder-affecting options are skipped for prebuilt bundles. The app id is auto-detected from the manifest (never prompted); the git source only prompts for the manifest path when auto-detection fails.
+
+### `pkg/manifest`
+* Parses Flatpak manifests (JSON or YAML) to extract the application id, and detects the single manifest within a directory (`DetectInDir`). Shared by `plan` and `add`.
+
+### `pkg/gitutil`
+* A small, reusable abstraction over git (submodule add/update/remove plus `rev-parse`, `cat-file`, `show`, `diff`), backed by `pkg/executil` for testability. The `Git` interface is the seam intended to be re-implemented with a native Go git library later without touching callers; `pkg/plan` and `pkg/adder` both consume it.
+
+### `pkg/configedit`
+* Performs comment-preserving edits of `aetherpak.yaml` by operating on the `yaml.v3` node tree (appending an app to the `apps` sequence) rather than re-marshaling the whole struct, so existing comments and ordering survive.
+
+### `pkg/configdiff`
+* Renders a unified, lipgloss-colored diff between two config blobs (using `go-udiff`), with a plain mode for non-TTY output.
 
 ### `pkg/oci`
 * Bundles OSTree repositories into OCI images using `flatpak build-bundle`.

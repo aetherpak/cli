@@ -4,7 +4,7 @@ IMAGE_NAME ?= ghcr.io/aetherpak/cli
 TAG ?= local
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
-.PHONY: build test test/integration fmt vet clean release/build container container/cli container/builder setup lint help
+.PHONY: build test test/integration test/container fmt vet clean release/build container container/cli container/builder setup lint help
 
 ##@ Build & Quality
 
@@ -17,6 +17,9 @@ test: ## Run the unit test suite
 
 test/integration: ## Run E2E integration tests (requires docker/podman and compose)
 	go test -tags=integration -v ./tests/...
+
+test/container: container/builder ## Run E2E container smoke tests using locally built builder image
+	./tests/smoke_container.sh $(IMAGE_NAME):$(TAG)-builder
 
 fmt: ## Format Go source files
 	go fmt ./...

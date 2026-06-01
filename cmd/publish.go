@@ -41,6 +41,8 @@ var (
 	pubAllowUnsigned bool
 	pubManifest      string
 	pubBundle        string
+	pubBundleURL     string
+	pubBundlePath    string
 	pubConfirm       bool
 )
 
@@ -85,21 +87,24 @@ var publishCmd = &cobra.Command{
 
 		// Validate mutual exclusion
 		sourceCount := 0
-		if pubAppID != "" {
-			sourceCount++
-		}
 		if pubManifest != "" {
 			sourceCount++
 		}
 		if pubBundle != "" {
 			sourceCount++
 		}
+		if pubBundleURL != "" {
+			sourceCount++
+		}
+		if pubBundlePath != "" {
+			sourceCount++
+		}
 		if sourceCount > 1 {
-			return NewCmdErrorf(2, "only one of --app-id, --manifest, or --bundle may be specified")
+			return NewCmdErrorf(2, "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified")
 		}
 
-		// Handle --manifest or --bundle one-off publishes
-		if pubManifest != "" || pubBundle != "" {
+		// Handle one-off publishes (manifest or bundle)
+		if pubManifest != "" || pubBundle != "" || pubBundleURL != "" || pubBundlePath != "" {
 			if pubRegistry == "" || pubOCIRepo == "" {
 				return NewCmdErrorf(2, "OCI registry and repository must be specified via flags or configuration")
 			}
@@ -140,7 +145,7 @@ var publishCmd = &cobra.Command{
 					return NewCmdError(1, err)
 				}
 			} else {
-				// pubBundle != ""
+				// pubBundle != "" || pubBundleURL != "" || pubBundlePath != ""
 				var tempRepoDir string
 				var useTempRepo bool
 
@@ -161,10 +166,18 @@ var publishCmd = &cobra.Command{
 				}
 
 				var bundleURL, bundlePath string
-				if strings.HasPrefix(pubBundle, "http://") || strings.HasPrefix(pubBundle, "https://") {
-					bundleURL = pubBundle
-				} else {
-					bundlePath = pubBundle
+				if pubBundleURL != "" {
+					bundleURL = pubBundleURL
+				}
+				if pubBundlePath != "" {
+					bundlePath = pubBundlePath
+				}
+				if pubBundle != "" {
+					if strings.HasPrefix(pubBundle, "http://") || strings.HasPrefix(pubBundle, "https://") {
+						bundleURL = pubBundle
+					} else {
+						bundlePath = pubBundle
+					}
 				}
 
 				destRepo := repoPath
@@ -194,7 +207,15 @@ var publishCmd = &cobra.Command{
 					RepoPath:   importRepo,
 				}
 
-				logger.Info("Step 1: Importing bundle package %s...", pubBundle)
+				bundleDisplay := pubBundle
+				if bundleDisplay == "" {
+					if pubBundleURL != "" {
+						bundleDisplay = pubBundleURL
+					} else {
+						bundleDisplay = pubBundlePath
+					}
+				}
+				logger.Info("Step 1: Importing bundle package %s...", bundleDisplay)
 				if err := importer.Import(importOpts); err != nil {
 					return NewCmdError(1, err)
 				}
@@ -484,5 +505,7 @@ func init() {
 	publishCmd.Flags().BoolVar(&pubAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 	publishCmd.Flags().StringVar(&pubManifest, "manifest", "", "path to a local Flatpak manifest file (bypasses config)")
 	publishCmd.Flags().StringVar(&pubBundle, "bundle", "", "Flatpak bundle URL or path to import and publish")
+	publishCmd.Flags().StringVar(&pubBundleURL, "bundle-url", "", "Flatpak bundle URL to import and publish")
+	publishCmd.Flags().StringVar(&pubBundlePath, "bundle-path", "", "Flatpak bundle local path to import and publish")
 	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
 }

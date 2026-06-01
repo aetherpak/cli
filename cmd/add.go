@@ -38,6 +38,11 @@ initialised recursively). Runs an interactive wizard when attached to a TTY;
 otherwise reads flags. A diff is shown before changes are written unless
 --confirm is given.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Call LoadConfig to validate existing configuration early
+		if _, err := LoadConfig(); err != nil {
+			return NewCmdErrorf(2, "Configuration error: %w", err)
+		}
+
 		configPath := resolveConfigPath()
 
 		opts, err := resolveAddOptions(configPath, isInteractive())
@@ -100,7 +105,7 @@ func resolveAddOptions(configPath string, interactive bool) (adder.Options, erro
 		toggles[key] = *v
 	}
 
-	return adder.Options{
+	opts := adder.Options{
 		ConfigPath:    configPath,
 		Source:        src,
 		ManifestPath:  addManifest,
@@ -117,7 +122,11 @@ func resolveAddOptions(configPath string, interactive bool) (adder.Options, erro
 		Confirm:       addConfirm,
 		Plain:         logger.IsPlain(),
 		Progress:      progress,
-	}, nil
+	}
+	if interactive {
+		opts.PromptManifest = promptManifestPath
+	}
+	return opts, nil
 }
 
 func selectedSource() (adder.Source, int) {

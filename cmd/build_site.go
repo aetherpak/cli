@@ -35,22 +35,24 @@ var buildSiteCmd = &cobra.Command{
 	Long:  `Downloads active static index from hosting pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
-		if err == nil {
-			if siteRemoteName == "" {
-				siteRemoteName = cfg.RemoteName
-			}
-			if siteRuntimeRepo == "" {
-				siteRuntimeRepo = cfg.RuntimeRepo
-			}
-			if siteRepoTitle == "" {
-				siteRepoTitle = cfg.RepoTitle
-			}
-			if siteRepoHP == "" {
-				siteRepoHP = cfg.RepoHomepage
-			}
+		if err != nil {
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
-		if sitePagesURL == "" && cfg != nil {
+		if siteRemoteName == "" {
+			siteRemoteName = cfg.RemoteName
+		}
+		if siteRuntimeRepo == "" {
+			siteRuntimeRepo = cfg.RuntimeRepo
+		}
+		if siteRepoTitle == "" {
+			siteRepoTitle = cfg.RepoTitle
+		}
+		if siteRepoHP == "" {
+			siteRepoHP = cfg.RepoHomepage
+		}
+
+		if sitePagesURL == "" {
 			sitePagesURL = cfg.PagesURL
 		}
 
@@ -124,6 +126,7 @@ var buildSiteCmd = &cobra.Command{
 		}
 		if err := ciout.Emit(siteOutputFile, []ciout.KV{
 			{Key: "site-dir", Value: siteDir},
+			{Key: "records-dir", Value: siteRecordsDir},
 		}); err != nil {
 			return NewCmdError(1, err)
 		}

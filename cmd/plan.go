@@ -8,6 +8,7 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/plan"
 	"github.com/spf13/cobra"
@@ -36,8 +37,9 @@ var planCmd = &cobra.Command{
 		var localForce string
 
 		if planManifest != "" {
-			if cmd.Flags().Changed("force") {
-				return NewCmdError(2, fmt.Errorf("cannot use both --manifest and --force flags together"))
+			if cmd.Flags().Changed("force") && forceFlag != "" {
+				logger.Warn("Warning: --force is ignored when --manifest is specified")
+				forceFlag = ""
 			}
 
 			manifestData, err := manifest.ParseManifest(planManifest)
@@ -72,7 +74,7 @@ var planCmd = &cobra.Command{
 			cfg = &config.Config{
 				Apps: []config.App{syntheticApp},
 			}
-			localForce = manifestData.ID
+			localForce = ""
 		} else {
 			var err error
 			cfg, err = LoadConfig()
@@ -97,6 +99,46 @@ var planCmd = &cobra.Command{
 		res, err := plan.ComputePlan(cfg, configPath, baseSHA, localForce, workflowPath)
 		if err != nil {
 			return NewCmdErrorf(1, "Plan computation error: %w", err)
+		}
+
+		// Filter computed matrix if flags are explicitly provided
+		if len(planArches) > 0 || planBranch != "" {
+			archMap := make(map[string]bool)
+			for _, a := range planArches {
+				archMap[a] = true
+			}
+
+			filterRows := func(rows []plan.MatrixRow) []plan.MatrixRow {
+				var filtered []plan.MatrixRow
+				for _, r := range rows {
+					matchArch := len(planArches) == 0 || archMap[r.Arch]
+					matchBranch := planBranch == "" || r.Branch == planBranch
+					if matchArch && matchBranch {
+						filtered = append(filtered, r)
+					}
+				}
+				return filtered
+			}
+
+			res.Matrix = filterRows(res.Matrix)
+			res.MatrixManifest = filterRows(res.MatrixManifest)
+			res.MatrixBundle = filterRows(res.MatrixBundle)
+			res.Count = len(res.Matrix)
+			res.CountManifest = len(res.MatrixManifest)
+			res.CountBundle = len(res.MatrixBundle)
+
+			// Re-collect active app IDs from the filtered matrix
+			appIDMap := make(map[string]bool)
+			for _, r := range res.Matrix {
+				appIDMap[r.AppID] = true
+			}
+			var filteredApps []string
+			for _, id := range res.Apps {
+				if appIDMap[id] {
+					filteredApps = append(filteredApps, id)
+				}
+			}
+			res.Apps = filteredApps
 		}
 
 		if planDisableLinter {

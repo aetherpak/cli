@@ -31,13 +31,28 @@ func runWizard(configPath string) (adder.Options, error) {
 		return adder.Options{}, err
 	}
 
+	branch := addBranch
+	if branch == "" {
+		branch = "stable"
+	}
+	arches := addArches
+	if len(arches) == 0 {
+		arches = []string{adder.DefaultArch()}
+	}
+
 	opts := adder.Options{
-		ConfigPath: configPath,
-		Branch:     "stable",
-		Arches:     []string{adder.DefaultArch()},
-		Progress:   barProgress(),
-		Fetch:      importer.Fetch,
-		Confirm:    addConfirm,
+		ConfigPath:    configPath,
+		Branch:        branch,
+		Arches:        arches,
+		Progress:      barProgress(),
+		Fetch:         importer.Fetch,
+		Confirm:       addConfirm,
+		ID:            addID,
+		ManifestPath:  addManifest,
+		BundleURL:     addBundleURL,
+		GitURL:        addGit,
+		SubmodulePath: addSubmodulePath,
+		BundleSHA256:  addBundleSHA256,
 	}
 
 	var sourceForm *huh.Form
@@ -111,8 +126,12 @@ func collectOptions(opts *adder.Options) error {
 		if !o.AppliesTo(opts.Source) {
 			continue
 		}
+		flagVal := o.Default
+		if v, exists := addToggleFlags[o.Key]; exists {
+			flagVal = *v
+		}
 		label := fmt.Sprintf("%s — %s", o.Label, o.Help)
-		checkboxes = append(checkboxes, huh.NewOption(label, o.Key).Selected(o.Default))
+		checkboxes = append(checkboxes, huh.NewOption(label, o.Key).Selected(flagVal))
 	}
 	if len(checkboxes) == 0 {
 		return nil

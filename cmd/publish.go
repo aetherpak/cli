@@ -1,15 +1,23 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
+	"github.com/aetherpak/aetherpak/pkg/adder"
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/importer"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/oci"
+	"github.com/aetherpak/aetherpak/pkg/repoinfo"
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,6 +39,9 @@ var (
 	pubOutputFile    string
 	pubNoSign        bool
 	pubAllowUnsigned bool
+	pubManifest      string
+	pubBundle        string
+	pubConfirm       bool
 )
 
 var publishCmd = &cobra.Command{
@@ -58,6 +69,192 @@ var publishCmd = &cobra.Command{
 			pubOCIRepo = cfg.OCIRepository
 		}
 
+		// Validate mutual exclusion
+		sourceCount := 0
+		if pubAppID != "" {
+			sourceCount++
+		}
+		if pubManifest != "" {
+			sourceCount++
+		}
+		if pubBundle != "" {
+			sourceCount++
+		}
+		if sourceCount > 1 {
+			return NewCmdErrorf(2, "only one of --app-id, --manifest, or --bundle may be specified")
+		}
+
+		// Handle --manifest or --bundle one-off publishes
+		if pubManifest != "" || pubBundle != "" {
+			if pubRegistry == "" || pubOCIRepo == "" {
+				return NewCmdErrorf(2, "OCI registry and repository must be specified via flags or configuration")
+			}
+
+			var resolvedAppID, resolvedArch, resolvedBranch string
+
+			if pubManifest != "" {
+				// Parse manifest
+				manifestData, err := manifest.ParseManifest(pubManifest)
+				if err != nil {
+					return NewCmdErrorf(2, "Manifest parsing error: %w", err)
+				}
+				resolvedAppID = manifestData.ID
+				resolvedArch = pubArch
+				resolvedBranch = pubBranch
+				if resolvedBranch == "" {
+					if ch := resolveChannelFromEnv(); ch != "" {
+						resolvedBranch = ch
+					} else {
+						resolvedBranch = "stable"
+					}
+				}
+
+				// Run build
+				buildOpts := builder.BuildOptions{
+					AppID:        resolvedAppID,
+					Manifest:     pubManifest,
+					Arch:         resolvedArch,
+					Branch:       resolvedBranch,
+					CCacheDir:    pubCCacheDir,
+					StateDir:     pubStateDir,
+					RunLinter:    pubRunLinter,
+					LinterStrict: true,
+				}
+				logger.Info("Step 1: Building manifest application %s...", resolvedAppID)
+				if err := builder.Build(buildOpts); err != nil {
+					return NewCmdError(1, err)
+				}
+			} else {
+				// pubBundle != ""
+				var tempRepoDir string
+				var useTempRepo bool
+
+				// If all details provided, skip auto-detection
+				if pubAppID != "" && cmd.Flags().Changed("arch") && pubBranch != "" {
+					resolvedAppID = pubAppID
+					resolvedArch = pubArch
+					resolvedBranch = pubBranch
+					useTempRepo = false
+				} else {
+					useTempRepo = true
+					var err error
+					tempRepoDir, err = os.MkdirTemp("", "aetherpak-publish-import-*")
+					if err != nil {
+						return NewCmdErrorf(1, "failed to create temp repo directory: %w", err)
+					}
+					defer os.RemoveAll(tempRepoDir)
+				}
+
+				var bundleURL, bundlePath string
+				if strings.HasPrefix(pubBundle, "http://") || strings.HasPrefix(pubBundle, "https://") {
+					bundleURL = pubBundle
+				} else {
+					bundlePath = pubBundle
+				}
+
+				destRepo := pubRepoPath
+				if destRepo == "" {
+					destRepo = "repo"
+				}
+
+				importRepo := destRepo
+				if useTempRepo {
+					importRepo = tempRepoDir
+				}
+
+				// For import we need empty values for properties we want importer to auto-detect
+				importAppID := pubAppID
+				importArch := pubArch
+				if !cmd.Flags().Changed("arch") {
+					importArch = ""
+				}
+				importBranch := pubBranch
+
+				importOpts := importer.ImportOptions{
+					AppID:      importAppID,
+					Arch:       importArch,
+					Branch:     importBranch,
+					BundleURL:  bundleURL,
+					BundlePath: bundlePath,
+					RepoPath:   importRepo,
+				}
+
+				logger.Info("Step 1: Importing bundle package %s...", pubBundle)
+				if err := importer.Import(importOpts); err != nil {
+					return NewCmdError(1, err)
+				}
+
+				if useTempRepo {
+					// Resolve auto-detected coordinates
+					info, err := repoinfo.Resolve(tempRepoDir)
+					if err != nil {
+						return NewCmdErrorf(1, "failed to resolve imported bundle ref: %w", err)
+					}
+
+					resolvedAppID = pubAppID
+					if resolvedAppID == "" {
+						resolvedAppID = info.AppID
+					}
+					resolvedArch = pubArch
+					if !cmd.Flags().Changed("arch") {
+						resolvedArch = info.Arch
+					}
+					resolvedBranch = pubBranch
+					if resolvedBranch == "" {
+						resolvedBranch = info.Branch
+					}
+				}
+
+				// Prompt for confirmation if interactive and not bypassed
+				if isInteractive() && !pubConfirm {
+					var confirm bool
+					err := huh.NewConfirm().
+						Title(fmt.Sprintf("Do you want to publish %s (%s, channel: %s)?", resolvedAppID, resolvedArch, resolvedBranch)).
+						Value(&confirm).
+						Run()
+					if err != nil {
+						return err
+					}
+					if !confirm {
+						return fmt.Errorf("publish cancelled by user")
+					}
+				}
+
+				if useTempRepo {
+					// Copy from tempRepoDir to destRepo
+					if err := os.MkdirAll(destRepo, 0755); err != nil {
+						return fmt.Errorf("failed to create target repo directory: %w", err)
+					}
+					if _, err := os.Stat(filepath.Join(destRepo, "config")); os.IsNotExist(err) {
+						initCmd := exec.Command("ostree", "--repo="+destRepo, "init", "--mode=archive-z2")
+						if err := initCmd.Run(); err != nil {
+							return fmt.Errorf("failed to initialize target ostree repo: %w", err)
+						}
+					}
+
+					destRef := fmt.Sprintf("app/%s/%s/%s", resolvedAppID, resolvedArch, resolvedBranch)
+					logger.Info("Copying ref %s from temp repo to target repo...", destRef)
+					copyCmd := exec.Command("flatpak", "build-commit-from",
+						"--src-repo="+tempRepoDir,
+						"--src-ref="+destRef,
+						"--update-appstream",
+						"--no-update-summary",
+						destRepo,
+						destRef,
+					)
+					var copyStderr bytes.Buffer
+					copyCmd.Stderr = &copyStderr
+					if err := copyCmd.Run(); err != nil {
+						return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
+					}
+				}
+			}
+
+			// Push to registry
+			return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo)
+		}
+
+		// Otherwise, publish config-driven apps
 		var appsToPublish []*config.App
 		if pubAppID != "" {
 			var targetApp *config.App
@@ -175,73 +372,76 @@ var publishCmd = &cobra.Command{
 				}
 			}
 
-			// Phase 2: OCI registry push
-			// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-			var keys []string
-			for _, keyVal := range pubGPGKeys {
-				if keyVal != "" {
-					if _, err := os.Stat(keyVal); err == nil {
-						data, err := os.ReadFile(keyVal)
-						if err == nil {
-							keyVal = string(data)
-						}
-					}
-					keys = append(keys, keyVal)
-				}
+			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo); err != nil {
+				return err
 			}
-
-			var passphrase []byte
-			if pubGPGPassphrase != "" {
-				passphrase = []byte(pubGPGPassphrase)
-			}
-
-			noSign := pubNoSign
-			allowUnsigned := pubAllowUnsigned
-
-			logger.Info("Step 2: Pushing %s to registry...", targetApp.ID)
-			pushOpts := oci.PushOptions{
-				AppID:         targetApp.ID,
-				Arch:          pubArch,
-				Branch:        appBranch,
-				Registry:      appRegistry,
-				OCIRepository: appOCIRepo,
-				RepoPath:      pubRepoPath,
-				RecordsDir:    pubRecordsDir,
-				GPGKeys:       keys,
-				GPGPassphrase: passphrase,
-				Insecure:      pubInsecure,
-				OCIUsername:   viper.GetString("oci_username"),
-				OCIPassword:   viper.GetString("oci_password"),
-				NoSign:        noSign,
-				AllowUnsigned: allowUnsigned,
-			}
-
-			res, err := oci.Push(pushOpts)
-			if len(passphrase) > 0 {
-				for i := range passphrase {
-					passphrase[i] = 0
-				}
-			}
-			if err != nil {
-				return NewCmdError(1, err)
-			}
-
-			if err := ciout.Emit(pubOutputFile, []ciout.KV{
-				{Key: "app-id", Value: targetApp.ID},
-				{Key: "arch", Value: pubArch},
-				{Key: "branch", Value: appBranch},
-				{Key: "cell-dir", Value: res.CellDir},
-				{Key: "digest", Value: res.Digest},
-				{Key: "tag", Value: res.Tag},
-			}); err != nil {
-				return NewCmdError(1, err)
-			}
-
-			logger.SuccessBanner("Publish Completed", fmt.Sprintf("Successfully built and published %s (%s) to %s/%s.", targetApp.ID, pubArch, appRegistry, appOCIRepo))
 		}
 
 		return nil
 	},
+}
+
+func pushAndEmit(appID, arch, branch, registry, ociRepo string) error {
+	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
+	var keys []string
+	for _, keyVal := range pubGPGKeys {
+		if keyVal != "" {
+			if _, err := os.Stat(keyVal); err == nil {
+				data, err := os.ReadFile(keyVal)
+				if err == nil {
+					keyVal = string(data)
+				}
+			}
+			keys = append(keys, keyVal)
+		}
+	}
+
+	var passphrase []byte
+	if pubGPGPassphrase != "" {
+		passphrase = []byte(pubGPGPassphrase)
+	}
+
+	logger.Info("Step 2: Pushing %s to registry...", appID)
+	pushOpts := oci.PushOptions{
+		AppID:         appID,
+		Arch:          arch,
+		Branch:        branch,
+		Registry:      registry,
+		OCIRepository: ociRepo,
+		RepoPath:      pubRepoPath,
+		RecordsDir:    pubRecordsDir,
+		GPGKeys:       keys,
+		GPGPassphrase: passphrase,
+		Insecure:      pubInsecure,
+		OCIUsername:   viper.GetString("oci_username"),
+		OCIPassword:   viper.GetString("oci_password"),
+		NoSign:        pubNoSign,
+		AllowUnsigned: pubAllowUnsigned,
+	}
+
+	res, err := oci.Push(pushOpts)
+	if len(passphrase) > 0 {
+		for i := range passphrase {
+			passphrase[i] = 0
+		}
+	}
+	if err != nil {
+		return NewCmdError(1, err)
+	}
+
+	if err := ciout.Emit(pubOutputFile, []ciout.KV{
+		{Key: "app-id", Value: appID},
+		{Key: "arch", Value: arch},
+		{Key: "branch", Value: branch},
+		{Key: "cell-dir", Value: res.CellDir},
+		{Key: "digest", Value: res.Digest},
+		{Key: "tag", Value: res.Tag},
+	}); err != nil {
+		return NewCmdError(1, err)
+	}
+
+	logger.SuccessBanner("Publish Completed", fmt.Sprintf("Successfully built and published %s (%s) to %s/%s.", appID, arch, registry, ociRepo))
+	return nil
 }
 
 func init() {
@@ -250,7 +450,7 @@ func init() {
 	publishCmd.Flags().StringVar(&pubAppID, "app-id", "", "app ID (reverse-DNS format)")
 	publishCmd.Flags().StringVar(&pubAppID, "app", "", "deprecated alias for --app-id")
 	_ = publishCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
-	publishCmd.Flags().StringVar(&pubArch, "arch", "x86_64", "target CPU architecture")
+	publishCmd.Flags().StringVar(&pubArch, "arch", adder.DefaultArch(), "target CPU architecture")
 	publishCmd.Flags().StringVar(&pubBranch, "branch", "", "published branch channel")
 	publishCmd.Flags().StringVar(&pubRegistry, "registry", "", "target OCI registry host")
 	publishCmd.Flags().StringVar(&pubOCIRepo, "oci-repository", "", "target repository path/name")
@@ -265,4 +465,7 @@ func init() {
 	publishCmd.Flags().StringVar(&pubOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	publishCmd.Flags().BoolVar(&pubNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	publishCmd.Flags().BoolVar(&pubAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+	publishCmd.Flags().StringVar(&pubManifest, "manifest", "", "path to a local Flatpak manifest file (bypasses config)")
+	publishCmd.Flags().StringVar(&pubBundle, "bundle", "", "Flatpak bundle URL or path to import and publish")
+	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
 }

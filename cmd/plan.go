@@ -8,7 +8,6 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
-	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/plan"
 	"github.com/spf13/cobra"
@@ -37,10 +36,10 @@ var planCmd = &cobra.Command{
 		var localForce string
 
 		if planManifest != "" {
-			if cmd.Flags().Changed("force") && forceFlag != "" {
-				logger.Warn("Warning: --force is ignored when --manifest is specified")
-				forceFlag = ""
+			if IsFlagExplicitlySet(cmd, "force") && forceFlag != "" {
+				return NewCmdError(2, fmt.Errorf("cannot use both --manifest and --force flags together"))
 			}
+			forceFlag = ""
 
 			manifestData, err := manifest.ParseManifest(planManifest)
 			if err != nil {

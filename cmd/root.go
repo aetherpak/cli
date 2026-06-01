@@ -204,11 +204,25 @@ func LoadConfig() (*config.Config, error) {
 	return &cfg, nil
 }
 
+var cliChangedFlags = make(map[*cobra.Command]map[string]bool)
+
+// IsFlagExplicitlySet checks if a flag was explicitly set on the command line
+// (or set before bindFlags populated it from Viper).
+func IsFlagExplicitlySet(cmd *cobra.Command, name string) bool {
+	if m, ok := cliChangedFlags[cmd]; ok {
+		return m[name]
+	}
+	return cmd.Flags().Changed(name)
+}
+
 // bindFlags automatically populates flags from viper (config file or env vars)
 // if they were not explicitly set on the command line.
 func bindFlags(cmd *cobra.Command) {
+	cliChangedFlags[cmd] = make(map[string]bool)
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		if !f.Changed {
+		if f.Changed {
+			cliChangedFlags[cmd][f.Name] = true
+		} else {
 			viperKey := strings.ReplaceAll(f.Name, "-", "_")
 			if viper.IsSet(viperKey) {
 				val := viper.Get(viperKey)

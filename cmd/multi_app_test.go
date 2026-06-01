@@ -139,7 +139,7 @@ func TestImportMissingConfigGracefulError(t *testing.T) {
 	}
 }
 
-func TestPlanManifestForceWarning(t *testing.T) {
+func TestPlanManifestForceConflict(t *testing.T) {
 	manifestContent := []byte(`{
 		"id": "org.example.App",
 		"runtime": "org.gnome.Platform",
@@ -151,11 +151,6 @@ func TestPlanManifestForceWarning(t *testing.T) {
 	}
 	defer os.Remove("temp_manifest.json")
 
-	viper.Reset()
-	_ = planCmd.Flags().Set("manifest", "temp_manifest.json")
-	_ = planCmd.Flags().Set("force", "org.example.App")
-	_ = planCmd.Flags().Set("arch", "x86_64")
-
 	defer func() {
 		planManifest = ""
 		forceFlag = ""
@@ -166,14 +161,54 @@ func TestPlanManifestForceWarning(t *testing.T) {
 		planCmd.Flags().Lookup("arch").Changed = false
 	}()
 
-	err = planCmd.RunE(planCmd, nil)
-	if err != nil {
-		t.Fatalf("unexpected error running planCmd: %v", err)
-	}
+	t.Run("explicit force flag returns error", func(t *testing.T) {
+		viper.Reset()
+		planManifest = ""
+		forceFlag = ""
+		planArches = nil
+		planBranch = ""
+		planCmd.Flags().Lookup("manifest").Changed = false
+		planCmd.Flags().Lookup("force").Changed = false
+		planCmd.Flags().Lookup("arch").Changed = false
 
-	if forceFlag != "" {
-		t.Errorf("expected forceFlag to be cleared when manifest is set, got %q", forceFlag)
-	}
+		_ = planCmd.Flags().Set("manifest", "temp_manifest.json")
+		_ = planCmd.Flags().Set("force", "org.example.App")
+		_ = planCmd.Flags().Set("arch", "x86_64")
+
+		// Re-trigger bindFlags to simulate parsing phase
+		bindFlags(planCmd)
+
+		err = planCmd.RunE(planCmd, nil)
+		if err == nil {
+			t.Fatal("expected error when both --manifest and --force are explicitly set, but got nil")
+		}
+		if !strings.Contains(err.Error(), "cannot use both --manifest and --force flags together") {
+			t.Errorf("expected conflict error, got: %v", err)
+		}
+	})
+
+	t.Run("implicit force via environment does not return error", func(t *testing.T) {
+		viper.Reset()
+		planManifest = ""
+		forceFlag = ""
+		planArches = nil
+		planBranch = ""
+		planCmd.Flags().Lookup("manifest").Changed = false
+		planCmd.Flags().Lookup("force").Changed = false
+		planCmd.Flags().Lookup("arch").Changed = false
+
+		_ = planCmd.Flags().Set("manifest", "temp_manifest.json")
+		_ = planCmd.Flags().Set("arch", "x86_64")
+		viper.Set("force", "org.example.App") // Set via Viper (implicit)
+
+		// Re-trigger bindFlags to simulate parsing phase
+		bindFlags(planCmd)
+
+		err = planCmd.RunE(planCmd, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestResolveChannelConfigError(t *testing.T) {

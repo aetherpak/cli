@@ -158,7 +158,7 @@ func TestEndToEndIntegration(t *testing.T) {
 	// 6. Run push-oci using our binary
 	t.Log("Executing push-oci...")
 	pushCmd := exec.Command(binaryPath, "push-oci",
-		"--app="+appID,
+		"--app-id="+appID,
 		"--branch=stable",
 		"--registry=localhost:"+registryPort,
 		"--oci-repository=aetherpak/mock-app",

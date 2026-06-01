@@ -11,7 +11,7 @@ func TestAddFlagsRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find add: %v", err)
 	}
-	flags := []string{"manifest", "bundle-url", "git", "git-manifest", "submodule-path", "id", "branch", "arch", "bundle-sha256", "confirm", "builder-arg"}
+	flags := []string{"manifest", "bundle-url", "git", "git-manifest", "submodule-path", "app-id", "id", "branch", "arch", "bundle-sha256", "confirm", "builder-arg"}
 	// Every registry option must be exposed as a flag (DRY guarantee).
 	for _, opt := range adder.BoolOptions {
 		flags = append(flags, opt.Key)

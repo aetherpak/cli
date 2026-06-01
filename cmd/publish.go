@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -157,7 +156,7 @@ var publishCmd = &cobra.Command{
 		}
 
 		// Phase 2: OCI registry push
-		// Load keys from file or environment
+		// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 		var keys []string
 		for _, keyVal := range pubGPGKeys {
 			if keyVal != "" {
@@ -170,20 +169,10 @@ var publishCmd = &cobra.Command{
 				keys = append(keys, keyVal)
 			}
 		}
-		if len(keys) == 0 {
-			envKey := os.Getenv("AETHERPAK_GPG_KEY")
-			if envKey != "" {
-				keys = append(keys, envKey)
-			}
-		}
 
-		passphraseStr := pubGPGPassphrase
-		if passphraseStr == "" {
-			passphraseStr = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
-		}
 		var passphrase []byte
-		if passphraseStr != "" {
-			passphrase = []byte(passphraseStr)
+		if pubGPGPassphrase != "" {
+			passphrase = []byte(pubGPGPassphrase)
 		}
 		defer func() {
 			if len(passphrase) > 0 {
@@ -194,23 +183,7 @@ var publishCmd = &cobra.Command{
 		}()
 
 		noSign := pubNoSign
-		if !noSign {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				noSign = true
-			}
-		}
-		if !noSign && cfg != nil {
-			noSign = cfg.NoSign
-		}
-
 		allowUnsigned := pubAllowUnsigned
-		if !allowUnsigned {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				allowUnsigned = true
-			}
-		}
 
 		logger.Info("Step 2: Pushing to registry...")
 		pushOpts := oci.PushOptions{
@@ -254,7 +227,9 @@ var publishCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(publishCmd)
 
-	publishCmd.Flags().StringVar(&pubAppID, "app", "", "app ID (reverse-DNS format)")
+	publishCmd.Flags().StringVar(&pubAppID, "app-id", "", "app ID (reverse-DNS format)")
+	publishCmd.Flags().StringVar(&pubAppID, "app", "", "deprecated alias for --app-id")
+	_ = publishCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 	publishCmd.Flags().StringVar(&pubArch, "arch", "x86_64", "target CPU architecture")
 	publishCmd.Flags().StringVar(&pubBranch, "branch", "", "published branch channel")
 	publishCmd.Flags().StringVar(&pubRegistry, "registry", "", "target OCI registry host")

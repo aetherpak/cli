@@ -183,7 +183,9 @@ var buildCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(buildCmd)
 
-	buildCmd.Flags().StringVar(&buildAppID, "app", "", "app ID (reverse-DNS format)")
+	buildCmd.Flags().StringVar(&buildAppID, "app-id", "", "app ID (reverse-DNS format)")
+	buildCmd.Flags().StringVar(&buildAppID, "app", "", "deprecated alias for --app-id")
+	_ = buildCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 	buildCmd.Flags().StringVar(&buildManifest, "manifest", "", "path to manifest file")
 	buildCmd.Flags().StringVar(&buildArch, "arch", "x86_64", "target CPU architecture")
 	buildCmd.Flags().StringVar(&buildBranch, "branch", "", "published branch channel")

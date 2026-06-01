@@ -24,10 +24,16 @@ func TestEnvBindings(t *testing.T) {
 		envName  string
 		expected string
 	}{
+		{"build", "app-id", "AETHERPAK_APP_ID", "custom-build-appid"},
+		{"build", "app", "AETHERPAK_APP", "custom-build-app"},
 		{"build", "repo-path", "AETHERPAK_REPO_PATH", "custom-build-repo"},
 		{"build", "branch", "AETHERPAK_BRANCH", "custom-build-branch"},
+		{"import", "app-id", "AETHERPAK_APP_ID", "custom-import-appid"},
+		{"import", "app", "AETHERPAK_APP", "custom-import-app"},
 		{"import", "repo-path", "AETHERPAK_REPO_PATH", "custom-import-repo"},
 		{"import", "branch", "AETHERPAK_BRANCH", "custom-import-branch"},
+		{"push-oci", "app-id", "AETHERPAK_APP_ID", "custom-push-appid"},
+		{"push-oci", "app", "AETHERPAK_APP", "custom-push-app"},
 		{"push-oci", "registry", "AETHERPAK_REGISTRY", "custom-registry"},
 		{"push-oci", "oci-repository", "AETHERPAK_OCI_REPOSITORY", "custom-oci-repo"},
 		{"push-oci", "repo-path", "AETHERPAK_REPO_PATH", "custom-push-repo"},
@@ -37,6 +43,8 @@ func TestEnvBindings(t *testing.T) {
 		{"build-site", "site-dir", "AETHERPAK_SITE_DIR", "custom-site-dir"},
 		{"build-site", "pages-url", "AETHERPAK_PAGES_URL", "http://custom-pages"},
 		{"build-site", "remote-name", "AETHERPAK_REMOTE_NAME", "custom-remote"},
+		{"publish", "app-id", "AETHERPAK_APP_ID", "custom-pub-appid"},
+		{"publish", "app", "AETHERPAK_APP", "custom-pub-app"},
 		{"publish", "registry", "AETHERPAK_REGISTRY", "custom-pub-registry"},
 		{"publish", "oci-repository", "AETHERPAK_OCI_REPOSITORY", "custom-pub-oci-repo"},
 		{"publish", "branch", "AETHERPAK_BRANCH", "custom-pub-branch"},
@@ -47,6 +55,8 @@ func TestEnvBindings(t *testing.T) {
 		{"release", "site-dir", "AETHERPAK_SITE_DIR", "custom-rel-site"},
 		{"inspect-repo", "repo-path", "AETHERPAK_REPO_PATH", "custom-inspect-repo"},
 		{"plan", "branch", "AETHERPAK_BRANCH", "custom-plan-branch"},
+		{"add", "app-id", "AETHERPAK_APP_ID", "custom-add-appid"},
+		{"add", "id", "AETHERPAK_ID", "custom-add-id"},
 	}
 
 	for _, tt := range tests {

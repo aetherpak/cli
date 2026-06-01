@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aetherpak/aetherpak/pkg/adder"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/spf13/viper"
 )
@@ -207,5 +208,69 @@ func TestBuildSiteConfigError(t *testing.T) {
 		t.Error("expected error when building site with broken configuration, got nil")
 	} else if !strings.Contains(err.Error(), "Configuration error:") {
 		t.Errorf("expected Configuration error, got: %v", err)
+	}
+}
+
+func TestPublishMutualExclusion(t *testing.T) {
+	viper.Reset()
+	_ = publishCmd.Flags().Set("app-id", "org.example.App")
+	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
+	_ = publishCmd.Flags().Set("bundle", "")
+	defer func() {
+		pubAppID = ""
+		pubManifest = ""
+		pubBundle = ""
+		publishCmd.Flags().Lookup("app-id").Changed = false
+		publishCmd.Flags().Lookup("manifest").Changed = false
+		publishCmd.Flags().Lookup("bundle").Changed = false
+	}()
+
+	err := publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error with multiple source options, got nil")
+	} else if !strings.Contains(err.Error(), "only one of --app-id, --manifest, or --bundle may be specified") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+
+	// Test manifest and bundle
+	_ = publishCmd.Flags().Set("app-id", "")
+	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
+	_ = publishCmd.Flags().Set("bundle", "http://example.com/app.flatpak")
+	publishCmd.Flags().Lookup("app-id").Changed = false
+
+	err = publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error with multiple source options, got nil")
+	} else if !strings.Contains(err.Error(), "only one of --app-id, --manifest, or --bundle may be specified") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+}
+
+func TestPublishHostArchDefault(t *testing.T) {
+	expectedArch := adder.DefaultArch()
+	if pubArch != expectedArch {
+		t.Errorf("expected pubArch default to be %q, got %q", expectedArch, pubArch)
+	}
+}
+
+func TestPublishOneOffMissingRegistry(t *testing.T) {
+	viper.Reset()
+	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
+	_ = publishCmd.Flags().Set("registry", "")
+	_ = publishCmd.Flags().Set("oci-repository", "")
+	defer func() {
+		pubManifest = ""
+		pubRegistry = ""
+		pubOCIRepo = ""
+		publishCmd.Flags().Lookup("manifest").Changed = false
+		publishCmd.Flags().Lookup("registry").Changed = false
+		publishCmd.Flags().Lookup("oci-repository").Changed = false
+	}()
+
+	err := publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error when registry/oci-repo are missing for one-off publish, got nil")
+	} else if !strings.Contains(err.Error(), "OCI registry and repository must be specified via flags or configuration") {
+		t.Errorf("expected missing registry error, got: %v", err)
 	}
 }

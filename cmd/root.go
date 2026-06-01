@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -131,11 +132,13 @@ func initConfig() {
 	if vCfgFile := viper.GetString("config"); vCfgFile != "" {
 		viper.SetConfigFile(vCfgFile)
 	} else {
-		// Look for aetherpak.yaml or aetherpak.yml in current working directory
-		viper.AddConfigPath(".")
-		viper.SetConfigName("aetherpak")
+		for _, ext := range []string{"yaml", "yml"} {
+			if _, err := os.Stat("aetherpak." + ext); err == nil {
+				viper.SetConfigFile("aetherpak." + ext)
+				break
+			}
+		}
 	}
-	viper.SetConfigType("yaml")
 }
 
 // LoadConfig reads and parses the optional configuration file.
@@ -146,10 +149,19 @@ func LoadConfig() (*config.Config, error) {
 	if vCfgFile := viper.GetString("config"); vCfgFile != "" {
 		viper.SetConfigFile(vCfgFile)
 	} else {
-		viper.AddConfigPath(".")
-		viper.SetConfigName("aetherpak")
+		found := false
+		for _, ext := range []string{"yaml", "yml"} {
+			if _, err := os.Stat("aetherpak." + ext); err == nil {
+				viper.SetConfigFile("aetherpak." + ext)
+				found = true
+				break
+			}
+		}
+		if !found {
+			cfg.Normalize()
+			return &cfg, nil
+		}
 	}
-	viper.SetConfigType("yaml")
 
 	err := viper.ReadInConfig()
 	if err != nil {

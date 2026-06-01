@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/aetherpak/cli/compare/v0.8.0...v0.9.0) (2026-06-01)
+
+
+### Features
+
+* add 'aetherpak add' command to onboard apps into aetherpak.yaml ([6da0de4](https://github.com/aetherpak/cli/commit/6da0de4b3e4142f7d69bc53c199e92c7ef362c68))
+* **cli:** add status diagnostics command ([09b2e24](https://github.com/aetherpak/cli/commit/09b2e248879ebc83d2f34d82018502c434d387fb))
+* **cli:** support structured index templates and env vars for Pages URL and Index Template ([6fa0544](https://github.com/aetherpak/cli/commit/6fa05446bc87928d19cf07471b09aea4b40c3ebc))
+
+
+### Bug Fixes
+
+* **status:** check key decryption status and fix path fallback resolution ([92d00f3](https://github.com/aetherpak/cli/commit/92d00f36e3c1d5c8a0a487736cd2e8497a560145))
+
 ## [0.8.0](https://github.com/aetherpak/cli/compare/v0.7.0...v0.8.0) (2026-05-31)
 
 

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/spf13/cobra"
@@ -32,113 +33,144 @@ var pushOCICmd = &cobra.Command{
 	Short: "Converts and pushes an OSTree branch to an OCI registry",
 	Long:  `Transforms local Flatpak applications built in an OSTree repo to OCI layer structures, signs the descriptors, and pushes them to GHCR.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		hasConfig := true
 		cfg, err := LoadConfig()
-		if err == nil {
-			// Populate from config fallbacks if flags are missing
-			if pushRegistry == "" {
-				pushRegistry = cfg.Registry
-			}
-			if pushOCIRepository == "" && len(cfg.Apps) > 0 {
-				// Default repo configuration
-				pushOCIRepository = cfg.RemoteName
-			}
-
-			// App matching configuration lookup
-			if pushAppID == "" && len(cfg.Apps) > 0 {
-				pushAppID = cfg.Apps[0].ID
-				if pushBranch == "" {
-					pushBranch = cfg.Apps[0].Branch
-				}
-			} else {
-				for _, app := range cfg.Apps {
-					if app.ID == pushAppID && pushBranch == "" {
-						pushBranch = app.Branch
-						break
-					}
-				}
-			}
+		if err != nil {
+			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
-
-		if pushAppID == "" {
-			return NewCmdError(2, fmt.Errorf("app is required"))
-		}
-		if pushRegistry == "" {
-			return NewCmdError(2, fmt.Errorf("registry is required"))
+		if viper.ConfigFileUsed() == "" {
+			hasConfig = false
 		}
 
 		if pushArch == "" {
 			pushArch = "x86_64"
 		}
-		if pushBranch == "" {
-			if ch := resolveChannelFromEnv(); ch != "" {
-				pushBranch = ch
-			} else {
-				pushBranch = "stable"
-			}
+		if err := config.ValidateArch(pushArch); err != nil {
+			return NewCmdError(2, err)
 		}
 
-		// Read GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-		var keys []string
-		for _, keyVal := range pushGPGKeys {
-			if keyVal != "" {
-				// Try reading as file path first
-				if _, err := os.Stat(keyVal); err == nil {
-					data, err := os.ReadFile(keyVal)
-					if err == nil {
-						keyVal = string(data)
-					}
+		var appsToPush []*config.App
+		if pushAppID != "" {
+			var targetApp *config.App
+			for i := range cfg.Apps {
+				if cfg.Apps[i].ID == pushAppID {
+					targetApp = &cfg.Apps[i]
+					break
 				}
-				keys = append(keys, keyVal)
+			}
+			if targetApp == nil {
+				if hasConfig {
+					return NewCmdErrorf(1, "app %q not found in config", pushAppID)
+				}
+				targetApp = &config.App{
+					ID: pushAppID,
+				}
+				targetApp.Normalize()
+			}
+			appsToPush = append(appsToPush, targetApp)
+		} else {
+			if !hasConfig {
+				return NewCmdError(2, fmt.Errorf("no application ID provided and no configuration file found"))
+			}
+			if len(cfg.Apps) == 0 {
+				return NewCmdError(2, fmt.Errorf("no applications found in configuration file"))
+			}
+			for i := range cfg.Apps {
+				appsToPush = append(appsToPush, &cfg.Apps[i])
 			}
 		}
 
-		var passphrase []byte
-		if pushGPGPassphrase != "" {
-			passphrase = []byte(pushGPGPassphrase)
+		if pushRegistry == "" {
+			pushRegistry = cfg.Registry
 		}
-		defer func() {
+		if pushRegistry == "" {
+			return NewCmdError(2, fmt.Errorf("registry is required"))
+		}
+
+		if pushOCIRepository == "" {
+			pushOCIRepository = cfg.OCIRepository
+		}
+
+		for _, targetApp := range appsToPush {
+			appBranch := pushBranch
+			if appBranch == "" {
+				appBranch = targetApp.Branch
+			}
+			if appBranch == "" {
+				if ch := resolveChannelFromEnv(); ch != "" {
+					appBranch = ch
+				} else {
+					appBranch = "stable"
+				}
+			}
+
+			appOCIRepository := pushOCIRepository
+			if appOCIRepository == "" {
+				appOCIRepository = cfg.OCIRepository
+			}
+
+			// Read GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
+			var keys []string
+			for _, keyVal := range pushGPGKeys {
+				if keyVal != "" {
+					if _, err := os.Stat(keyVal); err == nil {
+						data, err := os.ReadFile(keyVal)
+						if err == nil {
+							keyVal = string(data)
+						}
+					}
+					keys = append(keys, keyVal)
+				}
+			}
+
+			var passphrase []byte
+			if pushGPGPassphrase != "" {
+				passphrase = []byte(pushGPGPassphrase)
+			}
+
+			noSign := pushNoSign
+			allowUnsigned := pushAllowUnsigned
+
+			opts := oci.PushOptions{
+				AppID:         targetApp.ID,
+				Arch:          pushArch,
+				Branch:        appBranch,
+				Registry:      pushRegistry,
+				OCIRepository: appOCIRepository,
+				RepoPath:      pushRepoPath,
+				RecordsDir:    pushRecordsDir,
+				GPGKeys:       keys,
+				GPGPassphrase: passphrase,
+				Insecure:      pushInsecure,
+				OCIUsername:   viper.GetString("oci_username"),
+				OCIPassword:   viper.GetString("oci_password"),
+				NoSign:        noSign,
+				AllowUnsigned: allowUnsigned,
+			}
+
+			res, err := oci.Push(opts)
 			if len(passphrase) > 0 {
 				for i := range passphrase {
 					passphrase[i] = 0
 				}
 			}
-		}()
+			if err != nil {
+				return NewCmdError(1, err)
+			}
 
-		noSign := pushNoSign
-		allowUnsigned := pushAllowUnsigned
-
-		opts := oci.PushOptions{
-			AppID:         pushAppID,
-			Arch:          pushArch,
-			Branch:        pushBranch,
-			Registry:      pushRegistry,
-			OCIRepository: pushOCIRepository,
-			RepoPath:      pushRepoPath,
-			RecordsDir:    pushRecordsDir,
-			GPGKeys:       keys,
-			GPGPassphrase: passphrase,
-			Insecure:      pushInsecure,
-			OCIUsername:   viper.GetString("oci_username"),
-			OCIPassword:   viper.GetString("oci_password"),
-			NoSign:        noSign,
-			AllowUnsigned: allowUnsigned,
+			if err := ciout.Emit(pushOutputFile, []ciout.KV{
+				{Key: "app-id", Value: targetApp.ID},
+				{Key: "arch", Value: pushArch},
+				{Key: "branch", Value: appBranch},
+				{Key: "cell-dir", Value: res.CellDir},
+				{Key: "digest", Value: res.Digest},
+				{Key: "tag", Value: res.Tag},
+			}); err != nil {
+				return NewCmdError(1, err)
+			}
+			logger.SuccessBanner("Push Completed", fmt.Sprintf("Successfully exported and pushed %s (%s) to registry %s/%s.", targetApp.ID, pushArch, pushRegistry, appOCIRepository))
 		}
 
-		res, err := oci.Push(opts)
-		if err != nil {
-			return NewCmdError(1, err)
-		}
-		if err := ciout.Emit(pushOutputFile, []ciout.KV{
-			{Key: "app-id", Value: pushAppID},
-			{Key: "arch", Value: pushArch},
-			{Key: "branch", Value: pushBranch},
-			{Key: "cell-dir", Value: res.CellDir},
-			{Key: "digest", Value: res.Digest},
-			{Key: "tag", Value: res.Tag},
-		}); err != nil {
-			return NewCmdError(1, err)
-		}
-		logger.SuccessBanner("Push Completed", fmt.Sprintf("Successfully exported and pushed %s (%s) to registry %s/%s.", pushAppID, pushArch, pushRegistry, pushOCIRepository))
 		return nil
 	},
 }

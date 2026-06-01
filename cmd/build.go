@@ -9,6 +9,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -29,79 +30,124 @@ var buildCmd = &cobra.Command{
 	Short: "Executes flatpak-builder compilation sandbox",
 	Long:  `Invokes the flatpak-builder tool to compile and export the manifest application into a local OSTree repo.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		hasConfig := true
 		cfg, err := LoadConfig()
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
+		if viper.ConfigFileUsed() == "" {
+			hasConfig = false
+		}
 
-		// An explicit --manifest always wins; config only supplies the manifest
-		// when the caller named an app (or none) without one.
+		if err := config.ValidateArch(buildArch); err != nil {
+			return NewCmdError(2, err)
+		}
+
 		manifestSet := cmd.Flags().Changed("manifest")
-		var appConfig *config.App
-		if len(cfg.Apps) > 0 {
-			if buildAppID != "" {
-				for i, app := range cfg.Apps {
-					if app.ID == buildAppID {
-						if !manifestSet {
-							buildManifest = app.Manifest
-						}
-						if buildBranch == "" {
-							buildBranch = app.Branch
-						}
-						appConfig = &cfg.Apps[i]
+
+		type buildJob struct {
+			appID     string
+			manifest  string
+			branch    string
+			appConfig *config.App
+		}
+
+		var jobs []buildJob
+
+		if manifestSet {
+			// Explicit manifest always builds just this one
+			jobs = append(jobs, buildJob{
+				appID:    buildAppID,
+				manifest: buildManifest,
+				branch:   buildBranch,
+			})
+			// Find matching app config if any (to apply options)
+			if buildAppID != "" && len(cfg.Apps) > 0 {
+				for i := range cfg.Apps {
+					if cfg.Apps[i].ID == buildAppID {
+						jobs[0].appConfig = &cfg.Apps[i]
 						break
 					}
 				}
-			} else if !manifestSet {
-				first := cfg.Apps[0]
-				buildAppID = first.ID
-				buildManifest = first.Manifest
-				if buildBranch == "" {
-					buildBranch = first.Branch
+			}
+		} else if buildAppID != "" {
+			// Explicit app ID
+			var appConfig *config.App
+			for i := range cfg.Apps {
+				if cfg.Apps[i].ID == buildAppID {
+					appConfig = &cfg.Apps[i]
+					break
 				}
-				appConfig = &cfg.Apps[0]
+			}
+			if appConfig == nil {
+				return NewCmdErrorf(1, "app %q not found in config", buildAppID)
+			}
+			if appConfig.Manifest == "" {
+				return NewCmdErrorf(1, "app %q has no manifest configured", buildAppID)
+			}
+			jobs = append(jobs, buildJob{
+				appID:     appConfig.ID,
+				manifest:  appConfig.Manifest,
+				branch:    appConfig.Branch,
+				appConfig: appConfig,
+			})
+		} else {
+			// No app-id and no manifest:
+			if !hasConfig {
+				return NewCmdError(2, fmt.Errorf("no manifest provided and no configuration file found"))
+			}
+			// Gather all apps with manifests
+			for i := range cfg.Apps {
+				if cfg.Apps[i].Manifest != "" {
+					jobs = append(jobs, buildJob{
+						appID:     cfg.Apps[i].ID,
+						manifest:  cfg.Apps[i].Manifest,
+						branch:    cfg.Apps[i].Branch,
+						appConfig: &cfg.Apps[i],
+					})
+				}
+			}
+			if len(jobs) == 0 {
+				return NewCmdError(2, fmt.Errorf("no applications with manifest configurations found in configuration file"))
 			}
 		}
 
-		if buildManifest == "" {
-			return NewCmdError(2, fmt.Errorf("manifest is required (either via flag or config file)"))
-		}
-
-		if buildArch == "" {
-			buildArch = "x86_64"
-		}
-		if buildBranch == "" {
-			if ch := resolveChannelFromEnv(); ch != "" {
-				buildBranch = ch
-			} else {
-				buildBranch = "stable"
+		for _, job := range jobs {
+			jobBranch := buildBranch
+			if jobBranch == "" {
+				jobBranch = job.branch
 			}
-		}
+			if jobBranch == "" {
+				if ch := resolveChannelFromEnv(); ch != "" {
+					jobBranch = ch
+				} else {
+					jobBranch = "stable"
+				}
+			}
 
-		// Resolve build option defaults from configuration
-		var appCCacheDir = ".ccache"
-		var appStateDir = ".state"
-		var appRunLinter = false
-		var appLinterStrict = true
-		var appLinterIgnoreRules []string
-		var appBuilderArgs []string
+			// Resolve build option defaults from configuration
+			var appCCacheDir = ".ccache"
+			var appStateDir = ".state"
+			var appRunLinter = false
+			var appLinterStrict = true
+			var appLinterIgnoreRules []string
+			var appBuilderArgs []string
 
-		if cfg != nil {
-			if appConfig != nil {
-				appCCacheDir = appConfig.CCacheDir
-				appStateDir = appConfig.StateDir
-				appRunLinter = appConfig.RunLinter
-				appBuilderArgs = appConfig.BuilderArgs
-				if appConfig.Linter != nil {
-					if appConfig.Linter.Strict != nil {
-						appLinterStrict = *appConfig.Linter.Strict
+			if job.appConfig != nil {
+				appCCacheDir = job.appConfig.CCacheDir
+				appStateDir = job.appConfig.StateDir
+				appRunLinter = job.appConfig.RunLinter
+				appBuilderArgs = job.appConfig.BuilderArgs
+				if job.appConfig.Linter != nil {
+					if job.appConfig.Linter.Strict != nil {
+						appLinterStrict = *job.appConfig.Linter.Strict
 					}
-					appLinterIgnoreRules = appConfig.Linter.IgnoreRules
+					appLinterIgnoreRules = job.appConfig.Linter.IgnoreRules
 				}
-				if appConfig.CCache != nil && !*appConfig.CCache {
+				if job.appConfig.CCache != nil && !*job.appConfig.CCache {
 					appCCacheDir = ""
 				}
-			} else {
+			} else if cfg != nil {
 				if cfg.Defaults != nil {
 					appCCacheDir = cfg.Defaults.CCacheDir
 					if appCCacheDir == "" {
@@ -124,58 +170,59 @@ var buildCmd = &cobra.Command{
 					appLinterIgnoreRules = cfg.Linter.IgnoreRules
 				}
 			}
+
+			// Apply CLI flag overrides if explicitly passed
+			if cmd.Flags().Changed("ccache-dir") {
+				appCCacheDir = buildCCacheDir
+			}
+			if cmd.Flags().Changed("state-dir") {
+				appStateDir = buildStateDir
+			}
+			if cmd.Flags().Changed("run-linter") {
+				appRunLinter = buildRunLinter
+			}
+			if cmd.Flags().Changed("builder-arg") {
+				appBuilderArgs = buildBuilderArgs
+			}
+
+			opts := builder.BuildOptions{
+				AppID:             job.appID,
+				Manifest:          job.manifest,
+				Arch:              buildArch,
+				Branch:            jobBranch,
+				CCacheDir:         appCCacheDir,
+				StateDir:          appStateDir,
+				RepoPath:          buildRepoPath,
+				RunLinter:         appRunLinter,
+				LinterStrict:      appLinterStrict,
+				LinterIgnoreRules: appLinterIgnoreRules,
+				BuilderArgs:       appBuilderArgs,
+			}
+
+			if err := builder.Build(opts); err != nil {
+				return NewCmdError(1, err)
+			}
+
+			repoPath := buildRepoPath
+			if repoPath == "" {
+				repoPath = "repo"
+			}
+			// Prefer repo's ref for resolved coordinates; fallback to requested values.
+			resolvedAppID, resolvedBranch, resolvedArch := job.appID, jobBranch, buildArch
+			if info, err := repoinfo.Resolve(repoPath); err == nil {
+				resolvedAppID, resolvedBranch, resolvedArch = info.AppID, info.Branch, info.Arch
+			}
+			if err := ciout.Emit(buildOutputFile, []ciout.KV{
+				{Key: "app-id", Value: resolvedAppID},
+				{Key: "branch", Value: resolvedBranch},
+				{Key: "arch", Value: resolvedArch},
+				{Key: "repo-path", Value: repoPath},
+			}); err != nil {
+				return NewCmdError(1, err)
+			}
+			logger.SuccessBanner("Build Completed", fmt.Sprintf("Successfully built application %s (%s) for channel %s.", resolvedAppID, resolvedArch, resolvedBranch))
 		}
 
-		// Apply CLI flag overrides if explicitly passed
-		if cmd.Flags().Changed("ccache-dir") {
-			appCCacheDir = buildCCacheDir
-		}
-		if cmd.Flags().Changed("state-dir") {
-			appStateDir = buildStateDir
-		}
-		if cmd.Flags().Changed("run-linter") {
-			appRunLinter = buildRunLinter
-		}
-		if cmd.Flags().Changed("builder-arg") {
-			appBuilderArgs = buildBuilderArgs
-		}
-
-		opts := builder.BuildOptions{
-			AppID:             buildAppID,
-			Manifest:          buildManifest,
-			Arch:              buildArch,
-			Branch:            buildBranch,
-			CCacheDir:         appCCacheDir,
-			StateDir:          appStateDir,
-			RepoPath:          buildRepoPath,
-			RunLinter:         appRunLinter,
-			LinterStrict:      appLinterStrict,
-			LinterIgnoreRules: appLinterIgnoreRules,
-			BuilderArgs:       appBuilderArgs,
-		}
-
-		if err := builder.Build(opts); err != nil {
-			return NewCmdError(1, err)
-		}
-
-		repoPath := buildRepoPath
-		if repoPath == "" {
-			repoPath = "repo"
-		}
-		// Prefer repo's ref for resolved coordinates; fallback to requested values.
-		appID, branch, arch := buildAppID, buildBranch, buildArch
-		if info, err := repoinfo.Resolve(repoPath); err == nil {
-			appID, branch, arch = info.AppID, info.Branch, info.Arch
-		}
-		if err := ciout.Emit(buildOutputFile, []ciout.KV{
-			{Key: "app-id", Value: appID},
-			{Key: "branch", Value: branch},
-			{Key: "arch", Value: arch},
-			{Key: "repo-path", Value: repoPath},
-		}); err != nil {
-			return NewCmdError(1, err)
-		}
-		logger.SuccessBanner("Build Completed", fmt.Sprintf("Successfully built application %s (%s) for channel %s.", appID, arch, branch))
 		return nil
 	},
 }

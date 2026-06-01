@@ -264,7 +264,7 @@ var releaseCmd = &cobra.Command{
 			Reconcile:     true,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
-			RemoteName:    cfg.OCIRepository,
+			RemoteName:    cfg.RemoteName,
 			RuntimeRepo:   cfg.RuntimeRepo,
 			RepoTitle:     cfg.RepoTitle,
 			RepoHomepage:  cfg.RepoHomepage,

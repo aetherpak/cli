@@ -127,6 +127,7 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 			lblPath := filepath.Join(path, "labels.json")
 			if fileExists(recPath) && fileExists(lblPath) {
 				cellDirs = append(cellDirs, path)
+				return filepath.SkipDir // Optimize: skip walking inside the matched cell directory
 			}
 		}
 		return nil

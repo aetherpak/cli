@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.11.0](https://github.com/aetherpak/cli/compare/v0.10.0...v0.11.0) (2026-06-01)
+
+
+### Features
+
+* **cli:** align command UX, configuration handling, error propagation, and testing ([8e51573](https://github.com/aetherpak/cli/commit/8e51573b397c3a8d24e321392981a313c38cb8ca))
+* **cli:** support global output directory configuration for build assets ([e9b10af](https://github.com/aetherpak/cli/commit/e9b10afdf05d29fc07f230d44c8dc8aa2988798e))
+* **cli:** support multi-app command execution, validate arch, and align oci_repository ([3fb7078](https://github.com/aetherpak/cli/commit/3fb70788332671c38f7c9a78751b37e0f73a88d3))
+* **plan:** enforce manifest and force exclusion for CLI while allowing env vars ([15a6655](https://github.com/aetherpak/cli/commit/15a6655a899899ed4501ccd3fc12eef88b616acc))
+* **publish:** support manifest and bundle one-off publishing with TTY confirm ([22cab9f](https://github.com/aetherpak/cli/commit/22cab9f0146227cbe4adfdd3553419b9396e0bbf))
+
 ## [0.10.0](https://github.com/aetherpak/cli/compare/v0.9.0...v0.10.0) (2026-06-01)
 
 

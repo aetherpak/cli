@@ -7,6 +7,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -26,6 +27,8 @@ var RootCmd = &cobra.Command{
 	Long: `AetherPak Core CLI replaces scripting pipelines for converting flatpak
 applications into OCI hosted repositories on GHCR with deployment sites on Pages.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		bindFlags(cmd)
+
 		vVerbose := viper.GetBool("verbose")
 		vJSONLog := viper.GetBool("json-log")
 		vPlain := viper.GetBool("plain") || viper.GetBool("no-color")
@@ -177,4 +180,35 @@ func LoadConfig() (*config.Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// bindFlags automatically populates flags from viper (config file or env vars)
+// if they were not explicitly set on the command line.
+func bindFlags(cmd *cobra.Command) {
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if !f.Changed {
+			viperKey := strings.ReplaceAll(f.Name, "-", "_")
+			if viper.IsSet(viperKey) {
+				val := viper.Get(viperKey)
+				if val != nil {
+					var valStr string
+					switch v := val.(type) {
+					case []string:
+						valStr = strings.Join(v, ",")
+					case []interface{}:
+						strList := make([]string, len(v))
+						for i, item := range v {
+							strList[i] = fmt.Sprintf("%v", item)
+						}
+						valStr = strings.Join(strList, ",")
+					default:
+						valStr = fmt.Sprintf("%v", v)
+					}
+					if f.Value.String() != valStr {
+						_ = cmd.Flags().Set(f.Name, valStr)
+					}
+				}
+			}
+		}
+	})
 }

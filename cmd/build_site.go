@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/logger"
@@ -51,14 +50,11 @@ var buildSiteCmd = &cobra.Command{
 			}
 		}
 
-		if sitePagesURL == "" {
-			sitePagesURL = os.Getenv("AETHERPAK_PAGES_URL")
-		}
 		if sitePagesURL == "" && cfg != nil {
 			sitePagesURL = cfg.PagesURL
 		}
 
-		// Read GPG keys from files or environment variables if passed
+		// Read GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 		var keys []string
 		for _, keyVal := range siteGPGKeys {
 			if keyVal != "" {
@@ -72,21 +68,10 @@ var buildSiteCmd = &cobra.Command{
 				keys = append(keys, keyVal)
 			}
 		}
-		if len(keys) == 0 {
-			// Fallback check on standard environment variable
-			envKey := os.Getenv("AETHERPAK_GPG_KEY")
-			if envKey != "" {
-				keys = append(keys, envKey)
-			}
-		}
 
-		passphraseStr := siteGPGPassphrase
-		if passphraseStr == "" {
-			passphraseStr = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
-		}
 		var passphrase []byte
-		if passphraseStr != "" {
-			passphrase = []byte(passphraseStr)
+		if siteGPGPassphrase != "" {
+			passphrase = []byte(siteGPGPassphrase)
 		}
 		defer func() {
 			if len(passphrase) > 0 {
@@ -106,30 +91,11 @@ var buildSiteCmd = &cobra.Command{
 		}
 
 		if siteIndexTemplate == "" {
-			siteIndexTemplate = os.Getenv("AETHERPAK_INDEX_TEMPLATE")
-		}
-		if siteIndexTemplate == "" {
 			siteIndexTemplate = brandTemplate
 		}
 
 		noSign := siteNoSign
-		if !noSign {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				noSign = true
-			}
-		}
-		if !noSign && cfg != nil {
-			noSign = cfg.NoSign
-		}
-
 		allowUnsigned := siteAllowUnsigned
-		if !allowUnsigned {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				allowUnsigned = true
-			}
-		}
 
 		opts := site.SiteOptions{
 			PagesURL:      sitePagesURL,

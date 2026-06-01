@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -67,7 +66,7 @@ var releaseCmd = &cobra.Command{
 			return NewCmdErrorf(1, "Release planning failed: %w", err)
 		}
 
-		// Load signing GPG keys
+		// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 		var keys []string
 		for _, keyVal := range relGPGKeys {
 			if keyVal != "" {
@@ -80,20 +79,10 @@ var releaseCmd = &cobra.Command{
 				keys = append(keys, keyVal)
 			}
 		}
-		if len(keys) == 0 {
-			envKey := os.Getenv("AETHERPAK_GPG_KEY")
-			if envKey != "" {
-				keys = append(keys, envKey)
-			}
-		}
 
-		passphraseStr := relGPGPassphrase
-		if passphraseStr == "" {
-			passphraseStr = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
-		}
 		var passphrase []byte
-		if passphraseStr != "" {
-			passphrase = []byte(passphraseStr)
+		if relGPGPassphrase != "" {
+			passphrase = []byte(relGPGPassphrase)
 		}
 		defer func() {
 			if len(passphrase) > 0 {
@@ -104,23 +93,7 @@ var releaseCmd = &cobra.Command{
 		}()
 
 		noSign := relNoSign
-		if !noSign {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_NO_SIGN"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				noSign = true
-			}
-		}
-		if !noSign && cfg != nil {
-			noSign = cfg.NoSign
-		}
-
 		allowUnsigned := relAllowUnsigned
-		if !allowUnsigned {
-			envVal := strings.ToLower(os.Getenv("AETHERPAK_ALLOW_UNSIGNED"))
-			if envVal == "true" || envVal == "1" || envVal == "yes" {
-				allowUnsigned = true
-			}
-		}
 
 		if len(res.Matrix) == 0 {
 			logger.Info("No application changes detected. Proceeding to site index update.")
@@ -276,13 +249,10 @@ var releaseCmd = &cobra.Command{
 		}
 
 		if relIndexTemplate == "" {
-			relIndexTemplate = os.Getenv("AETHERPAK_INDEX_TEMPLATE")
-		}
-		if relIndexTemplate == "" {
 			relIndexTemplate = brandTemplate
 		}
 
-		pagesURL := os.Getenv("AETHERPAK_PAGES_URL")
+		pagesURL := viper.GetString("pages_url")
 		if pagesURL == "" && cfg != nil {
 			pagesURL = cfg.PagesURL
 		}

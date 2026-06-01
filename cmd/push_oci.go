@@ -146,7 +146,9 @@ var pushOCICmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(pushOCICmd)
 
-	pushOCICmd.Flags().StringVar(&pushAppID, "app", "", "app ID (reverse-DNS format)")
+	pushOCICmd.Flags().StringVar(&pushAppID, "app-id", "", "app ID (reverse-DNS format)")
+	pushOCICmd.Flags().StringVar(&pushAppID, "app", "", "deprecated alias for --app-id")
+	_ = pushOCICmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 	pushOCICmd.Flags().StringVar(&pushArch, "arch", "x86_64", "target CPU architecture")
 	pushOCICmd.Flags().StringVar(&pushBranch, "branch", "", "published branch channel")
 	pushOCICmd.Flags().StringVar(&pushRegistry, "registry", "", "target OCI registry host")

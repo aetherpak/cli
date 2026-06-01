@@ -234,19 +234,19 @@ aetherpak plan --base-sha <sha> --workflow-path <path> --output json
 #### `build`
 Wraps `flatpak-builder` sandbox compilation:
 ```bash
-aetherpak build --app org.example.App --manifest apps/manifest.json --arch x86_64
+aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64
 ```
 
 #### `import`
 Ingests prebuilt bundles (`.flatpak`) and rebinds channels:
 ```bash
-aetherpak import --app org.example.App --bundle-url https://... --bundle-sha256 <hex>
+aetherpak import --app-id org.example.App --bundle-url https://... --bundle-sha256 <hex>
 ```
 
 #### `push-oci`
 Converts repo branch to OCI image layer and pushes:
 ```bash
-aetherpak push-oci --app org.example.App --registry ghcr.io --oci-repository my-org/my-app
+aetherpak push-oci --app-id org.example.App --registry ghcr.io --oci-repository my-org/my-app
 ```
 Options:
 * `--gpg-key <path>`: Local path to GPG private key used to sign image manifests.
@@ -288,7 +288,7 @@ are written unless `--confirm`/`-y` is given.
 aetherpak add --manifest org.example.App.yaml
 
 # Bundle URL (downloaded + fingerprinted; SHA-256 recorded)
-aetherpak add --bundle-url https://example.com/app.flatpak --id org.example.App
+aetherpak add --bundle-url https://example.com/app.flatpak --app-id org.example.App
 
 # Git repository added as a submodule
 aetherpak add --git https://example.com/repo.git
@@ -300,7 +300,7 @@ Options:
 * `--manifest <path>` / `--bundle-url <url>` / `--git <url>`: the source (exactly one in non-interactive mode).
 * `--git-manifest <path>`: manifest path within the git repo (auto-detected if omitted).
 * `--submodule-path <path>`: submodule destination (default `manifests/<reponame>`).
-* `--id`, `--branch` (Flatpak release channel, default `stable`), `--arch` (repeatable, defaults to the host architecture): overrides; `id` is derived from the manifest when omitted (only the bundle source requires `--id`).
+* `--app-id`, `--branch` (Flatpak release channel, default `stable`), `--arch` (repeatable, defaults to the host architecture): overrides; `app-id` is derived from the manifest when omitted (only the bundle source requires `--app-id`).
 * `--bundle-sha256 <hex>`: expected bundle checksum (verified; computed when omitted).
 * Build options (manifest/git sources only): `--install-deps-from-flathub` (default `true`, appends `--install-deps-from=flathub`), `--run-linter`, `--ccache`, and `--builder-arg <arg>` (repeatable, free-form).
 * `-y`, `--confirm`: skip the diff confirmation prompt.
@@ -310,7 +310,7 @@ The app id is read from the manifest — you are never prompted for it when it c
 #### `publish`
 Chains compilation/importer and OCI push sequentially in-memory for a single target application:
 ```bash
-aetherpak publish --app org.example.App --registry ghcr.io
+aetherpak publish --app-id org.example.App --registry ghcr.io
 ```
 Options:
 * `--gpg-key <path>`: Local path to GPG private key.

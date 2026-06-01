@@ -120,7 +120,9 @@ var importCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(importCmd)
 
-	importCmd.Flags().StringVar(&importAppID, "app", "", "app ID (reverse-DNS format); derived from the bundle when empty")
+	importCmd.Flags().StringVar(&importAppID, "app-id", "", "app ID (reverse-DNS format); derived from the bundle when empty")
+	importCmd.Flags().StringVar(&importAppID, "app", "", "deprecated alias for --app-id")
+	_ = importCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 	importCmd.Flags().StringVar(&importArch, "arch", "", "target CPU architecture; derived from the bundle when empty")
 	importCmd.Flags().StringVar(&importBranch, "branch", "", "published branch channel; derived from the bundle when empty")
 	importCmd.Flags().StringVar(&importBundleURL, "bundle-url", "", "HTTP URL of the remote bundle")

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 )
@@ -168,5 +170,75 @@ func TestCheckGPGSigning(t *testing.T) {
 	}
 	if report3.SigningError == nil {
 		t.Error("expected parsing error for invalid GPG keys")
+	}
+}
+
+func generateProtectedKey(t *testing.T) (armored, passphrase string) {
+	t.Helper()
+	pass := "s3cret-pass"
+	entity, err := openpgp.NewEntity("Protected", "", "protected@example.com", nil)
+	if err != nil {
+		t.Fatalf("new entity: %v", err)
+	}
+	if err := entity.PrivateKey.Encrypt([]byte(pass)); err != nil {
+		t.Fatalf("encrypt primary: %v", err)
+	}
+	for _, sub := range entity.Subkeys {
+		if err := sub.PrivateKey.Encrypt([]byte(pass)); err != nil {
+			t.Fatalf("encrypt subkey: %v", err)
+		}
+	}
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, openpgp.PrivateKeyType, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SerializePrivateWithoutSigning(w, nil); err != nil {
+		t.Fatalf("serialize protected key: %v", err)
+	}
+	w.Close()
+	return buf.String(), pass
+}
+
+func TestCheckGPGSigningWithPassphrase(t *testing.T) {
+	armored, pass := generateProtectedKey(t)
+	cfg := &config.Config{
+		NoSign: false,
+	}
+
+	// 1. Correct passphrase unlocks key
+	report1 := Check(nil, cfg, nil, "aetherpak.yaml", []string{armored}, []byte(pass))
+	if !report1.SigningEnabled {
+		t.Error("expected signing to be enabled")
+	}
+	if report1.GPGKeysCount != 1 {
+		t.Errorf("expected 1 GPG key, got %d", report1.GPGKeysCount)
+	}
+	if !report1.PassphraseOk {
+		t.Error("expected passphrase to be correct/ok")
+	}
+	if report1.SigningError != nil {
+		t.Errorf("expected no signing error, got %v", report1.SigningError)
+	}
+	if report1.Fingerprint == "" {
+		t.Error("expected fingerprint to be populated")
+	}
+
+	// 2. Incorrect passphrase fails validation
+	report2 := Check(nil, cfg, nil, "aetherpak.yaml", []string{armored}, []byte("wrong-pass"))
+	if report2.PassphraseOk {
+		t.Error("expected passphrase check to fail for wrong passphrase")
+	}
+	if report2.SigningError == nil {
+		t.Error("expected signing error for wrong passphrase")
+	}
+
+	// 3. Missing (nil) passphrase fails validation
+	report3 := Check(nil, cfg, nil, "aetherpak.yaml", []string{armored}, nil)
+	if report3.PassphraseOk {
+		t.Error("expected passphrase check to fail for nil passphrase")
+	}
+	if report3.SigningError == nil {
+		t.Error("expected signing error for nil passphrase")
 	}
 }

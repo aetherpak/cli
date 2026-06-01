@@ -129,4 +129,8 @@ func TestNewSignerDecryptsProtectedKey(t *testing.T) {
 	if _, err := NewSigner([]string{armored}, []byte("wrong")); err == nil {
 		t.Fatal("wrong passphrase must fail")
 	}
+
+	if _, err := NewSigner([]string{armored}, nil); err == nil {
+		t.Fatal("missing passphrase must fail for encrypted key")
+	}
 }

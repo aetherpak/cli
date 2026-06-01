@@ -61,6 +61,18 @@ func NewSigner(privateKeys []string, passphrase []byte) (*Signer, error) {
 		}
 	}
 
+	// Verify that all keys are decrypted/unlocked
+	for i, entity := range mergedList {
+		if entity.PrivateKey != nil && entity.PrivateKey.Encrypted && entity.PrivateKey.PrivateKey == nil {
+			return nil, fmt.Errorf("GPG private key at index %d is encrypted/locked (passphrase required)", i)
+		}
+		for j, sub := range entity.Subkeys {
+			if sub.PrivateKey != nil && sub.PrivateKey.Encrypted && sub.PrivateKey.PrivateKey == nil {
+				return nil, fmt.Errorf("GPG subkey at index %d (subkey %d) is encrypted/locked (passphrase required)", i, j)
+			}
+		}
+	}
+
 	return &Signer{entityList: mergedList}, nil
 }
 

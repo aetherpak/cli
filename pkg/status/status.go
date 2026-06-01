@@ -146,9 +146,17 @@ func Check(
 	}
 
 	// 3. Check GPG signing
-	// Filter out empty keys
+	// Gather raw keys from inputs or environment fallback
+	rawKeys := gpgKeys
+	if len(rawKeys) == 0 {
+		envKey := os.Getenv("AETHERPAK_GPG_KEY")
+		if envKey != "" {
+			rawKeys = []string{envKey}
+		}
+	}
+
 	var keys []string
-	for _, k := range gpgKeys {
+	for _, k := range rawKeys {
 		if k != "" {
 			// If it's a file path, load its contents
 			if _, err := os.Stat(keyValFilePath(k)); err == nil {
@@ -158,13 +166,6 @@ func Check(
 				}
 			}
 			keys = append(keys, k)
-		}
-	}
-
-	if len(keys) == 0 {
-		envKey := os.Getenv("AETHERPAK_GPG_KEY")
-		if envKey != "" {
-			keys = append(keys, envKey)
 		}
 	}
 
@@ -372,7 +373,7 @@ func printHeader(w io.Writer, title string, plain bool, titleStyle, borderStyle 
 	} else {
 		styledTitle := titleStyle.Render(title)
 		borderLen := max(1, 70-len(title))
-		fmt.Fprintf(w, "%s %s\n", borderStyle.Render("┌── "+styledTitle), borderStyle.Render(strings.Repeat("─", borderLen)))
+		fmt.Fprintf(w, "%s%s %s\n", borderStyle.Render("┌── "), styledTitle, borderStyle.Render(strings.Repeat("─", borderLen)))
 	}
 }
 

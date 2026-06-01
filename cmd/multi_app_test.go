@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -272,5 +273,63 @@ func TestPublishOneOffMissingRegistry(t *testing.T) {
 		t.Error("expected error when registry/oci-repo are missing for one-off publish, got nil")
 	} else if !strings.Contains(err.Error(), "OCI registry and repository must be specified via flags or configuration") {
 		t.Errorf("expected missing registry error, got: %v", err)
+	}
+}
+
+func TestGlobalOutputDir(t *testing.T) {
+	configData := []byte(`
+output_dir: build-out
+apps:
+  - id: org.example.App
+    manifest: apps/org.example.App.json
+`)
+	err := os.WriteFile("aetherpak.yaml", configData, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	viper.Reset()
+	initConfig()
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if cfg.OutputDir != "build-out" {
+		t.Errorf("expected OutputDir to be 'build-out', got %q", cfg.OutputDir)
+	}
+
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(cfg.Apps))
+	}
+	app := cfg.Apps[0]
+	expectedStateDir := filepath.Join("build-out", ".state")
+	if app.StateDir != expectedStateDir {
+		t.Errorf("expected app StateDir to be %q, got %q", expectedStateDir, app.StateDir)
+	}
+	expectedCCacheDir := filepath.Join("build-out", ".ccache")
+	if app.CCacheDir != expectedCCacheDir {
+		t.Errorf("expected app CCacheDir to be %q, got %q", expectedCCacheDir, app.CCacheDir)
+	}
+}
+
+func TestGlobalOutputDirFlagOverride(t *testing.T) {
+	viper.Reset()
+	initConfig()
+	_ = viper.BindPFlag("output_dir", RootCmd.PersistentFlags().Lookup("output-dir"))
+	_ = RootCmd.PersistentFlags().Set("output-dir", "custom-global-out")
+	defer func() {
+		_ = RootCmd.PersistentFlags().Set("output-dir", "")
+	}()
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if cfg.OutputDir != "custom-global-out" {
+		t.Errorf("expected OutputDir to be 'custom-global-out', got %q", cfg.OutputDir)
 	}
 }

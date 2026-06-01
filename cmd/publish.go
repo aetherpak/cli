@@ -69,6 +69,20 @@ var publishCmd = &cobra.Command{
 			pubOCIRepo = cfg.OCIRepository
 		}
 
+		repoPath := pubRepoPath
+		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+			repoPath = filepath.Join(cfg.OutputDir, "repo")
+		} else if repoPath == "" {
+			repoPath = "repo"
+		}
+
+		recordsDir := pubRecordsDir
+		if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
+			recordsDir = filepath.Join(cfg.OutputDir, "records")
+		} else if recordsDir == "" {
+			recordsDir = "records"
+		}
+
 		// Validate mutual exclusion
 		sourceCount := 0
 		if pubAppID != "" {
@@ -117,6 +131,7 @@ var publishCmd = &cobra.Command{
 					Branch:       resolvedBranch,
 					CCacheDir:    pubCCacheDir,
 					StateDir:     pubStateDir,
+					RepoPath:     repoPath,
 					RunLinter:    pubRunLinter,
 					LinterStrict: true,
 				}
@@ -152,7 +167,7 @@ var publishCmd = &cobra.Command{
 					bundlePath = pubBundle
 				}
 
-				destRepo := pubRepoPath
+				destRepo := repoPath
 				if destRepo == "" {
 					destRepo = "repo"
 				}
@@ -251,7 +266,7 @@ var publishCmd = &cobra.Command{
 			}
 
 			// Push to registry
-			return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo)
+			return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo, repoPath, recordsDir)
 		}
 
 		// Otherwise, publish config-driven apps
@@ -344,6 +359,7 @@ var publishCmd = &cobra.Command{
 					Branch:            appBranch,
 					CCacheDir:         appCCacheDir,
 					StateDir:          appStateDir,
+					RepoPath:          repoPath,
 					RunLinter:         appRunLinter,
 					LinterStrict:      appLinterStrict,
 					LinterIgnoreRules: appLinterIgnoreRules,
@@ -365,6 +381,7 @@ var publishCmd = &cobra.Command{
 					Branch:       appBranch,
 					BundleURL:    bundle.URL,
 					BundleSHA256: bundle.SHA256,
+					RepoPath:     repoPath,
 				}
 				logger.Info("Step 1: Importing bundle package %s...", targetApp.ID)
 				if err := importer.Import(opts); err != nil {
@@ -372,7 +389,7 @@ var publishCmd = &cobra.Command{
 				}
 			}
 
-			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo); err != nil {
+			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
 				return err
 			}
 		}
@@ -381,7 +398,7 @@ var publishCmd = &cobra.Command{
 	},
 }
 
-func pushAndEmit(appID, arch, branch, registry, ociRepo string) error {
+func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string) error {
 	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 	var keys []string
 	for _, keyVal := range pubGPGKeys {
@@ -408,8 +425,8 @@ func pushAndEmit(appID, arch, branch, registry, ociRepo string) error {
 		Branch:        branch,
 		Registry:      registry,
 		OCIRepository: ociRepo,
-		RepoPath:      pubRepoPath,
-		RecordsDir:    pubRecordsDir,
+		RepoPath:      repoPath,
+		RecordsDir:    recordsDir,
 		GPGKeys:       keys,
 		GPGPassphrase: passphrase,
 		Insecure:      pubInsecure,

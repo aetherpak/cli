@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/logger"
@@ -56,6 +57,20 @@ var buildSiteCmd = &cobra.Command{
 			sitePagesURL = cfg.PagesURL
 		}
 
+		recordsDir := siteRecordsDir
+		if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
+			recordsDir = filepath.Join(cfg.OutputDir, "records")
+		} else if recordsDir == "" {
+			recordsDir = "records"
+		}
+
+		siteDirVal := siteDir
+		if !cmd.Flags().Changed("site-dir") && cfg.OutputDir != "" {
+			siteDirVal = filepath.Join(cfg.OutputDir, "_site")
+		} else if siteDirVal == "" {
+			siteDirVal = "_site"
+		}
+
 		// Read GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 		var keys []string
 		for _, keyVal := range siteGPGKeys {
@@ -101,8 +116,8 @@ var buildSiteCmd = &cobra.Command{
 
 		opts := site.SiteOptions{
 			PagesURL:      sitePagesURL,
-			RecordsDir:    siteRecordsDir,
-			SiteDir:       siteDir,
+			RecordsDir:    recordsDir,
+			SiteDir:       siteDirVal,
 			Reconcile:     siteReconcile,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
@@ -125,12 +140,12 @@ var buildSiteCmd = &cobra.Command{
 			return NewCmdError(1, err)
 		}
 		if err := ciout.Emit(siteOutputFile, []ciout.KV{
-			{Key: "site-dir", Value: siteDir},
-			{Key: "records-dir", Value: siteRecordsDir},
+			{Key: "site-dir", Value: siteDirVal},
+			{Key: "records-dir", Value: recordsDir},
 		}); err != nil {
 			return NewCmdError(1, err)
 		}
-		logger.SuccessBanner("Site Build Completed", fmt.Sprintf("Successfully built static index site at: %s", siteDir))
+		logger.SuccessBanner("Site Build Completed", fmt.Sprintf("Successfully built static index site at: %s", siteDirVal))
 		return nil
 	},
 }

@@ -13,12 +13,13 @@ import (
 )
 
 var (
-	cfgFile string
-	verbose bool
-	jsonLog bool
-	plain   bool
-	noColor bool
-	logFile string
+	cfgFile   string
+	verbose   bool
+	jsonLog   bool
+	plain     bool
+	noColor   bool
+	logFile   string
+	outputDir string
 )
 
 // RootCmd represents the base command when called without any subcommands.
@@ -110,6 +111,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&plain, "plain", false, "disable colors and fancy formatting (plain text output)")
 	RootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colors and fancy formatting (alias for --plain)")
 	RootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "write logs to the specified file (retains logs on success)")
+	RootCmd.PersistentFlags().StringVar(&outputDir, "output-dir", "", "base directory for all output assets")
 
 	// Bind flags to viper
 	viper.BindPFlag("config", RootCmd.PersistentFlags().Lookup("config"))
@@ -118,6 +120,7 @@ func init() {
 	viper.BindPFlag("plain", RootCmd.PersistentFlags().Lookup("plain"))
 	viper.BindPFlag("no-color", RootCmd.PersistentFlags().Lookup("no-color"))
 	viper.BindPFlag("log-file", RootCmd.PersistentFlags().Lookup("log-file"))
+	viper.BindPFlag("output_dir", RootCmd.PersistentFlags().Lookup("output-dir"))
 }
 
 func initConfig() {
@@ -158,6 +161,9 @@ func LoadConfig() (*config.Config, error) {
 			}
 		}
 		if !found {
+			if vOutputDir := viper.GetString("output_dir"); vOutputDir != "" {
+				cfg.OutputDir = vOutputDir
+			}
 			cfg.Normalize()
 			return &cfg, nil
 		}
@@ -179,6 +185,10 @@ func LoadConfig() (*config.Config, error) {
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)
+	}
+
+	if vOutputDir := viper.GetString("output_dir"); vOutputDir != "" {
+		cfg.OutputDir = vOutputDir
 	}
 
 	// Normalize global defaults and app overrides

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -39,6 +40,13 @@ var importCmd = &cobra.Command{
 
 		if err := config.ValidateArch(importArch); err != nil {
 			return NewCmdError(2, err)
+		}
+
+		repoPath := importRepoPath
+		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+			repoPath = filepath.Join(cfg.OutputDir, "repo")
+		} else if repoPath == "" {
+			repoPath = "repo"
 		}
 
 		type importJob struct {
@@ -135,17 +143,13 @@ var importCmd = &cobra.Command{
 				BundleURL:    job.bundleURL,
 				BundleSHA256: job.bundleSHA256,
 				BundlePath:   job.bundlePath,
-				RepoPath:     importRepoPath,
+				RepoPath:     repoPath,
 			}
 
 			if err := importer.Import(opts); err != nil {
 				return NewCmdError(1, err)
 			}
 
-			repoPath := importRepoPath
-			if repoPath == "" {
-				repoPath = "repo"
-			}
 			info, err := repoinfo.Resolve(repoPath)
 			if err != nil {
 				return NewCmdErrorf(1, "imported repo has no resolvable ref: %w", err)

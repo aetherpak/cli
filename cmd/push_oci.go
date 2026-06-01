@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -47,6 +48,20 @@ var pushOCICmd = &cobra.Command{
 		}
 		if err := config.ValidateArch(pushArch); err != nil {
 			return NewCmdError(2, err)
+		}
+
+		repoPath := pushRepoPath
+		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+			repoPath = filepath.Join(cfg.OutputDir, "repo")
+		} else if repoPath == "" {
+			repoPath = "repo"
+		}
+
+		recordsDir := pushRecordsDir
+		if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
+			recordsDir = filepath.Join(cfg.OutputDir, "records")
+		} else if recordsDir == "" {
+			recordsDir = "records"
 		}
 
 		var appsToPush []*config.App
@@ -137,8 +152,8 @@ var pushOCICmd = &cobra.Command{
 				Branch:        appBranch,
 				Registry:      pushRegistry,
 				OCIRepository: appOCIRepository,
-				RepoPath:      pushRepoPath,
-				RecordsDir:    pushRecordsDir,
+				RepoPath:      repoPath,
+				RecordsDir:    recordsDir,
 				GPGKeys:       keys,
 				GPGPassphrase: passphrase,
 				Insecure:      pushInsecure,

@@ -249,36 +249,79 @@ func TestBuildSiteConfigError(t *testing.T) {
 
 func TestPublishMutualExclusion(t *testing.T) {
 	viper.Reset()
-	_ = publishCmd.Flags().Set("app-id", "org.example.App")
-	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
-	_ = publishCmd.Flags().Set("bundle", "")
-	defer func() {
-		pubAppID = ""
+
+	resetFlags := func() {
 		pubManifest = ""
 		pubBundle = ""
-		publishCmd.Flags().Lookup("app-id").Changed = false
+		pubBundleURL = ""
+		pubBundlePath = ""
+		pubAppID = ""
 		publishCmd.Flags().Lookup("manifest").Changed = false
 		publishCmd.Flags().Lookup("bundle").Changed = false
+		publishCmd.Flags().Lookup("bundle-url").Changed = false
+		publishCmd.Flags().Lookup("bundle-path").Changed = false
+		publishCmd.Flags().Lookup("app-id").Changed = false
+	}
+	defer resetFlags()
+
+	// Test manifest and bundle
+	resetFlags()
+	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
+	_ = publishCmd.Flags().Set("bundle", "http://example.com/app.flatpak")
+	err := publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error with multiple source options, got nil")
+	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+
+	// Test manifest and bundle-url
+	resetFlags()
+	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
+	_ = publishCmd.Flags().Set("bundle-url", "http://example.com/app.flatpak")
+	err = publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error with multiple source options, got nil")
+	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+
+	// Test bundle and bundle-path
+	resetFlags()
+	_ = publishCmd.Flags().Set("bundle", "http://example.com/app.flatpak")
+	_ = publishCmd.Flags().Set("bundle-path", "/some/path.flatpak")
+	err = publishCmd.RunE(publishCmd, nil)
+	if err == nil {
+		t.Error("expected error with multiple source options, got nil")
+	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
+		t.Errorf("expected mutual exclusion error, got: %v", err)
+	}
+}
+
+func TestPublishOneOffBundleWithAppID(t *testing.T) {
+	viper.Reset()
+
+	_ = publishCmd.Flags().Set("app-id", "com.stacklok.ToolHive")
+	_ = publishCmd.Flags().Set("bundle-url", "https://example.com/toolhive.flatpak")
+	_ = publishCmd.Flags().Set("registry", "")
+	_ = publishCmd.Flags().Set("oci-repository", "")
+
+	defer func() {
+		pubAppID = ""
+		pubBundleURL = ""
+		pubRegistry = ""
+		pubOCIRepo = ""
+		publishCmd.Flags().Lookup("app-id").Changed = false
+		publishCmd.Flags().Lookup("bundle-url").Changed = false
+		publishCmd.Flags().Lookup("registry").Changed = false
+		publishCmd.Flags().Lookup("oci-repository").Changed = false
 	}()
 
 	err := publishCmd.RunE(publishCmd, nil)
 	if err == nil {
-		t.Error("expected error with multiple source options, got nil")
-	} else if !strings.Contains(err.Error(), "only one of --app-id, --manifest, or --bundle may be specified") {
-		t.Errorf("expected mutual exclusion error, got: %v", err)
-	}
-
-	// Test manifest and bundle
-	_ = publishCmd.Flags().Set("app-id", "")
-	_ = publishCmd.Flags().Set("manifest", "some_manifest.json")
-	_ = publishCmd.Flags().Set("bundle", "http://example.com/app.flatpak")
-	publishCmd.Flags().Lookup("app-id").Changed = false
-
-	err = publishCmd.RunE(publishCmd, nil)
-	if err == nil {
-		t.Error("expected error with multiple source options, got nil")
-	} else if !strings.Contains(err.Error(), "only one of --app-id, --manifest, or --bundle may be specified") {
-		t.Errorf("expected mutual exclusion error, got: %v", err)
+		t.Error("expected registry/oci-repo missing error, got nil")
+	} else if !strings.Contains(err.Error(), "OCI registry and repository must be specified via flags or configuration") {
+		t.Errorf("expected registry missing error, got: %v", err)
 	}
 }
 

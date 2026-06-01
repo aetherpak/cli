@@ -183,8 +183,8 @@ func BuildSite(opts SiteOptions) error {
 		mergeRecord(&index, rec, labels)
 
 		// Copy cell's sigs directory into _site/sigs
-		cellDir, err := rec.CellDir(opts.RecordsDir)
-		if err == nil {
+		cellDir := recWLabels.Path
+		if cellDir != "" {
 			cellSigs := filepath.Join(cellDir, "sigs")
 			if info, err := os.Stat(cellSigs); err == nil && info.IsDir() {
 				siteSigs := filepath.Join(opts.SiteDir, sigDirName)

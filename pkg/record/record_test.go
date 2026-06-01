@@ -180,3 +180,56 @@ func TestIterRecordsSkipsInvalid(t *testing.T) {
 		t.Errorf("expected only valid record, got %s", records[0].Record.AppID)
 	}
 }
+
+func TestIterRecordsRecursive(t *testing.T) {
+	tempDir := t.TempDir()
+
+	cellADir := filepath.Join(tempDir, "subdirA", "org.example.AppA-x86_64")
+	cellBDir := filepath.Join(tempDir, "subdirB", "nested", "org.example.AppB-aarch64")
+
+	if err := os.MkdirAll(cellADir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cellBDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	recA := `{"app-id": "org.example.AppA", "arch": "x86_64"}`
+	recB := `{"app-id": "org.example.AppB", "arch": "aarch64"}`
+
+	if err := os.WriteFile(filepath.Join(cellADir, "record.json"), []byte(recA), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cellADir, "labels.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cellBDir, "record.json"), []byte(recB), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cellBDir, "labels.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := IterRecords(tempDir)
+	if err != nil {
+		t.Fatalf("failed to iter records: %v", err)
+	}
+
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+
+	if records[0].Record.AppID != "org.example.AppA" {
+		t.Errorf("expected first record to be AppA, got %s", records[0].Record.AppID)
+	}
+	if records[0].Path != cellADir {
+		t.Errorf("expected path to be %s, got %s", cellADir, records[0].Path)
+	}
+
+	if records[1].Record.AppID != "org.example.AppB" {
+		t.Errorf("expected second record to be AppB, got %s", records[1].Record.AppID)
+	}
+	if records[1].Path != cellBDir {
+		t.Errorf("expected path to be %s, got %s", cellBDir, records[1].Path)
+	}
+}

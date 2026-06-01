@@ -25,6 +25,7 @@ type Record struct {
 type RecordWithLabels struct {
 	Record Record
 	Labels map[string]string
+	Path   string
 }
 
 // Validate asserts that the Record has the required fields and is safe for path generation.
@@ -116,29 +117,31 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 		return nil, nil
 	}
 
-	entries, err := os.ReadDir(root)
+	var cellDirs []string
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			recPath := filepath.Join(path, "record.json")
+			lblPath := filepath.Join(path, "labels.json")
+			if fileExists(recPath) && fileExists(lblPath) {
+				cellDirs = append(cellDirs, path)
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read records directory: %w", err)
+		return nil, fmt.Errorf("failed to traverse records directory: %w", err)
 	}
 
 	// We want to sort directory names to keep traversal deterministic
-	var subdirs []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			subdirs = append(subdirs, entry.Name())
-		}
-	}
-	sort.Strings(subdirs)
+	sort.Strings(cellDirs)
 
 	var results []RecordWithLabels
-	for _, subdir := range subdirs {
-		cellPath := filepath.Join(root, subdir)
+	for _, cellPath := range cellDirs {
 		recPath := filepath.Join(cellPath, "record.json")
 		lblPath := filepath.Join(cellPath, "labels.json")
-
-		if !fileExists(recPath) || !fileExists(lblPath) {
-			continue
-		}
 
 		recBytes, err := os.ReadFile(recPath)
 		if err != nil {
@@ -165,6 +168,7 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 		results = append(results, RecordWithLabels{
 			Record: r,
 			Labels: labels,
+			Path:   cellPath,
 		})
 	}
 

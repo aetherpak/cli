@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/aetherpak/cli/compare/v0.9.0...v0.10.0) (2026-06-01)
+
+
+### Features
+
+* **record:** support recursive cell record search ([d0f7b68](https://github.com/aetherpak/cli/commit/d0f7b68adf5a45e985412d7e3226310bc38b5486))
+
 ## [0.9.0](https://github.com/aetherpak/cli/compare/v0.8.0...v0.9.0) (2026-06-01)
 
 

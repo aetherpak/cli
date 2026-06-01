@@ -23,6 +23,7 @@ var (
 type Config struct {
 	Registry        string            `yaml:"registry" json:"registry" mapstructure:"registry"`
 	PagesURL        string            `yaml:"pages_url" json:"pages_url" mapstructure:"pages_url"`
+	OCIRepository   string            `yaml:"oci_repository" json:"oci_repository" mapstructure:"oci_repository"`
 	RemoteName      string            `yaml:"remote_name" json:"remote_name" mapstructure:"remote_name"`
 	NoSign          bool              `yaml:"no_sign" json:"no_sign" mapstructure:"no_sign"`
 	RepoTitle       string            `yaml:"repo_title" json:"repo_title" mapstructure:"repo_title"`
@@ -86,6 +87,10 @@ type Bundle struct {
 
 // Normalize sets default values for config and app fields.
 func (cfg *Config) Normalize() {
+	if cfg.OCIRepository == "" && cfg.RemoteName != "" {
+		cfg.OCIRepository = cfg.RemoteName
+	}
+
 	if cfg.Defaults == nil {
 		cfg.Defaults = &DefaultsConfig{}
 	}
@@ -227,6 +232,18 @@ func (app *App) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateArch returns an error if the architecture is not supported.
+// An empty string is considered valid.
+func ValidateArch(arch string) error {
+	if arch == "" {
+		return nil
+	}
+	if !supportedArches[arch] {
+		return fmt.Errorf("unsupported architecture %q (must be 'x86_64' or 'aarch64')", arch)
+	}
 	return nil
 }
 

@@ -38,188 +38,208 @@ var publishCmd = &cobra.Command{
 	Short: "Builds/imports and pushes a single app to OCI",
 	Long:  `Porcelain command that automatically executes the local build/import process and pushes the resulting application directly to the OCI registry.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		hasConfig := true
 		cfg, err := LoadConfig()
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
+		}
+		if viper.ConfigFileUsed() == "" {
+			hasConfig = false
+		}
+
+		if err := config.ValidateArch(pubArch); err != nil {
+			return NewCmdError(2, err)
 		}
 
 		if pubRegistry == "" {
 			pubRegistry = cfg.Registry
 		}
 		if pubOCIRepo == "" {
-			pubOCIRepo = cfg.RemoteName
+			pubOCIRepo = cfg.OCIRepository
 		}
 
-		// App resolution
-		if pubAppID == "" && len(cfg.Apps) > 0 {
-			pubAppID = cfg.Apps[0].ID
-		}
-
-		if pubAppID == "" {
-			return NewCmdError(2, fmt.Errorf("app is required"))
-		}
-
-		var targetApp *config.App
-		for i := range cfg.Apps {
-			if cfg.Apps[i].ID == pubAppID {
-				targetApp = &cfg.Apps[i]
-				break
-			}
-		}
-
-		if targetApp == nil {
-			return NewCmdErrorf(1, "app %q not found in config", pubAppID)
-		}
-
-		if pubBranch == "" {
-			pubBranch = targetApp.Branch
-		}
-		if pubBranch == "" {
-			if ch := resolveChannelFromEnv(); ch != "" {
-				pubBranch = ch
-			} else {
-				pubBranch = "stable"
-			}
-		}
-		if pubArch == "" {
-			pubArch = "x86_64"
-		}
-
-		// Phase 1: Local compilation or import
-		if targetApp.Manifest != "" {
-			// Resolve build option defaults from configuration
-			var appCCacheDir = ".ccache"
-			var appStateDir = ".state"
-			var appRunLinter = false
-			var appLinterStrict = true
-			var appLinterIgnoreRules []string
-
-			if targetApp != nil {
-				appCCacheDir = targetApp.CCacheDir
-				appStateDir = targetApp.StateDir
-				appRunLinter = targetApp.RunLinter
-				if targetApp.Linter != nil {
-					if targetApp.Linter.Strict != nil {
-						appLinterStrict = *targetApp.Linter.Strict
-					}
-					appLinterIgnoreRules = targetApp.Linter.IgnoreRules
-				}
-				if targetApp.CCache != nil && !*targetApp.CCache {
-					appCCacheDir = ""
+		var appsToPublish []*config.App
+		if pubAppID != "" {
+			var targetApp *config.App
+			for i := range cfg.Apps {
+				if cfg.Apps[i].ID == pubAppID {
+					targetApp = &cfg.Apps[i]
+					break
 				}
 			}
-
-			// Apply CLI flag overrides if explicitly passed
-			if cmd.Flags().Changed("ccache-dir") {
-				appCCacheDir = pubCCacheDir
+			if targetApp == nil {
+				return NewCmdErrorf(1, "app %q not found in config", pubAppID)
 			}
-			if cmd.Flags().Changed("state-dir") {
-				appStateDir = pubStateDir
-			}
-			if cmd.Flags().Changed("run-linter") {
-				appRunLinter = pubRunLinter
-			}
-
-			opts := builder.BuildOptions{
-				AppID:             pubAppID,
-				Manifest:          targetApp.Manifest,
-				Arch:              pubArch,
-				Branch:            pubBranch,
-				CCacheDir:         appCCacheDir,
-				StateDir:          appStateDir,
-				RunLinter:         appRunLinter,
-				LinterStrict:      appLinterStrict,
-				LinterIgnoreRules: appLinterIgnoreRules,
-				BuilderArgs:       targetApp.BuilderArgs,
-			}
-			logger.Info("Step 1: Building manifest application...")
-			if err := builder.Build(opts); err != nil {
-				return NewCmdError(1, err)
-			}
+			appsToPublish = append(appsToPublish, targetApp)
 		} else {
-			bundle, exists := targetApp.Bundles[pubArch]
-			if !exists {
-				return NewCmdErrorf(1, "no bundle configured for architecture %q", pubArch)
+			if !hasConfig {
+				return NewCmdError(2, fmt.Errorf("no application ID provided and no configuration file found"))
 			}
-
-			opts := importer.ImportOptions{
-				AppID:        pubAppID,
-				Arch:         pubArch,
-				Branch:       pubBranch,
-				BundleURL:    bundle.URL,
-				BundleSHA256: bundle.SHA256,
+			if len(cfg.Apps) == 0 {
+				return NewCmdError(2, fmt.Errorf("no applications found in configuration file"))
 			}
-			logger.Info("Step 1: Importing bundle package...")
-			if err := importer.Import(opts); err != nil {
-				return NewCmdError(1, err)
+			for i := range cfg.Apps {
+				appsToPublish = append(appsToPublish, &cfg.Apps[i])
 			}
 		}
 
-		// Phase 2: OCI registry push
-		// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-		var keys []string
-		for _, keyVal := range pubGPGKeys {
-			if keyVal != "" {
-				if _, err := os.Stat(keyVal); err == nil {
-					data, err := os.ReadFile(keyVal)
-					if err == nil {
-						keyVal = string(data)
+		for _, targetApp := range appsToPublish {
+			appBranch := pubBranch
+			if appBranch == "" {
+				appBranch = targetApp.Branch
+			}
+			if appBranch == "" {
+				if ch := resolveChannelFromEnv(); ch != "" {
+					appBranch = ch
+				} else {
+					appBranch = "stable"
+				}
+			}
+
+			appRegistry := pubRegistry
+			if appRegistry == "" {
+				appRegistry = cfg.Registry
+			}
+			appOCIRepo := pubOCIRepo
+			if appOCIRepo == "" {
+				appOCIRepo = cfg.OCIRepository
+			}
+
+			// Phase 1: Local compilation or import
+			if targetApp.Manifest != "" {
+				// Resolve build option defaults from configuration
+				var appCCacheDir = ".ccache"
+				var appStateDir = ".state"
+				var appRunLinter = false
+				var appLinterStrict = true
+				var appLinterIgnoreRules []string
+
+				if targetApp != nil {
+					appCCacheDir = targetApp.CCacheDir
+					appStateDir = targetApp.StateDir
+					appRunLinter = targetApp.RunLinter
+					if targetApp.Linter != nil {
+						if targetApp.Linter.Strict != nil {
+							appLinterStrict = *targetApp.Linter.Strict
+						}
+						appLinterIgnoreRules = targetApp.Linter.IgnoreRules
+					}
+					if targetApp.CCache != nil && !*targetApp.CCache {
+						appCCacheDir = ""
 					}
 				}
-				keys = append(keys, keyVal)
-			}
-		}
 
-		var passphrase []byte
-		if pubGPGPassphrase != "" {
-			passphrase = []byte(pubGPGPassphrase)
-		}
-		defer func() {
+				// Apply CLI flag overrides if explicitly passed
+				if cmd.Flags().Changed("ccache-dir") {
+					appCCacheDir = pubCCacheDir
+				}
+				if cmd.Flags().Changed("state-dir") {
+					appStateDir = pubStateDir
+				}
+				if cmd.Flags().Changed("run-linter") {
+					appRunLinter = pubRunLinter
+				}
+
+				opts := builder.BuildOptions{
+					AppID:             targetApp.ID,
+					Manifest:          targetApp.Manifest,
+					Arch:              pubArch,
+					Branch:            appBranch,
+					CCacheDir:         appCCacheDir,
+					StateDir:          appStateDir,
+					RunLinter:         appRunLinter,
+					LinterStrict:      appLinterStrict,
+					LinterIgnoreRules: appLinterIgnoreRules,
+					BuilderArgs:       targetApp.BuilderArgs,
+				}
+				logger.Info("Step 1: Building manifest application %s...", targetApp.ID)
+				if err := builder.Build(opts); err != nil {
+					return NewCmdError(1, err)
+				}
+			} else {
+				bundle, exists := targetApp.Bundles[pubArch]
+				if !exists {
+					return NewCmdErrorf(1, "no bundle configured for architecture %q for app %s", pubArch, targetApp.ID)
+				}
+
+				opts := importer.ImportOptions{
+					AppID:        targetApp.ID,
+					Arch:         pubArch,
+					Branch:       appBranch,
+					BundleURL:    bundle.URL,
+					BundleSHA256: bundle.SHA256,
+				}
+				logger.Info("Step 1: Importing bundle package %s...", targetApp.ID)
+				if err := importer.Import(opts); err != nil {
+					return NewCmdError(1, err)
+				}
+			}
+
+			// Phase 2: OCI registry push
+			// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
+			var keys []string
+			for _, keyVal := range pubGPGKeys {
+				if keyVal != "" {
+					if _, err := os.Stat(keyVal); err == nil {
+						data, err := os.ReadFile(keyVal)
+						if err == nil {
+							keyVal = string(data)
+						}
+					}
+					keys = append(keys, keyVal)
+				}
+			}
+
+			var passphrase []byte
+			if pubGPGPassphrase != "" {
+				passphrase = []byte(pubGPGPassphrase)
+			}
+
+			noSign := pubNoSign
+			allowUnsigned := pubAllowUnsigned
+
+			logger.Info("Step 2: Pushing %s to registry...", targetApp.ID)
+			pushOpts := oci.PushOptions{
+				AppID:         targetApp.ID,
+				Arch:          pubArch,
+				Branch:        appBranch,
+				Registry:      appRegistry,
+				OCIRepository: appOCIRepo,
+				RepoPath:      pubRepoPath,
+				RecordsDir:    pubRecordsDir,
+				GPGKeys:       keys,
+				GPGPassphrase: passphrase,
+				Insecure:      pubInsecure,
+				OCIUsername:   viper.GetString("oci_username"),
+				OCIPassword:   viper.GetString("oci_password"),
+				NoSign:        noSign,
+				AllowUnsigned: allowUnsigned,
+			}
+
+			res, err := oci.Push(pushOpts)
 			if len(passphrase) > 0 {
 				for i := range passphrase {
 					passphrase[i] = 0
 				}
 			}
-		}()
+			if err != nil {
+				return NewCmdError(1, err)
+			}
 
-		noSign := pubNoSign
-		allowUnsigned := pubAllowUnsigned
+			if err := ciout.Emit(pubOutputFile, []ciout.KV{
+				{Key: "app-id", Value: targetApp.ID},
+				{Key: "arch", Value: pubArch},
+				{Key: "branch", Value: appBranch},
+				{Key: "cell-dir", Value: res.CellDir},
+				{Key: "digest", Value: res.Digest},
+				{Key: "tag", Value: res.Tag},
+			}); err != nil {
+				return NewCmdError(1, err)
+			}
 
-		logger.Info("Step 2: Pushing to registry...")
-		pushOpts := oci.PushOptions{
-			AppID:         pubAppID,
-			Arch:          pubArch,
-			Branch:        pubBranch,
-			Registry:      pubRegistry,
-			OCIRepository: pubOCIRepo,
-			RepoPath:      pubRepoPath,
-			RecordsDir:    pubRecordsDir,
-			GPGKeys:       keys,
-			GPGPassphrase: passphrase,
-			Insecure:      pubInsecure,
-			OCIUsername:   viper.GetString("oci_username"),
-			OCIPassword:   viper.GetString("oci_password"),
-			NoSign:        noSign,
-			AllowUnsigned: allowUnsigned,
+			logger.SuccessBanner("Publish Completed", fmt.Sprintf("Successfully built and published %s (%s) to %s/%s.", targetApp.ID, pubArch, appRegistry, appOCIRepo))
 		}
 
-		res, err := oci.Push(pushOpts)
-		if err != nil {
-			return NewCmdError(1, err)
-		}
-
-		if err := ciout.Emit(pubOutputFile, []ciout.KV{
-			{Key: "app-id", Value: pubAppID},
-			{Key: "arch", Value: pubArch},
-			{Key: "branch", Value: pubBranch},
-			{Key: "cell-dir", Value: res.CellDir},
-			{Key: "digest", Value: res.Digest},
-			{Key: "tag", Value: res.Tag},
-		}); err != nil {
-			return NewCmdError(1, err)
-		}
-
-		logger.SuccessBanner("Publish Completed", fmt.Sprintf("Successfully built and published %s (%s) to %s/%s.", pubAppID, pubArch, pubRegistry, pubOCIRepo))
 		return nil
 	},
 }

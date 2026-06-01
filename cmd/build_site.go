@@ -37,7 +37,7 @@ var buildSiteCmd = &cobra.Command{
 		cfg, err := LoadConfig()
 		if err == nil {
 			if siteRemoteName == "" {
-				siteRemoteName = cfg.RemoteName
+				siteRemoteName = cfg.OCIRepository
 			}
 			if siteRuntimeRepo == "" {
 				siteRuntimeRepo = cfg.RuntimeRepo

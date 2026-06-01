@@ -35,19 +35,8 @@ are available, parses the repository configuration, and checks the status of GPG
 			}
 		}
 
-		// Resolve keys from command-line flags or environment fallback
+		// Resolve keys from command-line flags (keys will already contain GPG keys from flag or env var)
 		keys := statusGPGKeys
-		if len(keys) == 0 {
-			envKey := os.Getenv("AETHERPAK_GPG_KEY")
-			if envKey != "" {
-				keys = append(keys, envKey)
-			}
-		}
-
-		passphraseStr := statusGPGPassphrase
-		if passphraseStr == "" {
-			passphraseStr = os.Getenv("AETHERPAK_GPG_PASSPHRASE")
-		}
 
 		// Run diagnostics
 		var statusCfg *config.Config
@@ -61,7 +50,7 @@ are available, parses the repository configuration, and checks the status of GPG
 			err,
 			resolvedPath,
 			keys,
-			[]byte(passphraseStr),
+			[]byte(statusGPGPassphrase),
 		)
 
 		if statusJSON {

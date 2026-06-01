@@ -276,9 +276,16 @@
             </div>
 
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">publish</h3>
-            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Chains build/import and OCI push for a single target application:</p>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem;">Chains build/import and OCI push for target application(s):</p>
             <div class="code-block">
-              <pre><code>aetherpak publish --app-id org.example.App --registry ghcr.io</code></pre>
+              <pre><code># Config-driven publish
+aetherpak publish --app-id org.example.App --registry ghcr.io
+
+# One-off publish from local manifest
+aetherpak publish --manifest apps/manifest.json --arch x86_64
+
+# One-off publish from Flatpak bundle (URL or local path)
+aetherpak publish --bundle https://example.com/app.flatpak</code></pre>
               <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
             </div>
 
@@ -326,6 +333,7 @@
             <p style="margin-bottom: 1rem;">Persistent configuration flags applicable to all executions:</p>
             <div class="opts">
               <div class="opt"><code>--config &lt;path&gt;</code><span>Custom path to configuration file (default is <code>aetherpak.yaml</code> or <code>aetherpak.yml</code>).</span></div>
+              <div class="opt"><code>--output-dir &lt;path&gt;</code><span>Base directory for all output assets unless overridden.</span></div>
               <div class="opt"><code>--no-sign</code><span>Disables GPG signing of repositories and OCI images entirely.</span></div>
               <div class="opt"><code>--allow-unsigned</code><span>Allows publishing and building unsigned repositories/images if GPG keys are missing.</span></div>
               <div class="opt"><code>-v, --verbose</code><span>Enables granular log logging.</span></div>
@@ -342,8 +350,10 @@
         <p>AetherPak CLI loads config instructions dynamically. Below is an example of an <code>aetherpak.yaml</code> configuration mapping multiple source structures:</p>
         <div class="code-block" style="margin-top: 1rem;">
           <pre><code>registry: ghcr.io
+oci_repository: my-org/my-app
 pages_url: https://flatpak.example.com
 remote_name: example-repo
+output_dir: .aetherpak-output
 no_sign: false
 repo_title: "My Custom Flatpak Repository"
 

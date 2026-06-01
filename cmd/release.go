@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -57,6 +58,27 @@ var releaseCmd = &cobra.Command{
 		}
 
 		logger.Info("Phase 1: Planning release changes...")
+		repoPath := relRepoPath
+		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+			repoPath = filepath.Join(cfg.OutputDir, "repo")
+		} else if repoPath == "" {
+			repoPath = "repo"
+		}
+
+		recordsDir := relRecordsDir
+		if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
+			recordsDir = filepath.Join(cfg.OutputDir, "records")
+		} else if recordsDir == "" {
+			recordsDir = "records"
+		}
+
+		siteDir := relSiteDir
+		if !cmd.Flags().Changed("site-dir") && cfg.OutputDir != "" {
+			siteDir = filepath.Join(cfg.OutputDir, "_site")
+		} else if siteDir == "" {
+			siteDir = "_site"
+		}
+
 		configPath := viper.ConfigFileUsed()
 		if configPath == "" {
 			if vCfgFile := viper.GetString("config"); vCfgFile != "" {
@@ -197,6 +219,7 @@ var releaseCmd = &cobra.Command{
 								Branch:            row.Branch,
 								CCacheDir:         appCCacheDir,
 								StateDir:          appStateDir,
+								RepoPath:          repoPath,
 								RunLinter:         appRunLinter,
 								LinterStrict:      appLinterStrict,
 								LinterIgnoreRules: appLinterIgnoreRules,
@@ -212,6 +235,7 @@ var releaseCmd = &cobra.Command{
 								Branch:       row.Branch,
 								BundleURL:    row.BundleURL,
 								BundleSHA256: row.BundleSHA256,
+								RepoPath:     repoPath,
 							}
 							if err := importer.Import(iOpts); err != nil {
 								return fmt.Errorf("import failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -225,8 +249,8 @@ var releaseCmd = &cobra.Command{
 							Branch:        row.Branch,
 							Registry:      cfg.Registry,
 							OCIRepository: cfg.OCIRepository,
-							RepoPath:      relRepoPath,
-							RecordsDir:    relRecordsDir,
+							RepoPath:      repoPath,
+							RecordsDir:    recordsDir,
 							GPGKeys:       keys,
 							GPGPassphrase: passphrase,
 							Insecure:      relInsecure,
@@ -287,8 +311,8 @@ var releaseCmd = &cobra.Command{
 
 		sOpts := site.SiteOptions{
 			PagesURL:      pagesURL,
-			RecordsDir:    relRecordsDir,
-			SiteDir:       relSiteDir,
+			RecordsDir:    recordsDir,
+			SiteDir:       siteDir,
 			Reconcile:     relReconcile,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
@@ -312,8 +336,8 @@ var releaseCmd = &cobra.Command{
 		}
 
 		if err := ciout.Emit(relOutputFile, []ciout.KV{
-			{Key: "site-dir", Value: relSiteDir},
-			{Key: "records-dir", Value: relRecordsDir},
+			{Key: "site-dir", Value: siteDir},
+			{Key: "records-dir", Value: recordsDir},
 		}); err != nil {
 			return NewCmdErrorf(1, "Output emission failed: %w", err)
 		}

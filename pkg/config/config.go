@@ -29,6 +29,7 @@ type Config struct {
 	RepoTitle       string            `yaml:"repo_title" json:"repo_title" mapstructure:"repo_title"`
 	RepoHomepage    string            `yaml:"repo_homepage" json:"repo_homepage" mapstructure:"repo_homepage"`
 	RuntimeRepo     string            `yaml:"runtime_repo" json:"runtime_repo" mapstructure:"runtime_repo"`
+	OutputDir       string            `yaml:"output_dir" json:"output_dir" mapstructure:"output_dir"`
 	Apps            []App             `yaml:"apps" json:"apps" mapstructure:"apps"`
 	Linter          *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
 	Branding        *BrandingConfig   `yaml:"branding,omitempty" json:"branding,omitempty" mapstructure:"branding"`
@@ -137,7 +138,11 @@ func (cfg *Config) Normalize() {
 			if cfg.Defaults.CCacheDir != "" {
 				app.CCacheDir = cfg.Defaults.CCacheDir
 			} else {
-				app.CCacheDir = ".ccache"
+				if cfg.OutputDir != "" {
+					app.CCacheDir = filepath.Join(cfg.OutputDir, ".ccache")
+				} else {
+					app.CCacheDir = ".ccache"
+				}
 			}
 		}
 
@@ -145,7 +150,11 @@ func (cfg *Config) Normalize() {
 			if cfg.Defaults.StateDir != "" {
 				app.StateDir = cfg.Defaults.StateDir
 			} else {
-				app.StateDir = ".state"
+				if cfg.OutputDir != "" {
+					app.StateDir = filepath.Join(cfg.OutputDir, ".state")
+				} else {
+					app.StateDir = ".state"
+				}
 			}
 		}
 

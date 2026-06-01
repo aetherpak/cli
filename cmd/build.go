@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -41,6 +42,13 @@ var buildCmd = &cobra.Command{
 
 		if err := config.ValidateArch(buildArch); err != nil {
 			return NewCmdError(2, err)
+		}
+
+		repoPath := buildRepoPath
+		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+			repoPath = filepath.Join(cfg.OutputDir, "repo")
+		} else if repoPath == "" {
+			repoPath = "repo"
 		}
 
 		manifestSet := cmd.Flags().Changed("manifest")
@@ -192,7 +200,7 @@ var buildCmd = &cobra.Command{
 				Branch:            jobBranch,
 				CCacheDir:         appCCacheDir,
 				StateDir:          appStateDir,
-				RepoPath:          buildRepoPath,
+				RepoPath:          repoPath,
 				RunLinter:         appRunLinter,
 				LinterStrict:      appLinterStrict,
 				LinterIgnoreRules: appLinterIgnoreRules,
@@ -203,10 +211,6 @@ var buildCmd = &cobra.Command{
 				return NewCmdError(1, err)
 			}
 
-			repoPath := buildRepoPath
-			if repoPath == "" {
-				repoPath = "repo"
-			}
 			// Prefer repo's ref for resolved coordinates; fallback to requested values.
 			resolvedAppID, resolvedBranch, resolvedArch := job.appID, jobBranch, buildArch
 			if info, err := repoinfo.Resolve(repoPath); err == nil {

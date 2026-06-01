@@ -3,3 +3,4 @@ dist/
 .ccache/
 .state/
 *.exe
+.idea/

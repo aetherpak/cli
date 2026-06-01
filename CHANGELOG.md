@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/aetherpak/cli/compare/v0.11.0...v0.11.1) (2026-06-01)
+
+
+### Bug Fixes
+
+* **cmd:** allow publish with app-id and bundle-url env vars ([f57ba0b](https://github.com/aetherpak/cli/commit/f57ba0b0c2f718bdf9525dd82f9242a983e900d7))
+
 ## [0.11.0](https://github.com/aetherpak/cli/compare/v0.10.0...v0.11.0) (2026-06-01)
 
 

@@ -33,7 +33,9 @@ The CLI parses settings from a configuration file, looking for `aetherpak.yaml` 
 #### Global Settings
 * **`registry`** (string): The target OCI registry host (e.g., `ghcr.io` or `quay.io`).
 * **`pages_url`** (string): The public URL where the repository landing page and index files are hosted.
-* **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`).
+* **`oci_repository`** (string): The target repository path/name for OCI distribution (replaces deprecated `remote_name` for OCI registry pushes).
+* **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`). Historically used for OCI registry pushes; now acts as a fallback for `oci_repository` (deprecated for registry pushes).
+* **`output_dir`** (string): Base directory for all output assets (state, records, site, ccache, repo) unless overridden.
 * **`no_sign`** (boolean): Set to `true` to disable GPG signing of repositories and OCI images entirely (defaults to `false`).
 * **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to `"Flatpak Repository"`).
 * **`repo_homepage`** (string): URL link for repository homepage metadata.
@@ -218,6 +220,7 @@ Here is a simple example of a custom HTML template:
 ### Root Options
 
 * `--config <path>` (optional path to `aetherpak.yaml`, defaults to check for `aetherpak.yaml` locally).
+* `--output-dir <path>` (base directory for all output assets unless overridden).
 * `-v, --verbose` (enable verbose debugging statements).
 * `--json-log` (enable JSON formatted structured output logs).
 * `--plain` (disable colors, emojis, and fancy formatting; plain text output).
@@ -308,11 +311,23 @@ Options:
 The app id is read from the manifest — you are never prompted for it when it can be detected; a manifest that is found but lacks an id is reported as an error. The target config is resolved from `--config`/`AETHERPAK_CONFIG`, else an existing `aetherpak.yaml`/`aetherpak.yml` in the working directory, else a new `aetherpak.yaml` is created.
 
 #### `publish`
-Chains compilation/importer and OCI push sequentially in-memory for a single target application:
+Chains compilation/importer and OCI push sequentially in-memory for target application(s):
 ```bash
+# Config-driven publish
 aetherpak publish --app-id org.example.App --registry ghcr.io
+
+# One-off publish from local manifest
+aetherpak publish --manifest apps/manifest.json --arch x86_64
+
+# One-off publish from Flatpak bundle (URL or local path)
+aetherpak publish --bundle https://example.com/app.flatpak
 ```
 Options:
+* `--app-id <id>`: target application ID.
+* `--manifest <path>`: path to a local Flatpak manifest file (one-off publish, bypasses config).
+* `--bundle <url|path>`: Flatpak bundle URL or path to import and publish (one-off publish, bypasses config).
+* `--confirm`: skip interactive confirmation prompt when importing bundles.
+* `--arch <arch>`: target CPU architecture (defaults to host architecture).
 * `--gpg-key <path>`: Local path to GPG private key.
 * `--no-sign`: Disable GPG signing entirely.
 * `--allow-unsigned`: Allow publishing unsigned images if GPG keys are missing.

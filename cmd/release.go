@@ -36,6 +36,14 @@ var (
 	relIndexTemplate string
 	relNoSign        bool
 	relAllowUnsigned bool
+
+	relRemoteName   string
+	relRuntimeRepo  string
+	relRepoTitle    string
+	relRepoHomepage string
+	relBuilderArgs  []string
+	relReconcile    bool
+	relLandingPage  bool
 )
 
 var releaseCmd = &cobra.Command{
@@ -178,6 +186,9 @@ var releaseCmd = &cobra.Command{
 							if cmd.Flags().Changed("run-linter") {
 								appRunLinter = relRunLinter
 							}
+							if cmd.Flags().Changed("builder-arg") {
+								appBuilderArgs = relBuilderArgs
+							}
 
 							bOpts := builder.BuildOptions{
 								AppID:             row.AppID,
@@ -257,18 +268,35 @@ var releaseCmd = &cobra.Command{
 			pagesURL = cfg.PagesURL
 		}
 
+		remoteName := relRemoteName
+		if remoteName == "" {
+			remoteName = cfg.RemoteName
+		}
+		runtimeRepo := relRuntimeRepo
+		if runtimeRepo == "" {
+			runtimeRepo = cfg.RuntimeRepo
+		}
+		repoTitle := relRepoTitle
+		if repoTitle == "" {
+			repoTitle = cfg.RepoTitle
+		}
+		repoHomepage := relRepoHomepage
+		if repoHomepage == "" {
+			repoHomepage = cfg.RepoHomepage
+		}
+
 		sOpts := site.SiteOptions{
 			PagesURL:      pagesURL,
 			RecordsDir:    relRecordsDir,
 			SiteDir:       relSiteDir,
-			Reconcile:     true,
+			Reconcile:     relReconcile,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
-			RemoteName:    cfg.RemoteName,
-			RuntimeRepo:   cfg.RuntimeRepo,
-			RepoTitle:     cfg.RepoTitle,
-			RepoHomepage:  cfg.RepoHomepage,
-			LandingPage:   true,
+			RemoteName:    remoteName,
+			RuntimeRepo:   runtimeRepo,
+			RepoTitle:     repoTitle,
+			RepoHomepage:  repoHomepage,
+			LandingPage:   relLandingPage,
 			Insecure:      relInsecure,
 			LogoURL:       brandLogo,
 			FaviconURL:    brandFavicon,
@@ -315,4 +343,12 @@ func init() {
 	releaseCmd.Flags().StringVar(&relIndexTemplate, "index-template", "", "path to custom HTML repository index template")
 	releaseCmd.Flags().BoolVar(&relNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	releaseCmd.Flags().BoolVar(&relAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+
+	releaseCmd.Flags().StringVar(&relRemoteName, "remote-name", "", "flatpak remote name for generated references")
+	releaseCmd.Flags().StringVar(&relRuntimeRepo, "runtime-repo", "", "URL for the runtime repository (.flatpakrepo)")
+	releaseCmd.Flags().StringVar(&relRepoTitle, "repo-title", "", "title for the generated .flatpakrepo file")
+	releaseCmd.Flags().StringVar(&relRepoHomepage, "repo-homepage", "", "homepage URL for the generated .flatpakrepo file")
+	releaseCmd.Flags().StringSliceVar(&relBuilderArgs, "builder-arg", nil, "extra argument passed through to flatpak-builder")
+	releaseCmd.Flags().BoolVar(&relReconcile, "reconcile", true, "verify OCI image tags and prune missing index listings")
+	releaseCmd.Flags().BoolVar(&relLandingPage, "landing-page", true, "generate an index.html landing page")
 }

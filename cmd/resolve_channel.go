@@ -24,7 +24,7 @@ Rules:
   tag           → stable
   default branch → beta
   other          → the ref name itself`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		refType := rcRefType
 		if refType == "" {
 			refType = getEnvRefType()
@@ -38,8 +38,12 @@ Rules:
 			defaultBranch = getEnvDefaultBranch()
 		}
 
-		channel := resolveChannel(refType, refName, defaultBranch)
+		channel, err := resolveChannel(refType, refName, defaultBranch)
+		if err != nil {
+			return NewCmdErrorf(2, "Configuration error: %w", err)
+		}
 		fmt.Println(channel)
+		return nil
 	},
 }
 
@@ -56,7 +60,7 @@ func init() {
 //	tag            → stable
 //	default branch → beta
 //	other          → ref name
-func resolveChannel(refType, refName, defaultBranch string) string {
+func resolveChannel(refType, refName, defaultBranch string) (string, error) {
 	if defaultBranch == "" {
 		defaultBranch = "main"
 	}
@@ -70,30 +74,35 @@ func resolveChannel(refType, refName, defaultBranch string) string {
 		resolved = refName
 	}
 
-	if cfg, err := LoadConfig(); err == nil && cfg != nil && len(cfg.ChannelMappings) > 0 {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return "", err
+	}
+
+	if cfg != nil && len(cfg.ChannelMappings) > 0 {
 		if refName != "" {
 			if mapped, exists := cfg.ChannelMappings[refName]; exists {
-				return mapped
+				return mapped, nil
 			}
 			for pattern, target := range cfg.ChannelMappings {
 				if matched, _ := filepath.Match(pattern, refName); matched {
-					return target
+					return target, nil
 				}
 			}
 		}
 		if resolved != "" {
 			if mapped, exists := cfg.ChannelMappings[resolved]; exists {
-				return mapped
+				return mapped, nil
 			}
 			for pattern, target := range cfg.ChannelMappings {
 				if matched, _ := filepath.Match(pattern, resolved); matched {
-					return target
+					return target, nil
 				}
 			}
 		}
 	}
 
-	return resolved
+	return resolved, nil
 }
 
 func getEnvRefType() string {
@@ -154,5 +163,6 @@ func resolveChannelFromEnv() string {
 	if refType == "" && refName == "" {
 		return ""
 	}
-	return resolveChannel(refType, refName, defaultBranch)
+	ch, _ := resolveChannel(refType, refName, defaultBranch)
+	return ch
 }

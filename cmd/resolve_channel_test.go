@@ -56,7 +56,10 @@ func TestResolveChannel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear viper state to make resolveChannel clean of any testing files
 			viper.Reset()
-			actual := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			actual, err := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			if err != nil {
+				t.Fatalf("unexpected error resolving channel: %v", err)
+			}
 			if actual != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, actual)
 			}
@@ -121,7 +124,10 @@ channel_mappings:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			actual, err := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			if err != nil {
+				t.Fatalf("unexpected error resolving channel: %v", err)
+			}
 			if actual != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, actual)
 			}

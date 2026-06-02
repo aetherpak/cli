@@ -57,8 +57,30 @@ func Build(opts BuildOptions) error {
 		return err
 	}
 
+	// Default linter ignore rules for AetherPak (since packages are self-hosted and not on Flathub,
+	// mirroring screenshots to Flathub is not applicable).
+	defaultIgnoreRules := []string{
+		"appstream-external-screenshot-url",
+		"appstream-screenshots-not-mirrored-in-ostree",
+	}
+
+	// Merge default ignore rules with user-provided ignore rules, ensuring no duplicates.
+	ignoreRules := append([]string(nil), defaultIgnoreRules...)
+	for _, r := range opts.LinterIgnoreRules {
+		found := false
+		for _, d := range defaultIgnoreRules {
+			if r == d {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ignoreRules = append(ignoreRules, r)
+		}
+	}
+
 	var tempPath string
-	if len(opts.LinterIgnoreRules) > 0 {
+	if len(ignoreRules) > 0 {
 		tempFile, err := os.CreateTemp(logger.TempDir(), "aetherpak-linter-*.json")
 		if err != nil {
 			return fmt.Errorf("failed to create temp file for linter exceptions: %w", err)
@@ -72,10 +94,10 @@ func Build(opts BuildOptions) error {
 			appKey = "*"
 		}
 		exceptions := map[string][]string{
-			appKey: opts.LinterIgnoreRules,
+			appKey: ignoreRules,
 		}
 		if appKey != "*" {
-			exceptions["*"] = opts.LinterIgnoreRules
+			exceptions["*"] = ignoreRules
 		}
 
 		jsonData, err := json.Marshal(exceptions)

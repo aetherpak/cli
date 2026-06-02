@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/aetherpak/cli/compare/v0.11.1...v0.11.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* ignore Flathub screenshot-mirroring linter rules by default ([190482b](https://github.com/aetherpak/cli/commit/190482b3ee213e50a99bd390c01c00df3e68c1d9))
+
 ## [0.11.1](https://github.com/aetherpak/cli/compare/v0.11.0...v0.11.1) (2026-06-01)
 
 

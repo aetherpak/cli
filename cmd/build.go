@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
@@ -14,16 +15,17 @@ import (
 )
 
 var (
-	buildAppID       string
-	buildManifest    string
-	buildArch        string
-	buildBranch      string
-	buildCCacheDir   string
-	buildStateDir    string
-	buildRepoPath    string
-	buildOutputFile  string
-	buildBuilderArgs []string
-	buildRunLinter   bool
+	buildAppID                string
+	buildManifest             string
+	buildArch                 string
+	buildBranch               string
+	buildCCacheDir            string
+	buildStateDir             string
+	buildRepoPath             string
+	buildOutputFile           string
+	buildBuilderArgs          []string
+	buildRunLinter            bool
+	buildLinterExceptionsFile string
 )
 
 var buildCmd = &cobra.Command{
@@ -139,6 +141,7 @@ var buildCmd = &cobra.Command{
 			var appRunLinter = false
 			var appLinterStrict = true
 			var appLinterIgnoreRules []string
+			var appLinterExceptionsFile = ""
 			var appBuilderArgs []string
 
 			if job.appConfig != nil {
@@ -151,6 +154,7 @@ var buildCmd = &cobra.Command{
 						appLinterStrict = *job.appConfig.Linter.Strict
 					}
 					appLinterIgnoreRules = job.appConfig.Linter.IgnoreRules
+					appLinterExceptionsFile = job.appConfig.Linter.ExceptionsFile
 				}
 				if job.appConfig.CCache != nil && !*job.appConfig.CCache {
 					appCCacheDir = ""
@@ -176,6 +180,7 @@ var buildCmd = &cobra.Command{
 						appLinterStrict = *cfg.Linter.Strict
 					}
 					appLinterIgnoreRules = cfg.Linter.IgnoreRules
+					appLinterExceptionsFile = cfg.Linter.ExceptionsFile
 				}
 			}
 
@@ -193,18 +198,26 @@ var buildCmd = &cobra.Command{
 				appBuilderArgs = buildBuilderArgs
 			}
 
+			if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+				appLinterExceptionsFile = envVal
+			}
+			if cmd.Flags().Changed("linter-exceptions-file") {
+				appLinterExceptionsFile = buildLinterExceptionsFile
+			}
+
 			opts := builder.BuildOptions{
-				AppID:             job.appID,
-				Manifest:          job.manifest,
-				Arch:              buildArch,
-				Branch:            jobBranch,
-				CCacheDir:         appCCacheDir,
-				StateDir:          appStateDir,
-				RepoPath:          repoPath,
-				RunLinter:         appRunLinter,
-				LinterStrict:      appLinterStrict,
-				LinterIgnoreRules: appLinterIgnoreRules,
-				BuilderArgs:       appBuilderArgs,
+				AppID:                job.appID,
+				Manifest:             job.manifest,
+				Arch:                 buildArch,
+				Branch:               jobBranch,
+				CCacheDir:            appCCacheDir,
+				StateDir:             appStateDir,
+				RepoPath:             repoPath,
+				RunLinter:            appRunLinter,
+				LinterStrict:         appLinterStrict,
+				LinterIgnoreRules:    appLinterIgnoreRules,
+				LinterExceptionsFile: appLinterExceptionsFile,
+				BuilderArgs:          appBuilderArgs,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -246,4 +259,5 @@ func init() {
 	buildCmd.Flags().StringVar(&buildOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	buildCmd.Flags().StringArrayVar(&buildBuilderArgs, "builder-arg", nil, "extra argument passed through to flatpak-builder")
 	buildCmd.Flags().BoolVar(&buildRunLinter, "run-linter", false, "run flatpak-builder-lint before and after build")
+	buildCmd.Flags().StringVar(&buildLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 }

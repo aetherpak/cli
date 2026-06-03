@@ -23,27 +23,28 @@ import (
 )
 
 var (
-	pubAppID         string
-	pubArch          string
-	pubBranch        string
-	pubRegistry      string
-	pubOCIRepo       string
-	pubGPGKeys       []string
-	pubGPGPassphrase string
-	pubInsecure      bool
-	pubRepoPath      string
-	pubCCacheDir     string
-	pubStateDir      string
-	pubRecordsDir    string
-	pubRunLinter     bool
-	pubOutputFile    string
-	pubNoSign        bool
-	pubAllowUnsigned bool
-	pubManifest      string
-	pubBundle        string
-	pubBundleURL     string
-	pubBundlePath    string
-	pubConfirm       bool
+	pubAppID                string
+	pubArch                 string
+	pubBranch               string
+	pubRegistry             string
+	pubOCIRepo              string
+	pubGPGKeys              []string
+	pubGPGPassphrase        string
+	pubInsecure             bool
+	pubRepoPath             string
+	pubCCacheDir            string
+	pubStateDir             string
+	pubRecordsDir           string
+	pubRunLinter            bool
+	pubOutputFile           string
+	pubNoSign               bool
+	pubAllowUnsigned        bool
+	pubManifest             string
+	pubBundle               string
+	pubBundleURL            string
+	pubBundlePath           string
+	pubConfirm              bool
+	pubLinterExceptionsFile string
 )
 
 var publishCmd = &cobra.Command{
@@ -128,17 +129,26 @@ var publishCmd = &cobra.Command{
 					}
 				}
 
+				appLinterExceptionsFile := ""
+				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+					appLinterExceptionsFile = envVal
+				}
+				if cmd.Flags().Changed("linter-exceptions-file") {
+					appLinterExceptionsFile = pubLinterExceptionsFile
+				}
+
 				// Run build
 				buildOpts := builder.BuildOptions{
-					AppID:        resolvedAppID,
-					Manifest:     pubManifest,
-					Arch:         resolvedArch,
-					Branch:       resolvedBranch,
-					CCacheDir:    pubCCacheDir,
-					StateDir:     pubStateDir,
-					RepoPath:     repoPath,
-					RunLinter:    pubRunLinter,
-					LinterStrict: true,
+					AppID:                resolvedAppID,
+					Manifest:             pubManifest,
+					Arch:                 resolvedArch,
+					Branch:               resolvedBranch,
+					CCacheDir:            pubCCacheDir,
+					StateDir:             pubStateDir,
+					RepoPath:             repoPath,
+					RunLinter:            pubRunLinter,
+					LinterStrict:         true,
+					LinterExceptionsFile: appLinterExceptionsFile,
 				}
 				logger.Info("Step 1: Building manifest application %s...", resolvedAppID)
 				if err := builder.Build(buildOpts); err != nil {
@@ -346,6 +356,7 @@ var publishCmd = &cobra.Command{
 				var appRunLinter = false
 				var appLinterStrict = true
 				var appLinterIgnoreRules []string
+				var appLinterExceptionsFile = ""
 
 				if targetApp != nil {
 					appCCacheDir = targetApp.CCacheDir
@@ -356,6 +367,7 @@ var publishCmd = &cobra.Command{
 							appLinterStrict = *targetApp.Linter.Strict
 						}
 						appLinterIgnoreRules = targetApp.Linter.IgnoreRules
+						appLinterExceptionsFile = targetApp.Linter.ExceptionsFile
 					}
 					if targetApp.CCache != nil && !*targetApp.CCache {
 						appCCacheDir = ""
@@ -373,18 +385,26 @@ var publishCmd = &cobra.Command{
 					appRunLinter = pubRunLinter
 				}
 
+				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+					appLinterExceptionsFile = envVal
+				}
+				if cmd.Flags().Changed("linter-exceptions-file") {
+					appLinterExceptionsFile = pubLinterExceptionsFile
+				}
+
 				opts := builder.BuildOptions{
-					AppID:             targetApp.ID,
-					Manifest:          targetApp.Manifest,
-					Arch:              pubArch,
-					Branch:            appBranch,
-					CCacheDir:         appCCacheDir,
-					StateDir:          appStateDir,
-					RepoPath:          repoPath,
-					RunLinter:         appRunLinter,
-					LinterStrict:      appLinterStrict,
-					LinterIgnoreRules: appLinterIgnoreRules,
-					BuilderArgs:       targetApp.BuilderArgs,
+					AppID:                targetApp.ID,
+					Manifest:             targetApp.Manifest,
+					Arch:                 pubArch,
+					Branch:               appBranch,
+					CCacheDir:            appCCacheDir,
+					StateDir:             appStateDir,
+					RepoPath:             repoPath,
+					RunLinter:            appRunLinter,
+					LinterStrict:         appLinterStrict,
+					LinterIgnoreRules:    appLinterIgnoreRules,
+					LinterExceptionsFile: appLinterExceptionsFile,
+					BuilderArgs:          targetApp.BuilderArgs,
 				}
 				logger.Info("Step 1: Building manifest application %s...", targetApp.ID)
 				if err := builder.Build(opts); err != nil {
@@ -508,4 +528,5 @@ func init() {
 	publishCmd.Flags().StringVar(&pubBundleURL, "bundle-url", "", "Flatpak bundle URL to import and publish")
 	publishCmd.Flags().StringVar(&pubBundlePath, "bundle-path", "", "Flatpak bundle local path to import and publish")
 	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
+	publishCmd.Flags().StringVar(&pubLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 }

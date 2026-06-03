@@ -38,13 +38,14 @@ var (
 	relNoSign        bool
 	relAllowUnsigned bool
 
-	relRemoteName   string
-	relRuntimeRepo  string
-	relRepoTitle    string
-	relRepoHomepage string
-	relBuilderArgs  []string
-	relReconcile    bool
-	relLandingPage  bool
+	relRemoteName           string
+	relRuntimeRepo          string
+	relRepoTitle            string
+	relRepoHomepage         string
+	relBuilderArgs          []string
+	relReconcile            bool
+	relLandingPage          bool
+	relLinterExceptionsFile string
 )
 
 var releaseCmd = &cobra.Command{
@@ -151,6 +152,7 @@ var releaseCmd = &cobra.Command{
 							var appRunLinter = row.RunLinter
 							var appLinterStrict = true
 							var appLinterIgnoreRules []string
+							var appLinterExceptionsFile = ""
 							var appBuilderArgs []string
 
 							var matchedApp *config.App
@@ -171,6 +173,7 @@ var releaseCmd = &cobra.Command{
 										appLinterStrict = *matchedApp.Linter.Strict
 									}
 									appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
+									appLinterExceptionsFile = matchedApp.Linter.ExceptionsFile
 								}
 								if matchedApp.CCache != nil && !*matchedApp.CCache {
 									appCCacheDir = ""
@@ -196,6 +199,7 @@ var releaseCmd = &cobra.Command{
 										appLinterStrict = *cfg.Linter.Strict
 									}
 									appLinterIgnoreRules = cfg.Linter.IgnoreRules
+									appLinterExceptionsFile = cfg.Linter.ExceptionsFile
 								}
 							}
 
@@ -212,18 +216,26 @@ var releaseCmd = &cobra.Command{
 								appBuilderArgs = relBuilderArgs
 							}
 
+							if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+								appLinterExceptionsFile = envVal
+							}
+							if cmd.Flags().Changed("linter-exceptions-file") {
+								appLinterExceptionsFile = relLinterExceptionsFile
+							}
+
 							bOpts := builder.BuildOptions{
-								AppID:             row.AppID,
-								Manifest:          row.Manifest,
-								Arch:              row.Arch,
-								Branch:            row.Branch,
-								CCacheDir:         appCCacheDir,
-								StateDir:          appStateDir,
-								RepoPath:          repoPath,
-								RunLinter:         appRunLinter,
-								LinterStrict:      appLinterStrict,
-								LinterIgnoreRules: appLinterIgnoreRules,
-								BuilderArgs:       appBuilderArgs,
+								AppID:                row.AppID,
+								Manifest:             row.Manifest,
+								Arch:                 row.Arch,
+								Branch:               row.Branch,
+								CCacheDir:            appCCacheDir,
+								StateDir:             appStateDir,
+								RepoPath:             repoPath,
+								RunLinter:            appRunLinter,
+								LinterStrict:         appLinterStrict,
+								LinterIgnoreRules:    appLinterIgnoreRules,
+								LinterExceptionsFile: appLinterExceptionsFile,
+								BuilderArgs:          appBuilderArgs,
 							}
 							if err := builder.Build(bOpts); err != nil {
 								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -375,4 +387,5 @@ func init() {
 	releaseCmd.Flags().StringSliceVar(&relBuilderArgs, "builder-arg", nil, "extra argument passed through to flatpak-builder")
 	releaseCmd.Flags().BoolVar(&relReconcile, "reconcile", true, "verify OCI image tags and prune missing index listings")
 	releaseCmd.Flags().BoolVar(&relLandingPage, "landing-page", true, "generate an index.html landing page")
+	releaseCmd.Flags().StringVar(&relLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 }

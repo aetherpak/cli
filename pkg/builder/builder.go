@@ -17,18 +17,19 @@ import (
 
 // BuildOptions contains options for executing flatpak-builder.
 type BuildOptions struct {
-	AppID             string
-	Manifest          string
-	Arch              string
-	Branch            string
-	CCacheDir         string
-	StateDir          string
-	RepoPath          string
-	RunLinter         bool
-	LinterStrict      bool
-	LinterIgnoreRules []string
-	BuilderArgs       []string // extra flags passed through to flatpak-builder
-	Executor          executil.Executor
+	AppID                string
+	Manifest             string
+	Arch                 string
+	Branch               string
+	CCacheDir            string
+	StateDir             string
+	RepoPath             string
+	RunLinter            bool
+	LinterStrict         bool
+	LinterIgnoreRules    []string
+	LinterExceptionsFile string   // path to linter exceptions configuration file (JSON)
+	BuilderArgs          []string // extra flags passed through to flatpak-builder
+	Executor             executil.Executor
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -76,6 +77,37 @@ func Build(opts BuildOptions) error {
 		}
 		if !found {
 			ignoreRules = append(ignoreRules, r)
+		}
+	}
+
+	// Load exceptions from file if specified
+	if opts.LinterExceptionsFile != "" {
+		fileExceptions, err := loadExceptionsFile(opts.LinterExceptionsFile)
+		if err != nil {
+			return err
+		}
+		// Extract rules for this specific AppID and wildcard "*"
+		var fileRules []string
+		if opts.AppID != "" {
+			if rules, ok := fileExceptions[opts.AppID]; ok {
+				fileRules = append(fileRules, rules...)
+			}
+		}
+		if rules, ok := fileExceptions["*"]; ok {
+			fileRules = append(fileRules, rules...)
+		}
+		// Merge unique rules
+		for _, r := range fileRules {
+			found := false
+			for _, existing := range ignoreRules {
+				if r == existing {
+					found = true
+					break
+				}
+			}
+			if !found {
+				ignoreRules = append(ignoreRules, r)
+			}
 		}
 	}
 
@@ -372,4 +404,16 @@ func resolveLinterCmd(executor executil.Executor) (string, []string) {
 		return "flatpak-builder-lint", nil
 	}
 	return "flatpak", []string{"run", "--command=flatpak-builder-lint", "org.flatpak.Builder"}
+}
+
+func loadExceptionsFile(path string) (map[string][]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read linter exceptions file %q: %w", path, err)
+	}
+	var exceptions map[string][]string
+	if err := json.Unmarshal(data, &exceptions); err != nil {
+		return nil, fmt.Errorf("failed to parse linter exceptions file %q: %w", path, err)
+	}
+	return exceptions, nil
 }

@@ -1,6 +1,8 @@
 package site
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -375,5 +377,157 @@ App: {{.Name}} ({{.ID}}) - {{.Summary}} - {{.Icon}}
 	expectedApp2Sizes := "InstalledSize: 0 B\n  DownloadSize: 0 B"
 	if !strings.Contains(output, expectedApp2Sizes) {
 		t.Errorf("expected output to contain 0 B for missing size fields: %q", expectedApp2Sizes)
+	}
+}
+
+func TestBackfillSignaturesValidation(t *testing.T) {
+	// Setup a mock HTTP server to handle signature downloads
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "signature-1") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("mock-signature-content"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	opts := SiteOptions{
+		SiteDir:  tempDir,
+		PagesURL: server.URL,
+	}
+
+	tests := []struct {
+		name         string
+		pkgName      string
+		digest       string
+		expectError  bool
+		expectFile   string // Relative path of file we expect to be created, if any
+		expectNoFile string // Path we expect NOT to be created
+	}{
+		{
+			name:        "valid sha256 backfill",
+			pkgName:     "my/valid-package",
+			digest:      "sha256:d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812",
+			expectError: false,
+			expectFile:  "sigs/my/valid-package@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
+		},
+		{
+			name:        "valid sha512 backfill",
+			pkgName:     "my/another-valid-package",
+			digest:      "sha512:c6827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827",
+			expectError: false,
+			expectFile:  "sigs/my/another-valid-package@sha512=c6827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827827/signature-1",
+		},
+		{
+			name:         "invalid algorithm sha1 is skipped",
+			pkgName:      "my/invalid-algo",
+			digest:       "sha1:d577273ff885c3f84da8b3c859c4050d25271d596c3f",
+			expectError:  false,
+			expectNoFile: "sigs/my/invalid-algo@sha1=d577273ff885c3f84da8b3c859c4050d25271d596c3f/signature-1",
+		},
+		{
+			name:         "invalid digest non-hex is skipped",
+			pkgName:      "my/invalid-digest",
+			digest:       "sha256:not-a-hex-value-12345",
+			expectError:  false,
+			expectNoFile: "sigs/my/invalid-digest@sha256=not-a-hex-value-12345/signature-1",
+		},
+		{
+			name:         "traversal package name starts with .. is skipped",
+			pkgName:      "../../unsafe-package",
+			digest:       "sha256:d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812",
+			expectError:  false,
+			expectNoFile: "sigs/../../unsafe-package@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
+		},
+		{
+			name:         "traversal package name absolute is skipped",
+			pkgName:      "/etc/unsafe-package",
+			digest:       "sha256:d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812",
+			expectError:  false,
+			expectNoFile: "sigs/etc/unsafe-package@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Construct a minimal FlatpakIndex containing our test cases
+			index := FlatpakIndex{
+				Results: []IndexResultPackage{
+					{
+						Name: tt.pkgName,
+						Images: []IndexImage{
+							{
+								Digest: tt.digest,
+								Labels: map[string]string{
+									"org.flatpak.metadata": "[Application]\nname=test",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			err := backfillSignatures(opts, index, "sigs")
+			if (err != nil) != tt.expectError {
+				t.Fatalf("backfillSignatures returned error %v, expected error: %v", err, tt.expectError)
+			}
+
+			if tt.expectFile != "" {
+				fullPath := filepath.Join(tempDir, tt.expectFile)
+				if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+					t.Errorf("expected signature file to exist at %s, but it was not found", fullPath)
+				} else {
+					content, _ := os.ReadFile(fullPath)
+					if string(content) != "mock-signature-content" {
+						t.Errorf("unexpected content in backfilled signature file: %s", string(content))
+					}
+				}
+			}
+
+			if tt.expectNoFile != "" {
+				fullPath := filepath.Join(tempDir, tt.expectNoFile)
+				if _, err := os.Stat(fullPath); err == nil {
+					t.Errorf("expected signature file NOT to exist at %s, but it was found", fullPath)
+				}
+			}
+		})
+	}
+}
+
+func TestIsUnderDir(t *testing.T) {
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		dir      string
+		path     string
+		expected bool
+	}{
+		{
+			dir:      tempDir,
+			path:     filepath.Join(tempDir, "sigs/somepkg"),
+			expected: true,
+		},
+		{
+			dir:      tempDir,
+			path:     filepath.Join(tempDir, "../outside"),
+			expected: false,
+		},
+		{
+			dir:      tempDir,
+			path:     "/absolute/path/that/is/outside",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		result, err := isUnderDir(tt.dir, tt.path)
+		if err != nil {
+			t.Errorf("isUnderDir(%q, %q) returned unexpected error: %v", tt.dir, tt.path, err)
+		}
+		if result != tt.expected {
+			t.Errorf("isUnderDir(%q, %q) = %v; expected %v", tt.dir, tt.path, result, tt.expected)
+		}
 	}
 }

@@ -627,11 +627,40 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 			pkgName := pkg.Name
 
 			g.Go(func() error {
+				if algo != "sha256" && algo != "sha512" {
+					logger.Warn("site: skipped backfill for digest using unsupported algorithm: %s", algo)
+					return nil
+				}
+
+				isHex := true
+				for _, r := range hexd {
+					if !((r >= 'a' && r <= 'f') || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'F')) {
+						isHex = false
+						break
+					}
+				}
+				if !isHex || len(hexd) == 0 {
+					logger.Warn("site: skipped backfill for digest using non-hex string: %s", hexd)
+					return nil
+				}
+
+				cleanPkg := filepath.Clean(pkgName)
+				if filepath.IsAbs(cleanPkg) || strings.HasPrefix(cleanPkg, "..") || cleanPkg == ".." {
+					logger.Warn("site: skipped backfill for invalid package name: %s", pkgName)
+					return nil
+				}
+
 				// Try signature-1, signature-2, etc.
 				for i := 1; ; i++ {
 					stop, err := func() (bool, error) {
-						relPath := fmt.Sprintf("%s/%s@%s=%s/signature-%d", sigDirName, pkgName, algo, hexd, i)
+						relPath := fmt.Sprintf("%s/%s@%s=%s/signature-%d", sigDirName, cleanPkg, algo, hexd, i)
 						localPath := filepath.Join(opts.SiteDir, relPath)
+
+						under, err := isUnderDir(opts.SiteDir, localPath)
+						if err != nil || !under {
+							logger.Warn("site: skipped backfill of signature escaping site directory: %s", localPath)
+							return true, fmt.Errorf("site: path traversal detected: %s", localPath)
+						}
 
 						// If it already exists, proceed to next signature index
 						if _, err := os.Stat(localPath); err == nil {
@@ -1025,4 +1054,23 @@ func formatDate(timestamp int64, layout string) string {
 		return ""
 	}
 	return time.Unix(timestamp, 0).UTC().Format(layout)
+}
+
+func isUnderDir(dir, path string) (bool, error) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false, err
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false, err
+	}
+	rel, err := filepath.Rel(absDir, absPath)
+	if err != nil {
+		return false, err
+	}
+	if strings.HasPrefix(rel, "..") || rel == ".." {
+		return false, nil
+	}
+	return true, nil
 }

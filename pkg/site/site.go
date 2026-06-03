@@ -673,16 +673,15 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 						resp, err := client.Get(url)
 						if err != nil {
 							logger.Warn("Failed to fetch signature %s: %v", url, err)
-							return true, err
+							return true, nil
 						}
 						defer resp.Body.Close()
 
 						if resp.StatusCode != http.StatusOK {
 							if resp.StatusCode != http.StatusNotFound {
 								logger.Warn("Unexpected status code %d fetching signature from %s", resp.StatusCode, url)
-								return true, fmt.Errorf("unexpected status %d fetching signature: %s", resp.StatusCode, url)
 							}
-							// 404 means signature index is not present, stop sequential scan
+							// 404 or other unexpected statuses mean signature is not present, stop sequential scan
 							return true, nil
 						}
 

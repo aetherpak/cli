@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/aetherpak/cli/compare/v0.14.2...v0.15.0) (2026-06-03)
+
+
+### Features
+
+* **builder:** support external remotes and build dependencies ([7cfb39d](https://github.com/aetherpak/cli/commit/7cfb39daf4f85bd683e5d0f72d4655668b3bbf02))
+
 ## [0.14.2](https://github.com/aetherpak/cli/compare/v0.14.1...v0.14.2) (2026-06-03)
 
 

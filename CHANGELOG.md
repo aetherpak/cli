@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/aetherpak/cli/compare/v0.14.1...v0.14.2) (2026-06-03)
+
+
+### Bug Fixes
+
+* handle signature backfill network/HTTP status errors as warnings ([862ef6a](https://github.com/aetherpak/cli/commit/862ef6a6292c0d3a3e6d2d2ab01416159df7692a))
+
 ## [0.14.1](https://github.com/aetherpak/cli/compare/v0.14.0...v0.14.1) (2026-06-03)
 
 

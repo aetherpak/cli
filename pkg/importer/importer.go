@@ -13,6 +13,7 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 )
 
 // maxBundleSize limits bundle download size to prevent resource exhaustion.
@@ -246,4 +247,50 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 		p.fn(p.written, p.total)
 	}
 	return len(b), nil
+}
+
+// RebindRefsOptions contains options for rebinding multiple refs.
+type RebindRefsOptions struct {
+	SrcRepo  string
+	DestRepo string
+	Refs     []repoinfo.Info
+	Executor executil.Executor
+}
+
+// RebindRefs copies refs from SrcRepo to DestRepo, initializing DestRepo if it is missing.
+func RebindRefs(opts RebindRefsOptions) error {
+	if opts.Executor == nil {
+		opts.Executor = executil.NewOSExecutor()
+	}
+	if err := os.MkdirAll(opts.DestRepo, 0755); err != nil {
+		return fmt.Errorf("failed to create target repo directory: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(opts.DestRepo, "config")); os.IsNotExist(err) {
+		logger.Debug("Initializing target OSTree repo at: %s", opts.DestRepo)
+		targetInitCmd := opts.Executor.Command("ostree", "--repo="+opts.DestRepo, "init", "--mode=archive-z2")
+		var initStderr bytes.Buffer
+		targetInitCmd.SetStderr(&initStderr)
+		if err := targetInitCmd.Run(); err != nil {
+			return fmt.Errorf("failed to initialize target ostree repo (%w): %s", err, initStderr.String())
+		}
+	}
+
+	for _, ra := range opts.Refs {
+		destRef := fmt.Sprintf("app/%s/%s/%s", ra.AppID, ra.Arch, ra.Branch)
+		logger.Info("Copying ref %s from temp repo to target repo...", destRef)
+		copyCmd := opts.Executor.Command("flatpak", "build-commit-from",
+			"--src-repo="+opts.SrcRepo,
+			"--src-ref="+destRef,
+			"--update-appstream",
+			"--no-update-summary",
+			opts.DestRepo,
+			destRef,
+		)
+		var copyStderr bytes.Buffer
+		copyCmd.SetStderr(&copyStderr)
+		if err := copyCmd.Run(); err != nil {
+			return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
+		}
+	}
+	return nil
 }

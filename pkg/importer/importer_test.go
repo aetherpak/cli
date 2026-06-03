@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
+	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 )
 
 func TestFetchDownloadsAndHashes(t *testing.T) {
@@ -197,5 +198,73 @@ func TestImportDownloadExceedsLimit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeded maximum size limit") {
 		t.Errorf("expected exceeded limit error, got: %v", err)
+	}
+}
+
+func TestRebindRefs(t *testing.T) {
+	destRepo, err := os.MkdirTemp("", "aetherpak-test-rebind-dest-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dest repo: %v", err)
+	}
+	defer os.RemoveAll(destRepo)
+
+	mockExec := executil.NewMockExecutor()
+
+	refs := []repoinfo.Info{
+		{
+			AppID:  "org.example.App1",
+			Arch:   "x86_64",
+			Branch: "stable",
+		},
+		{
+			AppID:  "org.example.App2",
+			Arch:   "aarch64",
+			Branch: "beta",
+		},
+	}
+
+	opts := RebindRefsOptions{
+		SrcRepo:  "/tmp/src-repo",
+		DestRepo: destRepo,
+		Refs:     refs,
+		Executor: mockExec,
+	}
+
+	err = RebindRefs(opts)
+	if err != nil {
+		t.Fatalf("expected RebindRefs to succeed, got %v", err)
+	}
+
+	// Verify the commands executed
+	var initDestRan bool
+	var rebindApp1Ran, rebindApp2Ran bool
+
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "ostree" {
+			argsJoined := strings.Join(cmd.Args, " ")
+			if strings.Contains(argsJoined, "init") && strings.Contains(argsJoined, destRepo) {
+				initDestRan = true
+			}
+		} else if cmd.Name == "flatpak" {
+			argsJoined := strings.Join(cmd.Args, " ")
+			if strings.Contains(argsJoined, "build-commit-from") {
+				if strings.Contains(argsJoined, "org.example.App1") && strings.Contains(argsJoined, "x86_64") && strings.Contains(argsJoined, "stable") {
+					rebindApp1Ran = true
+				}
+				if strings.Contains(argsJoined, "org.example.App2") && strings.Contains(argsJoined, "aarch64") && strings.Contains(argsJoined, "beta") {
+					rebindApp2Ran = true
+				}
+			}
+		}
+	}
+
+	if !initDestRan {
+		t.Errorf("expected ostree target init command to run")
+	}
+	if !rebindApp1Ran {
+		t.Errorf("expected flatpak rebind for App1 to run")
+	}
+	if !rebindApp2Ran {
+		t.Errorf("expected flatpak rebind for App2 to run")
 	}
 }

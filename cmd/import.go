@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -227,33 +225,12 @@ var importCmd = &cobra.Command{
 		}
 
 		if useTempRepo {
-			// Copy from tempRepoDir to destRepo
-			if err := os.MkdirAll(destRepo, 0755); err != nil {
-				return fmt.Errorf("failed to create target repo directory: %w", err)
-			}
-			if _, err := os.Stat(filepath.Join(destRepo, "config")); os.IsNotExist(err) {
-				initCmd := exec.Command("ostree", "--repo="+destRepo, "init", "--mode=archive-z2")
-				if err := initCmd.Run(); err != nil {
-					return fmt.Errorf("failed to initialize target ostree repo: %w", err)
-				}
-			}
-
-			for _, ra := range resolvedApps {
-				destRef := fmt.Sprintf("app/%s/%s/%s", ra.AppID, ra.Arch, ra.Branch)
-				logger.Info("Copying ref %s from temp repo to target repo...", destRef)
-				copyCmd := exec.Command("flatpak", "build-commit-from",
-					"--src-repo="+tempRepoDir,
-					"--src-ref="+destRef,
-					"--update-appstream",
-					"--no-update-summary",
-					destRepo,
-					destRef,
-				)
-				var copyStderr bytes.Buffer
-				copyCmd.Stderr = &copyStderr
-				if err := copyCmd.Run(); err != nil {
-					return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
-				}
+			if err := importer.RebindRefs(importer.RebindRefsOptions{
+				SrcRepo:  tempRepoDir,
+				DestRepo: destRepo,
+				Refs:     resolvedApps,
+			}); err != nil {
+				return NewCmdError(1, err)
 			}
 		}
 

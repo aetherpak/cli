@@ -88,61 +88,48 @@ func resolveChannel(refType, refName, defaultBranch string) (string, error) {
 			if mapped, exists := cfg.ChannelMappings[refName]; exists {
 				return mapped, nil
 			}
-			type match struct {
-				pattern string
-				target  string
-			}
-			var matches []match
-			for pattern, target := range cfg.ChannelMappings {
-				matched, err := filepath.Match(pattern, refName)
-				if err != nil {
-					continue
-				}
-				if matched {
-					matches = append(matches, match{pattern: pattern, target: target})
-				}
-			}
-			if len(matches) > 0 {
-				sort.Slice(matches, func(i, j int) bool {
-					if len(matches[i].pattern) != len(matches[j].pattern) {
-						return len(matches[i].pattern) > len(matches[j].pattern)
-					}
-					return matches[i].pattern < matches[j].pattern
-				})
-				return matches[0].target, nil
+			if target, matched := matchChannel(refName, cfg.ChannelMappings); matched {
+				return target, nil
 			}
 		}
 		if resolved != "" {
 			if mapped, exists := cfg.ChannelMappings[resolved]; exists {
 				return mapped, nil
 			}
-			type match struct {
-				pattern string
-				target  string
-			}
-			var matches []match
-			for pattern, target := range cfg.ChannelMappings {
-				matched, err := filepath.Match(pattern, resolved)
-				if err != nil {
-					continue
-				}
-				if matched {
-					matches = append(matches, match{pattern: pattern, target: target})
-				}
-			}
-			if len(matches) > 0 {
-				sort.Slice(matches, func(i, j int) bool {
-					if len(matches[i].pattern) != len(matches[j].pattern) {
-						return len(matches[i].pattern) > len(matches[j].pattern)
-					}
-					return matches[i].pattern < matches[j].pattern
-				})
-				return matches[0].target, nil
+			if target, matched := matchChannel(resolved, cfg.ChannelMappings); matched {
+				return target, nil
 			}
 		}
 	}
 
 	return resolved, nil
+}
+
+func matchChannel(val string, mappings map[string]string) (string, bool) {
+	type match struct {
+		pattern string
+		target  string
+	}
+	var matches []match
+	for pattern, target := range mappings {
+		matched, err := filepath.Match(pattern, val)
+		if err != nil {
+			continue
+		}
+		if matched {
+			matches = append(matches, match{pattern: pattern, target: target})
+		}
+	}
+	if len(matches) > 0 {
+		sort.Slice(matches, func(i, j int) bool {
+			if len(matches[i].pattern) != len(matches[j].pattern) {
+				return len(matches[i].pattern) > len(matches[j].pattern)
+			}
+			return matches[i].pattern < matches[j].pattern
+		})
+		return matches[0].target, true
+	}
+	return "", false
 }
 
 func getEnvRefType() string {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/aetherpak/cli/compare/v0.14.0...v0.14.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* address correctness, reliability, and maintainability ([194b054](https://github.com/aetherpak/cli/commit/194b054c2b31f7421efdb7fc836cfb3be71142aa))
+* validate signature backfill remote inputs and prevent path traversal ([f586a30](https://github.com/aetherpak/cli/commit/f586a30c21bd176bfd98451dd953d4d60afdb46d))
+
 ## [0.14.0](https://github.com/aetherpak/cli/compare/v0.13.0...v0.14.0) (2026-06-03)
 
 

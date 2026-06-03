@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/aetherpak/cli/compare/v0.11.2...v0.12.0) (2026-06-03)
+
+
+### Features
+
+* **linter:** support inline exceptions in config and CLI flag --linter-exception ([5745a9a](https://github.com/aetherpak/cli/commit/5745a9a1de61ad4f6330ebd85d67b81516827508))
+* **linter:** support JSON exceptions configuration file and default ignores ([343d8af](https://github.com/aetherpak/cli/commit/343d8afd8bf995c51cfa2a442e210e19c531e29d))
+
 ## [0.11.2](https://github.com/aetherpak/cli/compare/v0.11.1...v0.11.2) (2026-06-02)
 
 

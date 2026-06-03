@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -286,5 +287,202 @@ func TestBuildPassesBuilderArgs(t *testing.T) {
 	// Positional builddir + manifest must remain last.
 	if args[len(args)-1] != "m.json" {
 		t.Errorf("manifest must be the final arg: %v", args)
+	}
+}
+
+func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"
+
+	// Create a temporary exceptions file to be read during build
+	exceptionsFileContent := `{
+		"org.example.App": ["app-specific-rule-1", "app-specific-rule-2"],
+		"org.other.App": ["other-rule"],
+		"*": ["wildcard-rule-1", "wildcard-rule-2"]
+	}`
+	tempFile, err := os.CreateTemp("", "test-exceptions-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tempFile.Name())
+	if _, err := tempFile.Write([]byte(exceptionsFileContent)); err != nil {
+		t.Fatal(err)
+	}
+	tempFile.Close()
+
+	var exceptionsData []byte
+	mockExec.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "flatpak-builder-lint" {
+			// Find the "--user-exceptions" argument and read the file
+			for i, arg := range cmd.Args {
+				if arg == "--user-exceptions" && i+1 < len(cmd.Args) {
+					path := cmd.Args[i+1]
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Errorf("failed to read linter exceptions file: %v", err)
+						return
+					}
+					exceptionsData = data
+				}
+			}
+		}
+	}
+
+	opts := BuildOptions{
+		AppID:                "org.example.App",
+		Manifest:             "apps/org.example.App.json",
+		Arch:                 "x86_64",
+		Branch:               "stable",
+		StateDir:             ".state",
+		RepoPath:             "repo",
+		RunLinter:            true,
+		LinterIgnoreRules:    []string{"inline-rule-1", "appstream-external-screenshot-url"}, // inline rule + one default duplicate
+		LinterExceptionsFile: tempFile.Name(),
+		Executor:             mockExec,
+	}
+
+	err = Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	if len(exceptionsData) == 0 {
+		t.Fatal("expected exceptions JSON file to be generated and read, but got empty data")
+	}
+
+	var parsed map[string][]string
+	if err := json.Unmarshal(exceptionsData, &parsed); err != nil {
+		t.Fatalf("failed to parse generated exceptions JSON: %v", err)
+	}
+
+	expectedRules := []string{
+		"appstream-external-screenshot-url",
+		"appstream-screenshots-not-mirrored-in-ostree",
+		"inline-rule-1",
+		"app-specific-rule-1",
+		"app-specific-rule-2",
+		"wildcard-rule-1",
+		"wildcard-rule-2",
+	}
+
+	rulesForApp, exists := parsed["org.example.App"]
+	if !exists {
+		t.Errorf("expected key %q in parsed exceptions", opts.AppID)
+	}
+
+	contains := func(slice []string, val string) bool {
+		for _, item := range slice {
+			if item == val {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, expected := range expectedRules {
+		if !contains(rulesForApp, expected) {
+			t.Errorf("expected rule %q to be in exceptions, but not found", expected)
+		}
+	}
+
+	if len(rulesForApp) != len(expectedRules) {
+		t.Errorf("expected %d rules, but got %d: %v", len(expectedRules), len(rulesForApp), rulesForApp)
+	}
+
+	if contains(rulesForApp, "other-rule") {
+		t.Errorf("rules for %q should not contain other-rule", opts.AppID)
+	}
+}
+
+func TestBuildLinterDefaultsOnly(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"
+
+	var exceptionsData []byte
+	mockExec.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "flatpak-builder-lint" {
+			for i, arg := range cmd.Args {
+				if arg == "--user-exceptions" && i+1 < len(cmd.Args) {
+					path := cmd.Args[i+1]
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Errorf("failed to read linter exceptions file: %v", err)
+						return
+					}
+					exceptionsData = data
+				}
+			}
+		}
+	}
+
+	opts := BuildOptions{
+		AppID:     "org.example.App",
+		Manifest:  "apps/org.example.App.json",
+		Arch:      "x86_64",
+		Branch:    "stable",
+		StateDir:  ".state",
+		RepoPath:  "repo",
+		RunLinter: true,
+		Executor:  mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	if len(exceptionsData) == 0 {
+		t.Fatal("expected default exceptions JSON file to be generated, but got empty data")
+	}
+
+	var parsed map[string][]string
+	if err := json.Unmarshal(exceptionsData, &parsed); err != nil {
+		t.Fatalf("failed to parse generated exceptions JSON: %v", err)
+	}
+
+	expectedRules := []string{
+		"appstream-external-screenshot-url",
+		"appstream-screenshots-not-mirrored-in-ostree",
+	}
+
+	rulesForApp, exists := parsed["org.example.App"]
+	if !exists {
+		t.Fatalf("expected key %q in parsed exceptions", opts.AppID)
+	}
+
+	for _, expected := range expectedRules {
+		found := false
+		for _, r := range rulesForApp {
+			if r == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected default rule %q to be in exceptions, but not found", expected)
+		}
+	}
+
+	if len(rulesForApp) != len(expectedRules) {
+		t.Errorf("expected exactly %d rules, but got %d: %v", len(expectedRules), len(rulesForApp), rulesForApp)
+	}
+}
+
+func TestBuildLinterExceptionsFileNotFound(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	opts := BuildOptions{
+		AppID:                "org.example.App",
+		Manifest:             "apps/org.example.App.json",
+		LinterExceptionsFile: "/non/existent/path/exceptions.json",
+		Executor:             mockExec,
+	}
+
+	err := Build(opts)
+	if err == nil {
+		t.Fatal("expected error when linter exceptions file does not exist, but got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to read linter exceptions file") {
+		t.Errorf("expected file read error message, got: %v", err)
 	}
 }

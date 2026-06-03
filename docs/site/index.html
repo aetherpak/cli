@@ -306,7 +306,7 @@ aetherpak publish --bundle https://example.com/app.flatpak</code></pre>
 
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">build</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.5rem;">Wrapper sandboxing flatpak-builder builds:</p>
-            <div class="code-block"><pre><code>aetherpak build --manifest manifest.json --run-linter</code></pre><button class="btn-copy" title="Copy" onclick="copyBlock(this)"></button></div>
+            <div class="code-block"><pre><code>aetherpak build --manifest manifest.json --run-linter --linter-exceptions-file exceptions.json</code></pre><button class="btn-copy" title="Copy" onclick="copyBlock(this)"></button></div>
 
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">import</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.5rem;">Imports prebuilt flatpak bundle packages:</p>
@@ -336,6 +336,7 @@ aetherpak publish --bundle https://example.com/app.flatpak</code></pre>
               <div class="opt"><code>--output-dir &lt;path&gt;</code><span>Base directory for all output assets unless overridden.</span></div>
               <div class="opt"><code>--no-sign</code><span>Disables GPG signing of repositories and OCI images entirely.</span></div>
               <div class="opt"><code>--allow-unsigned</code><span>Allows publishing and building unsigned repositories/images if GPG keys are missing.</span></div>
+              <div class="opt"><code>--linter-exceptions-file &lt;path&gt;</code><span>Local path to a JSON configuration file containing app-specific or wildcard linter exceptions.</span></div>
               <div class="opt"><code>-v, --verbose</code><span>Enables granular log logging.</span></div>
               <div class="opt"><code>--json-log</code><span>Emits logs in structured JSON lines for logging backends.</span></div>
               <div class="opt"><code>--plain</code><span>Disables terminal color codes, emojis, and styling grids.</span></div>
@@ -364,6 +365,7 @@ channel_mappings:
 linter:
   strict: true
   ignore_rules: ["appstream-screenshot-missing"]
+  exceptions_file: "linter-exceptions.json"
 
 defaults:
   ccache: true

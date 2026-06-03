@@ -39,8 +39,9 @@ type Config struct {
 
 // LinterConfig defines validation linter strictness and rules to ignore.
 type LinterConfig struct {
-	Strict      *bool    `yaml:"strict" json:"strict" mapstructure:"strict"`
-	IgnoreRules []string `yaml:"ignore_rules" json:"ignore_rules" mapstructure:"ignore_rules"`
+	Strict         *bool    `yaml:"strict" json:"strict" mapstructure:"strict"`
+	IgnoreRules    []string `yaml:"ignore_rules" json:"ignore_rules" mapstructure:"ignore_rules"`
+	ExceptionsFile string   `yaml:"exceptions_file" json:"exceptions_file" mapstructure:"exceptions_file"`
 }
 
 // BrandingConfig defines custom landing page branding metadata.
@@ -115,13 +116,17 @@ func (cfg *Config) Normalize() {
 			}
 			strictVal := *cfg.Linter.Strict
 			app.Linter = &LinterConfig{
-				Strict:      &strictVal,
-				IgnoreRules: rules,
+				Strict:         &strictVal,
+				IgnoreRules:    rules,
+				ExceptionsFile: cfg.Linter.ExceptionsFile,
 			}
 		} else if app.Linter != nil {
 			if app.Linter.Strict == nil {
 				t := true
 				app.Linter.Strict = &t
+			}
+			if app.Linter.ExceptionsFile == "" && cfg.Linter != nil {
+				app.Linter.ExceptionsFile = cfg.Linter.ExceptionsFile
 			}
 		}
 
@@ -320,6 +325,9 @@ func linterConfigEqual(a, b *LinterConfig) bool {
 		return false
 	}
 	if a.Strict != nil && *a.Strict != *b.Strict {
+		return false
+	}
+	if a.ExceptionsFile != b.ExceptionsFile {
 		return false
 	}
 	return slicesEqual(a.IgnoreRules, b.IgnoreRules)

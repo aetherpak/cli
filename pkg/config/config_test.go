@@ -159,6 +159,7 @@ func TestConfigNormalize(t *testing.T) {
 		Linter: &LinterConfig{
 			Strict:      &falseVal,
 			IgnoreRules: []string{"rule-1"},
+			Exceptions:  []string{"rule-ex1"},
 		},
 		Apps: []App{
 			{
@@ -174,6 +175,7 @@ func TestConfigNormalize(t *testing.T) {
 				Linter: &LinterConfig{
 					Strict:      &trueVal,
 					IgnoreRules: []string{"rule-2"},
+					Exceptions:  []string{"rule-ex2"},
 				},
 			},
 		},
@@ -195,7 +197,7 @@ func TestConfigNormalize(t *testing.T) {
 	if !app1.RunLinter {
 		t.Errorf("App1: expected RunLinter to be true")
 	}
-	if app1.Linter == nil || *app1.Linter.Strict != false || len(app1.Linter.IgnoreRules) != 1 || app1.Linter.IgnoreRules[0] != "rule-1" {
+	if app1.Linter == nil || *app1.Linter.Strict != false || len(app1.Linter.IgnoreRules) != 1 || app1.Linter.IgnoreRules[0] != "rule-1" || len(app1.Linter.Exceptions) != 1 || app1.Linter.Exceptions[0] != "rule-ex1" {
 		t.Errorf("App1: expected Linter settings inherited, got %+v", app1.Linter)
 	}
 	if len(app1.BuilderArgs) != 2 || app1.BuilderArgs[0] != "--foo" || app1.BuilderArgs[1] != "--bar" {
@@ -213,8 +215,8 @@ func TestConfigNormalize(t *testing.T) {
 	if app2.StateDir != "/global/state" {
 		t.Errorf("App2: expected StateDir to be /global/state (inherited), got %q", app2.StateDir)
 	}
-	if app2.Linter == nil || *app2.Linter.Strict != true || len(app2.Linter.IgnoreRules) != 1 || app2.Linter.IgnoreRules[0] != "rule-2" {
-		t.Errorf("App2: expected Linter settings overridden, got %+v", app2.Linter)
+	if app2.Linter == nil || *app2.Linter.Strict != true || len(app2.Linter.IgnoreRules) != 2 || app2.Linter.IgnoreRules[0] != "rule-2" || app2.Linter.IgnoreRules[1] != "rule-1" || len(app2.Linter.Exceptions) != 2 || app2.Linter.Exceptions[0] != "rule-ex2" || app2.Linter.Exceptions[1] != "rule-ex1" {
+		t.Errorf("App2: expected Linter settings merged, got %+v", app2.Linter)
 	}
 	if len(app2.BuilderArgs) != 1 || app2.BuilderArgs[0] != "--baz" {
 		t.Errorf("App2: expected BuilderArgs overridden/preserved, got %v", app2.BuilderArgs)
@@ -235,6 +237,7 @@ func TestAppEqual(t *testing.T) {
 		Linter: &LinterConfig{
 			Strict:      &trueVal,
 			IgnoreRules: []string{"rule-1", "rule-2"},
+			Exceptions:  []string{"rule-ex1"},
 		},
 		CCache:      &trueVal,
 		CCacheDir:   "/ccache",
@@ -275,9 +278,21 @@ func TestAppEqual(t *testing.T) {
 	appB.Linter = &LinterConfig{
 		Strict:      &trueVal,
 		IgnoreRules: []string{"rule-1"},
+		Exceptions:  []string{"rule-ex1"},
 	}
 	if appA.Equal(appB) {
-		t.Error("differing Linter should not be equal")
+		t.Error("differing Linter ignore rules should not be equal")
+	}
+
+	// Reset and change Linter exceptions
+	appB = appA
+	appB.Linter = &LinterConfig{
+		Strict:      &trueVal,
+		IgnoreRules: []string{"rule-1", "rule-2"},
+		Exceptions:  []string{"rule-ex2"},
+	}
+	if appA.Equal(appB) {
+		t.Error("differing Linter exceptions should not be equal")
 	}
 
 	// Reset and change bundle

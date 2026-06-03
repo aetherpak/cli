@@ -41,6 +41,7 @@ type Config struct {
 type LinterConfig struct {
 	Strict         *bool    `yaml:"strict" json:"strict" mapstructure:"strict"`
 	IgnoreRules    []string `yaml:"ignore_rules" json:"ignore_rules" mapstructure:"ignore_rules"`
+	Exceptions     []string `yaml:"exceptions" json:"exceptions" mapstructure:"exceptions"`
 	ExceptionsFile string   `yaml:"exceptions_file" json:"exceptions_file" mapstructure:"exceptions_file"`
 }
 
@@ -114,10 +115,16 @@ func (cfg *Config) Normalize() {
 				rules = make([]string, len(cfg.Linter.IgnoreRules))
 				copy(rules, cfg.Linter.IgnoreRules)
 			}
+			var exceptions []string
+			if cfg.Linter.Exceptions != nil {
+				exceptions = make([]string, len(cfg.Linter.Exceptions))
+				copy(exceptions, cfg.Linter.Exceptions)
+			}
 			strictVal := *cfg.Linter.Strict
 			app.Linter = &LinterConfig{
 				Strict:         &strictVal,
 				IgnoreRules:    rules,
+				Exceptions:     exceptions,
 				ExceptionsFile: cfg.Linter.ExceptionsFile,
 			}
 		} else if app.Linter != nil {
@@ -127,6 +134,40 @@ func (cfg *Config) Normalize() {
 			}
 			if app.Linter.ExceptionsFile == "" && cfg.Linter != nil {
 				app.Linter.ExceptionsFile = cfg.Linter.ExceptionsFile
+			}
+			if cfg.Linter != nil {
+				if len(cfg.Linter.IgnoreRules) > 0 {
+					merged := append([]string(nil), app.Linter.IgnoreRules...)
+					for _, r := range cfg.Linter.IgnoreRules {
+						found := false
+						for _, existing := range merged {
+							if r == existing {
+								found = true
+								break
+							}
+						}
+						if !found {
+							merged = append(merged, r)
+						}
+					}
+					app.Linter.IgnoreRules = merged
+				}
+				if len(cfg.Linter.Exceptions) > 0 {
+					merged := append([]string(nil), app.Linter.Exceptions...)
+					for _, ex := range cfg.Linter.Exceptions {
+						found := false
+						for _, existing := range merged {
+							if ex == existing {
+								found = true
+								break
+							}
+						}
+						if !found {
+							merged = append(merged, ex)
+						}
+					}
+					app.Linter.Exceptions = merged
+				}
 			}
 		}
 
@@ -330,5 +371,5 @@ func linterConfigEqual(a, b *LinterConfig) bool {
 	if a.ExceptionsFile != b.ExceptionsFile {
 		return false
 	}
-	return slicesEqual(a.IgnoreRules, b.IgnoreRules)
+	return slicesEqual(a.IgnoreRules, b.IgnoreRules) && slicesEqual(a.Exceptions, b.Exceptions)
 }

@@ -54,7 +54,8 @@ Customizes the look and feel of the generated landing page:
 Global linter behavior configuration:
 * **`strict`** (boolean): Set to `true` to fail builds if any linter warnings or errors are raised.
 * **`ignore_rules`** (list[string]): Specific `flatpak-builder-lint` rule IDs to bypass.
-* **`exceptions_file`** (string): Local path to a JSON configuration file containing app-specific or wildcard linter exceptions (e.g. `"linter-exceptions.json"`). Can be overridden via the `AETHERPAK_LINTER_EXCEPTIONS` environment variable or the `--linter-exceptions-file` flag.
+* **`exceptions`** (list[string]): Inline list of `flatpak-builder-lint` rule IDs to bypass (alternative/alias for `ignore_rules`). Can be overridden via the `AETHERPAK_LINTER_EXCEPTIONS` environment variable or the `--linter-exception` flag.
+* **`exceptions_file`** (string): Local path to a JSON configuration file containing app-specific or wildcard linter exceptions (e.g. `"linter-exceptions.json"`). Can be overridden via the `AETHERPAK_LINTER_EXCEPTIONS_FILE` environment variable or the `--linter-exceptions-file` flag.
 
 #### `defaults`
 Fallback build configurations applied when individual application settings are omitted:
@@ -72,7 +73,7 @@ A list of applications managed in the repository. Each entry supports the follow
 * **`manifest`** (string): Local relative path to the Flatpak manifest file (required for source-based builds).
 * **`runtime`** (string): Upstream runtime dependencies list (required for source-based builds).
 * **`run-linter`** (boolean): Local toggle to execute linter validation checks.
-* **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), and `exceptions_file` (string).
+* **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), `exceptions` (list[string]), and `exceptions_file` (string).
 * **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`**: Application-specific overrides for compilation parameters.
 * **`bundles`** (map[string]Bundle): Prebuilt Flatpak bundle inputs mapped per architecture. Under each arch (e.g. `x86_64`):
   * **`url`** (string, required): Download link to the `.flatpak` bundle.
@@ -124,15 +125,28 @@ apps:
 
 ---
 
-### Linter Exceptions File
+### Linter Exceptions
 
 AetherPak automatically registers default exceptions for linter checks that are not applicable to self-hosted/independent repositories:
 - `appstream-external-screenshot-url`
 - `appstream-screenshots-not-mirrored-in-ostree`
 
-To define additional rules to bypass globally or per-app, you can configure a linter exceptions JSON file (similar to the Flathub linter exceptions format).
+Exceptions can be configured in two ways:
 
-Example `linter-exceptions.json`:
+#### 1. Inline Configuration
+You can specify list of exceptions directly under the `linter.exceptions` property globally or per-app:
+```yaml
+linter:
+  exceptions:
+    - appstream-screenshot-missing
+    - appstream-license-missing
+```
+Or override them at runtime using:
+- CLI repeatable flag: `--linter-exception <rule>`
+- Env Var: `AETHERPAK_LINTER_EXCEPTIONS` (comma-separated list of exceptions)
+
+#### 2. External JSON File (Flathub format)
+You can point to a linter exceptions JSON file containing app-specific or wildcard rules:
 ```json
 {
   "org.example.App": [
@@ -144,10 +158,9 @@ Example `linter-exceptions.json`:
   ]
 }
 ```
-
-This file path can be configured globally/per-app in `aetherpak.yaml`, or overridden via:
-1. `--linter-exceptions-file` CLI flag
-2. `AETHERPAK_LINTER_EXCEPTIONS` environment variable
+This file path can be configured globally/per-app in `aetherpak.yaml` using the `exceptions_file` property, or overridden at runtime via:
+- CLI flag: `--linter-exceptions-file <path>`
+- Env Var: `AETHERPAK_LINTER_EXCEPTIONS_FILE` (or `AETHERPAK_LINTER_EXCEPTIONS` if it has a `.json` suffix)
 
 ---
 
@@ -265,7 +278,7 @@ aetherpak plan --base-sha <sha> --workflow-path <path> --output json
 #### `build`
 Wraps `flatpak-builder` sandbox compilation:
 ```bash
-aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64 --linter-exceptions-file exceptions.json
+aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64 --linter-exception appstream-screenshot-missing
 ```
 
 #### `import`
@@ -360,6 +373,7 @@ Options:
 * `--no-sign`: Disable GPG signing entirely.
 * `--allow-unsigned`: Allow publishing unsigned images if GPG keys are missing.
 * `--linter-exceptions-file <path>`: Local path to linter exceptions file (JSON).
+* `--linter-exception <rule>`: Repeatable flag to specify linter exceptions to ignore.
 
 #### `release`
 Coordinates the entire lifecycle: runs matrix planner, compiles/imports changed records concurrently, pushes artifacts, and builds site index layouts:
@@ -371,6 +385,7 @@ Options:
 * `--no-sign`: Disable GPG signing entirely.
 * `--allow-unsigned`: Allow releasing unsigned images/index if GPG keys are missing.
 * `--linter-exceptions-file <path>`: Local path to linter exceptions file (JSON).
+* `--linter-exception <rule>`: Repeatable flag to specify linter exceptions to ignore.
 
 #### `status`
 Validates that required system dependencies are available, checks configuration files, and decrypts/verifies GPG keys:

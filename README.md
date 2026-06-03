@@ -64,6 +64,8 @@ Fallback build configurations applied when individual application settings are o
 * **`state_dir`** (string): Path to store intermediate state outputs (defaults to `.state`).
 * **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
 * **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
+* **`remotes`** (map[string]string): Map of Flatpak remote repository names to their flatpakrepo URLs (pre-registered before build).
+* **`flatpaks`** (list[FlatpakDep]): Flatpak runtimes or SDK extensions/dependencies to pre-install before build. Each entry requires a `remote` (string) and a `ref` (string).
 
 #### `apps`
 A list of applications managed in the repository. Each entry supports the following settings:
@@ -75,6 +77,7 @@ A list of applications managed in the repository. Each entry supports the follow
 * **`run-linter`** (boolean): Local toggle to execute linter validation checks.
 * **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), `exceptions` (list[string]), and `exceptions_file` (string).
 * **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`**: Application-specific overrides for compilation parameters.
+* **`remotes`** / **`flatpaks`**: Application-specific overrides/merges for Flatpak remotes and dependencies.
 * **`bundles`** (map[string]Bundle): Prebuilt Flatpak bundle inputs mapped per architecture. Under each arch (e.g. `x86_64`):
   * **`url`** (string, required): Download link to the `.flatpak` bundle.
   * **`sha256`** (string, required): 64-character SHA-256 validation checksum of the file.
@@ -102,6 +105,11 @@ defaults:
   run_linter: true
   state_dir: ".builder-state"
   builder_args: ["--sandbox", "--disable-rofiles-fuse"]
+  remotes:
+    flathub: https://dl.flathub.org/repo/flathub.flatpakrepo
+  flatpaks:
+    - remote: flathub
+      ref: org.gnome.Sdk//45
 
 branding:
   logo_url: "https://example.com/logo.png"
@@ -114,6 +122,11 @@ apps:
     runtime: gnome-50
     arches: [x86_64, aarch64]
     run-linter: true
+    remotes:
+      repoA: https://example.com/repoA.flatpakrepo
+    flatpaks:
+      - remote: repoA
+        ref: org.gnome.Sdk.ExtensionA//45
 
   - id: com.example.Other
     branch: beta
@@ -278,8 +291,11 @@ aetherpak plan --base-sha <sha> --workflow-path <path> --output json
 #### `build`
 Wraps `flatpak-builder` sandbox compilation:
 ```bash
-aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64 --linter-exception appstream-screenshot-missing
+aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64 --linter-exception appstream-screenshot-missing --flatpak-remote flathub=https://dl.flathub.org/repo/flathub.flatpakrepo --flatpak-dep flathub:org.gnome.Sdk//45
 ```
+Options:
+* `--flatpak-remote <name>=<url>`: Repeatable flag to register Flatpak remotes before compiling.
+* `--flatpak-dep <remote>:<ref>`: Repeatable flag to install Flatpak dependencies (runtimes, SDK extensions) before compiling.
 
 #### `import`
 Ingests prebuilt bundles (`.flatpak`) and rebinds channels:
@@ -386,6 +402,8 @@ Options:
 * `--allow-unsigned`: Allow releasing unsigned images/index if GPG keys are missing.
 * `--linter-exceptions-file <path>`: Local path to linter exceptions file (JSON).
 * `--linter-exception <rule>`: Repeatable flag to specify linter exceptions to ignore.
+* `--flatpak-remote <name>=<url>`: Repeatable flag to register Flatpak remotes before compiling.
+* `--flatpak-dep <remote>:<ref>`: Repeatable flag to install Flatpak dependencies before compiling.
 
 #### `status`
 Validates that required system dependencies are available, checks configuration files, and decrypts/verifies GPG keys:

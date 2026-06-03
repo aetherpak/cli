@@ -26,6 +26,8 @@ var (
 	buildRunLinter            bool
 	buildLinterExceptionsFile string
 	buildLinterExceptions     []string
+	buildFlatpakRemotes       []string
+	buildFlatpakDeps          []string
 )
 
 var buildCmd = &cobra.Command{
@@ -144,12 +146,16 @@ var buildCmd = &cobra.Command{
 			var appLinterExceptions []string
 			var appLinterExceptionsFile = ""
 			var appBuilderArgs []string
+			var appRemotes map[string]string
+			var appFlatpaks []config.FlatpakDep
 
 			if job.appConfig != nil {
 				appCCacheDir = job.appConfig.CCacheDir
 				appStateDir = job.appConfig.StateDir
 				appRunLinter = job.appConfig.RunLinter
 				appBuilderArgs = job.appConfig.BuilderArgs
+				appRemotes = job.appConfig.Remotes
+				appFlatpaks = job.appConfig.Flatpaks
 				if job.appConfig.Linter != nil {
 					if job.appConfig.Linter.Strict != nil {
 						appLinterStrict = *job.appConfig.Linter.Strict
@@ -173,6 +179,8 @@ var buildCmd = &cobra.Command{
 					}
 					appRunLinter = cfg.Defaults.RunLinter
 					appBuilderArgs = cfg.Defaults.BuilderArgs
+					appRemotes = cfg.Defaults.Remotes
+					appFlatpaks = cfg.Defaults.Flatpaks
 					if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
 						appCCacheDir = ""
 					}
@@ -200,6 +208,20 @@ var buildCmd = &cobra.Command{
 			if cmd.Flags().Changed("builder-arg") {
 				appBuilderArgs = buildBuilderArgs
 			}
+			if cmd.Flags().Changed("flatpak-remote") {
+				parsed, err := parseFlatpakRemotes(buildFlatpakRemotes)
+				if err != nil {
+					return NewCmdError(2, err)
+				}
+				appRemotes = parsed
+			}
+			if cmd.Flags().Changed("flatpak-dep") {
+				parsed, err := parseFlatpakDeps(buildFlatpakDeps)
+				if err != nil {
+					return NewCmdError(2, err)
+				}
+				appFlatpaks = parsed
+			}
 
 			appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
 				cmd.Flags().Changed("linter-exceptions-file"),
@@ -224,6 +246,8 @@ var buildCmd = &cobra.Command{
 				LinterExceptions:     appLinterExceptions,
 				LinterExceptionsFile: appLinterExceptionsFile,
 				BuilderArgs:          appBuilderArgs,
+				Remotes:              appRemotes,
+				Flatpaks:             appFlatpaks,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -267,4 +291,6 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildRunLinter, "run-linter", false, "run flatpak-builder-lint before and after build")
 	buildCmd.Flags().StringVar(&buildLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 	buildCmd.Flags().StringSliceVar(&buildLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
+	buildCmd.Flags().StringArrayVar(&buildFlatpakRemotes, "flatpak-remote", nil, "Flatpak remote repository to register (format: name=url)")
+	buildCmd.Flags().StringArrayVar(&buildFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
 }

@@ -45,6 +45,7 @@ var (
 	pubBundlePath           string
 	pubConfirm              bool
 	pubLinterExceptionsFile string
+	pubLinterExceptions     []string
 )
 
 var publishCmd = &cobra.Command{
@@ -129,12 +130,27 @@ var publishCmd = &cobra.Command{
 					}
 				}
 
-				appLinterExceptionsFile := ""
-				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+				var appLinterExceptions []string
+				var appLinterExceptionsFile = ""
+				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
 					appLinterExceptionsFile = envVal
+				} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+					if strings.HasSuffix(envVal, ".json") {
+						appLinterExceptionsFile = envVal
+					} else {
+						for _, item := range strings.Split(envVal, ",") {
+							item = strings.TrimSpace(item)
+							if item != "" {
+								appLinterExceptions = append(appLinterExceptions, item)
+							}
+						}
+					}
 				}
 				if cmd.Flags().Changed("linter-exceptions-file") {
 					appLinterExceptionsFile = pubLinterExceptionsFile
+				}
+				if cmd.Flags().Changed("linter-exception") {
+					appLinterExceptions = pubLinterExceptions
 				}
 
 				// Run build
@@ -148,6 +164,7 @@ var publishCmd = &cobra.Command{
 					RepoPath:             repoPath,
 					RunLinter:            pubRunLinter,
 					LinterStrict:         true,
+					LinterExceptions:     appLinterExceptions,
 					LinterExceptionsFile: appLinterExceptionsFile,
 				}
 				logger.Info("Step 1: Building manifest application %s...", resolvedAppID)
@@ -357,6 +374,7 @@ var publishCmd = &cobra.Command{
 				var appLinterStrict = true
 				var appLinterIgnoreRules []string
 				var appLinterExceptionsFile = ""
+				var appLinterExceptions []string
 
 				if targetApp != nil {
 					appCCacheDir = targetApp.CCacheDir
@@ -367,6 +385,7 @@ var publishCmd = &cobra.Command{
 							appLinterStrict = *targetApp.Linter.Strict
 						}
 						appLinterIgnoreRules = targetApp.Linter.IgnoreRules
+						appLinterExceptions = targetApp.Linter.Exceptions
 						appLinterExceptionsFile = targetApp.Linter.ExceptionsFile
 					}
 					if targetApp.CCache != nil && !*targetApp.CCache {
@@ -385,11 +404,25 @@ var publishCmd = &cobra.Command{
 					appRunLinter = pubRunLinter
 				}
 
-				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
 					appLinterExceptionsFile = envVal
+				} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+					if strings.HasSuffix(envVal, ".json") {
+						appLinterExceptionsFile = envVal
+					} else {
+						for _, item := range strings.Split(envVal, ",") {
+							item = strings.TrimSpace(item)
+							if item != "" {
+								appLinterExceptions = append(appLinterExceptions, item)
+							}
+						}
+					}
 				}
 				if cmd.Flags().Changed("linter-exceptions-file") {
 					appLinterExceptionsFile = pubLinterExceptionsFile
+				}
+				if cmd.Flags().Changed("linter-exception") {
+					appLinterExceptions = pubLinterExceptions
 				}
 
 				opts := builder.BuildOptions{
@@ -403,6 +436,7 @@ var publishCmd = &cobra.Command{
 					RunLinter:            appRunLinter,
 					LinterStrict:         appLinterStrict,
 					LinterIgnoreRules:    appLinterIgnoreRules,
+					LinterExceptions:     appLinterExceptions,
 					LinterExceptionsFile: appLinterExceptionsFile,
 					BuilderArgs:          targetApp.BuilderArgs,
 				}
@@ -529,4 +563,5 @@ func init() {
 	publishCmd.Flags().StringVar(&pubBundlePath, "bundle-path", "", "Flatpak bundle local path to import and publish")
 	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
 	publishCmd.Flags().StringVar(&pubLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
+	publishCmd.Flags().StringSliceVar(&pubLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
 }

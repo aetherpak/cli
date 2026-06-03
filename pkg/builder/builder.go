@@ -27,6 +27,7 @@ type BuildOptions struct {
 	RunLinter            bool
 	LinterStrict         bool
 	LinterIgnoreRules    []string
+	LinterExceptions     []string // inline exceptions configured via CLI or config
 	LinterExceptionsFile string   // path to linter exceptions configuration file (JSON)
 	BuilderArgs          []string // extra flags passed through to flatpak-builder
 	Executor             executil.Executor
@@ -71,6 +72,20 @@ func Build(opts BuildOptions) error {
 		found := false
 		for _, d := range defaultIgnoreRules {
 			if r == d {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ignoreRules = append(ignoreRules, r)
+		}
+	}
+
+	// Merge user-provided exceptions, ensuring no duplicates.
+	for _, r := range opts.LinterExceptions {
+		found := false
+		for _, existing := range ignoreRules {
+			if r == existing {
 				found = true
 				break
 			}

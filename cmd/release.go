@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -46,6 +47,7 @@ var (
 	relReconcile            bool
 	relLandingPage          bool
 	relLinterExceptionsFile string
+	relLinterExceptions     []string
 )
 
 var releaseCmd = &cobra.Command{
@@ -152,6 +154,7 @@ var releaseCmd = &cobra.Command{
 							var appRunLinter = row.RunLinter
 							var appLinterStrict = true
 							var appLinterIgnoreRules []string
+							var appLinterExceptions []string
 							var appLinterExceptionsFile = ""
 							var appBuilderArgs []string
 
@@ -173,6 +176,7 @@ var releaseCmd = &cobra.Command{
 										appLinterStrict = *matchedApp.Linter.Strict
 									}
 									appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
+									appLinterExceptions = matchedApp.Linter.Exceptions
 									appLinterExceptionsFile = matchedApp.Linter.ExceptionsFile
 								}
 								if matchedApp.CCache != nil && !*matchedApp.CCache {
@@ -199,6 +203,7 @@ var releaseCmd = &cobra.Command{
 										appLinterStrict = *cfg.Linter.Strict
 									}
 									appLinterIgnoreRules = cfg.Linter.IgnoreRules
+									appLinterExceptions = cfg.Linter.Exceptions
 									appLinterExceptionsFile = cfg.Linter.ExceptionsFile
 								}
 							}
@@ -216,11 +221,25 @@ var releaseCmd = &cobra.Command{
 								appBuilderArgs = relBuilderArgs
 							}
 
-							if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+							if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
 								appLinterExceptionsFile = envVal
+							} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
+								if strings.HasSuffix(envVal, ".json") {
+									appLinterExceptionsFile = envVal
+								} else {
+									for _, item := range strings.Split(envVal, ",") {
+										item = strings.TrimSpace(item)
+										if item != "" {
+											appLinterExceptions = append(appLinterExceptions, item)
+										}
+									}
+								}
 							}
 							if cmd.Flags().Changed("linter-exceptions-file") {
 								appLinterExceptionsFile = relLinterExceptionsFile
+							}
+							if cmd.Flags().Changed("linter-exception") {
+								appLinterExceptions = relLinterExceptions
 							}
 
 							bOpts := builder.BuildOptions{
@@ -234,6 +253,7 @@ var releaseCmd = &cobra.Command{
 								RunLinter:            appRunLinter,
 								LinterStrict:         appLinterStrict,
 								LinterIgnoreRules:    appLinterIgnoreRules,
+								LinterExceptions:     appLinterExceptions,
 								LinterExceptionsFile: appLinterExceptionsFile,
 								BuilderArgs:          appBuilderArgs,
 							}
@@ -388,4 +408,5 @@ func init() {
 	releaseCmd.Flags().BoolVar(&relReconcile, "reconcile", true, "verify OCI image tags and prune missing index listings")
 	releaseCmd.Flags().BoolVar(&relLandingPage, "landing-page", true, "generate an index.html landing page")
 	releaseCmd.Flags().StringVar(&relLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
+	releaseCmd.Flags().StringSliceVar(&relLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
 }

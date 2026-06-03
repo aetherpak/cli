@@ -337,6 +337,7 @@ func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 		RepoPath:             "repo",
 		RunLinter:            true,
 		LinterIgnoreRules:    []string{"inline-rule-1", "appstream-external-screenshot-url"}, // inline rule + one default duplicate
+		LinterExceptions:     []string{"inline-exception-1", "wildcard-rule-1"},              // inline exception + one wildcard file duplicate
 		LinterExceptionsFile: tempFile.Name(),
 		Executor:             mockExec,
 	}
@@ -359,6 +360,7 @@ func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 		"appstream-external-screenshot-url",
 		"appstream-screenshots-not-mirrored-in-ostree",
 		"inline-rule-1",
+		"inline-exception-1",
 		"app-specific-rule-1",
 		"app-specific-rule-2",
 		"wildcard-rule-1",

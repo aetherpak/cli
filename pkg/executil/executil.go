@@ -86,12 +86,21 @@ func StreamWithPrefix(r io.Reader, w io.Writer, prefix string) {
 	reader := bufio.NewReader(r)
 	var partial []byte
 	for {
-		chunk, err := reader.ReadBytes('\n')
+		chunk, err := reader.ReadSlice('\n')
 		if len(chunk) > 0 {
 			partial = append(partial, chunk...)
 			if chunk[len(chunk)-1] == '\n' {
 				line := bytes.TrimSuffix(partial, []byte("\n"))
 				line = bytes.TrimSuffix(line, []byte("\r"))
+				if prefix == "" {
+					fmt.Fprintf(w, "%s\n", line)
+				} else {
+					fmt.Fprintf(w, "%s %s\n", prefix, line)
+				}
+				partial = partial[:0]
+			} else if len(partial) >= 64*1024 {
+				// Flush partial buffer if it grows too large to prevent unbounded memory growth
+				line := bytes.TrimSuffix(partial, []byte("\r"))
 				if prefix == "" {
 					fmt.Fprintf(w, "%s\n", line)
 				} else {

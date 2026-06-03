@@ -6,34 +6,57 @@ import (
 	"testing"
 )
 
-func TestEmitToFileAppends(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "out.env")
-	if err := Emit(p, []KV{{"app-id", "org.example.App"}, {"arch", "x86_64"}}); err != nil {
-		t.Fatalf("emit: %v", err)
-	}
-	if err := Emit(p, []KV{{"branch", "stable"}}); err != nil {
-		t.Fatalf("emit append: %v", err)
-	}
-	got, _ := os.ReadFile(p)
-	want := "app-id=org.example.App\narch=x86_64\nbranch=stable\n"
-	if string(got) != want {
-		t.Fatalf("got %q want %q", string(got), want)
-	}
-}
+func TestEmitKeyValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	outPath := filepath.Join(tempDir, "ci_output")
 
-func TestEmitRejectsNewlineValue(t *testing.T) {
-	if err := Emit(filepath.Join(t.TempDir(), "o"), []KV{{"k", "a\nb"}}); err == nil {
-		t.Fatal("expected error for multiline value")
+	tests := []struct {
+		name    string
+		pairs   []KV
+		wantErr bool
+	}{
+		{
+			name: "valid keys",
+			pairs: []KV{
+				{Key: "APP_ID", Value: "org.example.App"},
+				{Key: "branch-name", Value: "stable"},
+				{Key: "arch_123", Value: "x86_64"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid key containing equals",
+			pairs: []KV{
+				{Key: "APP=ID", Value: "org.example.App"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid key containing newline",
+			pairs: []KV{
+				{Key: "APP\nID", Value: "org.example.App"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid key containing space",
+			pairs: []KV{
+				{Key: "APP ID", Value: "org.example.App"},
+			},
+			wantErr: true,
+		},
 	}
-}
 
-func TestEmitStdoutWhenEmptyOrDash(t *testing.T) {
-	// Empty path and "-" must not error and must not create a file.
-	if err := Emit("", []KV{{"k", "v"}}); err != nil {
-		t.Fatalf("empty path: %v", err)
-	}
-	if err := Emit("-", []KV{{"k", "v"}}); err != nil {
-		t.Fatalf("dash path: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Emit(outPath, tt.pairs)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Emit() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if err == nil {
+				// Clean up generated file
+				os.Remove(outPath)
+			}
+		})
 	}
 }

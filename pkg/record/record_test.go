@@ -139,7 +139,7 @@ func TestWriteAndIterRecords(t *testing.T) {
 	}
 }
 
-func TestIterRecordsSkipsInvalid(t *testing.T) {
+func TestIterRecordsFailsOnInvalid(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Write a valid record first
@@ -166,18 +166,9 @@ func TestIterRecordsSkipsInvalid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	records, err := IterRecords(tempDir)
-	if err != nil {
-		t.Fatalf("failed to iter records: %v", err)
-	}
-
-	// It should skip the invalid record, returning only 1 valid record
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(records))
-	}
-
-	if records[0].Record.AppID != "org.example.AppValid" {
-		t.Errorf("expected only valid record, got %s", records[0].Record.AppID)
+	_, err = IterRecords(tempDir)
+	if err == nil {
+		t.Fatal("expected IterRecords to fail on invalid/corrupt record cells, but it succeeded")
 	}
 }
 

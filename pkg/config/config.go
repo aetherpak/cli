@@ -73,7 +73,8 @@ type App struct {
 	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
 	// RuntimeVersion is deprecated and is no longer required or used by the actions.
 	RuntimeVersion string            `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
-	RunLinter      bool              `yaml:"run-linter" json:"run-linter" mapstructure:"run-linter"`
+	RunLinter      bool              `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	RunLinterKebab bool              `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
 	Linter         *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
 	CCache         *bool             `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
 	CCacheDir      string            `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
@@ -213,6 +214,9 @@ func (cfg *Config) Normalize() {
 
 // Normalize sets default values for App fields if they are missing.
 func (app *App) Normalize() {
+	if app.RunLinterKebab {
+		app.RunLinter = true
+	}
 	if app.Branch == "" {
 		app.Branch = "stable"
 	}
@@ -371,5 +375,25 @@ func linterConfigEqual(a, b *LinterConfig) bool {
 	if a.ExceptionsFile != b.ExceptionsFile {
 		return false
 	}
-	return slicesEqual(a.IgnoreRules, b.IgnoreRules) && slicesEqual(a.Exceptions, b.Exceptions)
+	return stringSlicesEqualAsSets(a.IgnoreRules, b.IgnoreRules) && stringSlicesEqualAsSets(a.Exceptions, b.Exceptions)
+}
+
+func stringSlicesEqualAsSets(a, b []string) bool {
+	setA := make(map[string]bool)
+	for _, x := range a {
+		setA[x] = true
+	}
+	setB := make(map[string]bool)
+	for _, x := range b {
+		setB[x] = true
+	}
+	if len(setA) != len(setB) {
+		return false
+	}
+	for k := range setA {
+		if !setB[k] {
+			return false
+		}
+	}
+	return true
 }

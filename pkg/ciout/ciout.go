@@ -18,6 +18,12 @@ type KV struct {
 func Emit(path string, pairs []KV) error {
 	var b strings.Builder
 	for _, p := range pairs {
+		// Validate key to contain only alphanumeric characters, underscores, or hyphens
+		for _, r := range p.Key {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+				return fmt.Errorf("ciout: key %q contains invalid character %q (must be alphanumeric, hyphen, or underscore)", p.Key, r)
+			}
+		}
 		if strings.ContainsAny(p.Value, "\n\r") {
 			return fmt.Errorf("ciout: value for %q contains a newline", p.Key)
 		}

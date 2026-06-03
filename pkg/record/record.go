@@ -146,24 +146,24 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 
 		recBytes, err := os.ReadFile(recPath)
 		if err != nil {
-			continue // Skip partial or unreadable cells silently
+			return nil, fmt.Errorf("failed to read record file %q: %w", recPath, err)
 		}
 		var r Record
 		if err := json.Unmarshal(recBytes, &r); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to parse record JSON from %q: %w", recPath, err)
 		}
 
 		if err := r.Validate(); err != nil {
-			continue
+			return nil, fmt.Errorf("invalid record at %q: %w", recPath, err)
 		}
 
 		lblBytes, err := os.ReadFile(lblPath)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("failed to read labels file %q: %w", lblPath, err)
 		}
 		var labels map[string]string
 		if err := json.Unmarshal(lblBytes, &labels); err != nil {
-			continue
+			return nil, fmt.Errorf("failed to parse labels JSON from %q: %w", lblPath, err)
 		}
 
 		results = append(results, RecordWithLabels{

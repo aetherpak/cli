@@ -52,6 +52,9 @@ func NewWithExecutor(e executil.Executor) *ExecGit {
 
 // run executes git with args, returning stdout. stderr is included in errors.
 func (g *ExecGit) run(args ...string) ([]byte, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("git: no arguments provided")
+	}
 	cmd := g.exec.Command("git", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.SetStdout(&stdout)
@@ -146,6 +149,10 @@ func (g *ExecGit) SubmoduleRemove(path string) error {
 // submoduleGitDir resolves the filesystem location of a submodule's git data
 // within the module store (<git-common-dir>/modules/<path>).
 func (g *ExecGit) submoduleGitDir(path string) (string, error) {
+	path = filepath.Clean(path)
+	if filepath.IsAbs(path) || strings.HasPrefix(path, "..") || path == ".." {
+		return "", fmt.Errorf("gitutil: submodule path %q must be a clean relative path and cannot contain directory traversal segments", path)
+	}
 	out, err := g.run("rev-parse", "--git-common-dir")
 	if err != nil {
 		return "", err

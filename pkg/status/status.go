@@ -155,19 +155,7 @@ func Check(
 		}
 	}
 
-	var keys []string
-	for _, k := range rawKeys {
-		if k != "" {
-			// If it's a file path, load its contents
-			if _, err := os.Stat(keyValFilePath(k)); err == nil {
-				data, err := os.ReadFile(keyValFilePath(k))
-				if err == nil {
-					k = string(data)
-				}
-			}
-			keys = append(keys, k)
-		}
-	}
+	keys := signing.ResolveKeys(rawKeys)
 
 	report.GPGKeysCount = len(keys)
 
@@ -183,14 +171,6 @@ func Check(
 	}
 
 	return report
-}
-
-func keyValFilePath(k string) string {
-	// Strip file:/// prefix if present
-	if strings.HasPrefix(k, "file://") {
-		return strings.TrimPrefix(k, "file://")
-	}
-	return k
 }
 
 func getVersion(executor executil.Executor, name string, args ...string) string {

@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"io"
+	"os"
+	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
@@ -16,13 +17,37 @@ type Signer struct {
 	entityList openpgp.EntityList
 }
 
+// ResolveKeys processes a slice of private keys, resolving any file paths
+// (supporting file:// prefix or raw file paths) to their string content.
+func ResolveKeys(keys []string) []string {
+	var resolved []string
+	for _, k := range keys {
+		if k == "" {
+			continue
+		}
+		path := k
+		if strings.HasPrefix(path, "file://") {
+			path = strings.TrimPrefix(path, "file://")
+		}
+		if _, err := os.Stat(path); err == nil {
+			data, err := os.ReadFile(path)
+			if err == nil {
+				k = string(data)
+			}
+		}
+		resolved = append(resolved, k)
+	}
+	return resolved
+}
+
 // NewSigner creates a new Signer from armored or binary GPG private key strings.
 // A non-empty passphrase unlocks keys whose secret material is encrypted.
 func NewSigner(privateKeys []string, passphrase []byte) (*Signer, error) {
-	logger.Debug("Loading %d private GPG key(s) into memory.", len(privateKeys))
+	resolvedKeys := ResolveKeys(privateKeys)
+	logger.Debug("Loading %d private GPG key(s) into memory.", len(resolvedKeys))
 
 	var mergedList openpgp.EntityList
-	for i, key := range privateKeys {
+	for i, key := range resolvedKeys {
 		if key == "" {
 			continue
 		}
@@ -91,28 +116,6 @@ func decryptEntity(entity *openpgp.Entity, passphrase []byte) error {
 		}
 	}
 	return nil
-}
-
-// Sign generates a single GPG signed message using the first key.
-func (s *Signer) Sign(r io.Reader) ([]byte, error) {
-	var sig bytes.Buffer
-
-	if len(s.entityList) == 0 {
-		return nil, fmt.Errorf("no key entities available for signing")
-	}
-
-	w, err := openpgp.Sign(&sig, s.entityList[0], nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize sign wrapper: %w", err)
-	}
-	if _, err := io.Copy(w, r); err != nil {
-		return nil, fmt.Errorf("failed to write payload: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return nil, fmt.Errorf("failed to finalize sign wrapper: %w", err)
-	}
-
-	return sig.Bytes(), nil
 }
 
 // SignWithAll signs the data bytes with all loaded keys, returning a slice of GPG signed messages.

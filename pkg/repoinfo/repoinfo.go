@@ -69,3 +69,60 @@ func Resolve(repoPath string) (Info, error) {
 	}
 	return Info{}, fmt.Errorf("repoinfo: no app/* ref in %s", repoPath)
 }
+
+// ResolveAll returns the coordinates of all app/* refs in the repo.
+// It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
+// the refs, and falls back to invoking the "ostree" host binary if needed.
+func ResolveAll(repoPath string) ([]Info, error) {
+	headsDir := filepath.Join(repoPath, "refs", "heads")
+	var foundRefs []string
+	_ = filepath.Walk(headsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(headsDir, path)
+		if err != nil {
+			return err
+		}
+		ref := filepath.ToSlash(rel)
+		if strings.HasPrefix(ref, "app/") {
+			foundRefs = append(foundRefs, ref)
+		}
+		return nil
+	})
+
+	var results []Info
+	for _, foundRef := range foundRefs {
+		id, arch, branch, err := parseRef(foundRef)
+		if err == nil {
+			results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath})
+		}
+	}
+
+	if len(results) > 0 {
+		return results, nil
+	}
+
+	// Fallback: execute ostree host binary
+	out, err := exec.Command("ostree", "refs", "--repo="+repoPath).Output()
+	if err != nil {
+		return nil, fmt.Errorf("repoinfo: ostree refs: %w", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "app/") {
+			id, arch, branch, err := parseRef(trimmed)
+			if err == nil {
+				results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath})
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("repoinfo: no app/* refs in %s", repoPath)
+	}
+	return results, nil
+}

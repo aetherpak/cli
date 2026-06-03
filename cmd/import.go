@@ -17,9 +17,9 @@ var (
 	importAppID        string
 	importArch         string
 	importBranch       string
-	importBundleURL    string
+	importBundleURLs   []string
 	importBundleSHA256 string
-	importBundlePath   string
+	importBundlePaths  []string
 	importRepoPath     string
 	importOutputFile   string
 )
@@ -27,7 +27,7 @@ var (
 var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Ingests external Flatpak bundles and rebinds branches",
-	Long:  `Downloads or processes a local Flatpak bundle (.flatpak), verifies its checksum, and rebinds its branch metadata to match the target channel.`,
+	Long:  `Downloads or processes local Flatpak bundles (.flatpak), verifies their checksums, and rebinds branch metadata to match the target channel.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		hasConfig := true
 		cfg, err := LoadConfig()
@@ -49,6 +49,34 @@ var importCmd = &cobra.Command{
 			repoPath = "repo"
 		}
 
+		// Expand glob patterns for paths
+		var resolvedPaths []string
+		for _, pat := range importBundlePaths {
+			matches, err := filepath.Glob(pat)
+			if err != nil {
+				matches = []string{pat}
+			}
+			if len(matches) == 0 {
+				matches = []string{pat}
+			}
+			resolvedPaths = append(resolvedPaths, matches...)
+		}
+
+		totalBundles := len(importBundleURLs) + len(resolvedPaths)
+		explicitBundle := totalBundles > 0
+
+		if totalBundles > 1 {
+			if importBundleSHA256 != "" {
+				return NewCmdError(2, fmt.Errorf("cannot specify --bundle-sha256 when importing multiple bundles"))
+			}
+			if importAppID != "" {
+				return NewCmdError(2, fmt.Errorf("cannot specify --app-id when importing multiple bundles; coordinates must be auto-detected from each bundle's internal metadata"))
+			}
+			if cmd.Flags().Changed("arch") {
+				return NewCmdError(2, fmt.Errorf("cannot specify --arch when importing multiple bundles; coordinates must be auto-detected from each bundle's internal metadata"))
+			}
+		}
+
 		type importJob struct {
 			appID        string
 			arch         string
@@ -60,18 +88,25 @@ var importCmd = &cobra.Command{
 
 		var jobs []importJob
 
-		explicitBundle := (importBundleURL != "" || importBundlePath != "")
-
 		if explicitBundle {
-			// Explicit bundle always imports just this one
-			jobs = append(jobs, importJob{
-				appID:        importAppID,
-				arch:         importArch,
-				branch:       importBranch,
-				bundleURL:    importBundleURL,
-				bundleSHA256: importBundleSHA256,
-				bundlePath:   importBundlePath,
-			})
+			// Explicit bundles specified
+			for _, url := range importBundleURLs {
+				jobs = append(jobs, importJob{
+					appID:        importAppID,
+					arch:         importArch,
+					branch:       importBranch,
+					bundleURL:    url,
+					bundleSHA256: importBundleSHA256,
+				})
+			}
+			for _, path := range resolvedPaths {
+				jobs = append(jobs, importJob{
+					appID:      importAppID,
+					arch:       importArch,
+					branch:     importBranch,
+					bundlePath: path,
+				})
+			}
 		} else if importAppID != "" {
 			// Explicit app ID, find in config
 			var targetApp *config.App
@@ -177,9 +212,9 @@ func init() {
 	_ = importCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 	importCmd.Flags().StringVar(&importArch, "arch", "", "target CPU architecture; derived from the bundle when empty")
 	importCmd.Flags().StringVar(&importBranch, "branch", "", "published branch channel; derived from the bundle when empty")
-	importCmd.Flags().StringVar(&importBundleURL, "bundle-url", "", "HTTP URL of the remote bundle")
+	importCmd.Flags().StringSliceVar(&importBundleURLs, "bundle-url", nil, "HTTP URL(s) of the remote bundle(s)")
 	importCmd.Flags().StringVar(&importBundleSHA256, "bundle-sha256", "", "expected SHA-256 checksum of the bundle")
-	importCmd.Flags().StringVar(&importBundlePath, "bundle-path", "", "local path override to Flatpak bundle file")
+	importCmd.Flags().StringSliceVar(&importBundlePaths, "bundle-path", nil, "local path(s) override to Flatpak bundle file(s) (supports globs)")
 	importCmd.Flags().StringVar(&importRepoPath, "repo-path", "repo", "destination OSTree repository path")
 	importCmd.Flags().StringVar(&importOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 }

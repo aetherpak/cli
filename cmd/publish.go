@@ -40,9 +40,9 @@ var (
 	pubNoSign               bool
 	pubAllowUnsigned        bool
 	pubManifest             string
-	pubBundle               string
-	pubBundleURL            string
-	pubBundlePath           string
+	pubBundles              []string
+	pubBundleURLs           []string
+	pubBundlePaths          []string
 	pubConfirm              bool
 	pubLinterExceptionsFile string
 	pubLinterExceptions     []string
@@ -87,26 +87,13 @@ var publishCmd = &cobra.Command{
 			recordsDir = "records"
 		}
 
-		// Validate mutual exclusion
-		sourceCount := 0
-		if pubManifest != "" {
-			sourceCount++
-		}
-		if pubBundle != "" {
-			sourceCount++
-		}
-		if pubBundleURL != "" {
-			sourceCount++
-		}
-		if pubBundlePath != "" {
-			sourceCount++
-		}
-		if sourceCount > 1 {
-			return NewCmdErrorf(2, "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified")
+		// Validate mutual exclusion: manifest cannot be specified with any bundle input
+		if pubManifest != "" && (len(pubBundles) > 0 || len(pubBundleURLs) > 0 || len(pubBundlePaths) > 0) {
+			return NewCmdErrorf(2, "cannot specify both --manifest and bundle inputs (--bundle, --bundle-url, or --bundle-path)")
 		}
 
 		// Handle one-off publishes (manifest or bundle)
-		if pubManifest != "" || pubBundle != "" || pubBundleURL != "" || pubBundlePath != "" {
+		if pubManifest != "" || len(pubBundles) > 0 || len(pubBundleURLs) > 0 || len(pubBundlePaths) > 0 {
 			if pubRegistry == "" || pubOCIRepo == "" {
 				return NewCmdErrorf(2, "OCI registry and repository must be specified via flags or configuration")
 			}
@@ -171,8 +158,49 @@ var publishCmd = &cobra.Command{
 				if err := builder.Build(buildOpts); err != nil {
 					return NewCmdError(1, err)
 				}
+
+				// Push to registry
+				return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo, repoPath, recordsDir)
 			} else {
-				// pubBundle != "" || pubBundleURL != "" || pubBundlePath != ""
+				// Expand globs for local bundle paths
+				var resolvedPaths []string
+				for _, pat := range pubBundlePaths {
+					matches, err := filepath.Glob(pat)
+					if err != nil {
+						matches = []string{pat}
+					}
+					if len(matches) == 0 {
+						matches = []string{pat}
+					}
+					resolvedPaths = append(resolvedPaths, matches...)
+				}
+				// Also handle --bundle, which could be a local path with glob or a URL.
+				var resolvedBundles []string
+				for _, pat := range pubBundles {
+					if strings.HasPrefix(pat, "http://") || strings.HasPrefix(pat, "https://") {
+						resolvedBundles = append(resolvedBundles, pat)
+					} else {
+						matches, err := filepath.Glob(pat)
+						if err != nil {
+							matches = []string{pat}
+						}
+						if len(matches) == 0 {
+							matches = []string{pat}
+						}
+						resolvedBundles = append(resolvedBundles, matches...)
+					}
+				}
+
+				totalBundles := len(resolvedBundles) + len(pubBundleURLs) + len(resolvedPaths)
+				if totalBundles > 1 {
+					if pubAppID != "" {
+						return NewCmdError(2, fmt.Errorf("cannot specify --app-id when publishing multiple bundles; coordinates must be auto-detected from each bundle's internal metadata"))
+					}
+					if cmd.Flags().Changed("arch") {
+						return NewCmdError(2, fmt.Errorf("cannot specify --arch when publishing multiple bundles; coordinates must be auto-detected from each bundle's internal metadata"))
+					}
+				}
+
 				var tempRepoDir string
 				var useTempRepo bool
 
@@ -192,19 +220,23 @@ var publishCmd = &cobra.Command{
 					defer os.RemoveAll(tempRepoDir)
 				}
 
-				var bundleURL, bundlePath string
-				if pubBundleURL != "" {
-					bundleURL = pubBundleURL
+				type importJob struct {
+					bundleURL  string
+					bundlePath string
 				}
-				if pubBundlePath != "" {
-					bundlePath = pubBundlePath
-				}
-				if pubBundle != "" {
-					if strings.HasPrefix(pubBundle, "http://") || strings.HasPrefix(pubBundle, "https://") {
-						bundleURL = pubBundle
+				var importJobs []importJob
+				for _, item := range resolvedBundles {
+					if strings.HasPrefix(item, "http://") || strings.HasPrefix(item, "https://") {
+						importJobs = append(importJobs, importJob{bundleURL: item})
 					} else {
-						bundlePath = pubBundle
+						importJobs = append(importJobs, importJob{bundlePath: item})
 					}
+				}
+				for _, url := range pubBundleURLs {
+					importJobs = append(importJobs, importJob{bundleURL: url})
+				}
+				for _, path := range resolvedPaths {
+					importJobs = append(importJobs, importJob{bundlePath: path})
 				}
 
 				destRepo := repoPath
@@ -225,54 +257,50 @@ var publishCmd = &cobra.Command{
 				}
 				importBranch := pubBranch
 
-				importOpts := importer.ImportOptions{
-					AppID:      importAppID,
-					Arch:       importArch,
-					Branch:     importBranch,
-					BundleURL:  bundleURL,
-					BundlePath: bundlePath,
-					RepoPath:   importRepo,
-				}
-
-				bundleDisplay := pubBundle
-				if bundleDisplay == "" {
-					if pubBundleURL != "" {
-						bundleDisplay = pubBundleURL
-					} else {
-						bundleDisplay = pubBundlePath
+				for _, job := range importJobs {
+					importOpts := importer.ImportOptions{
+						AppID:      importAppID,
+						Arch:       importArch,
+						Branch:     importBranch,
+						BundleURL:  job.bundleURL,
+						BundlePath: job.bundlePath,
+						RepoPath:   importRepo,
+					}
+					bundleDisplay := job.bundleURL
+					if bundleDisplay == "" {
+						bundleDisplay = job.bundlePath
+					}
+					logger.Info("Step 1: Importing bundle package %s...", bundleDisplay)
+					if err := importer.Import(importOpts); err != nil {
+						return NewCmdError(1, err)
 					}
 				}
-				logger.Info("Step 1: Importing bundle package %s...", bundleDisplay)
-				if err := importer.Import(importOpts); err != nil {
-					return NewCmdError(1, err)
-				}
 
+				var resolvedApps []repoinfo.Info
 				if useTempRepo {
-					// Resolve auto-detected coordinates
-					info, err := repoinfo.Resolve(tempRepoDir)
+					infos, err := repoinfo.ResolveAll(tempRepoDir)
 					if err != nil {
-						return NewCmdErrorf(1, "failed to resolve imported bundle ref: %w", err)
+						return NewCmdErrorf(1, "failed to resolve imported bundle refs: %w", err)
 					}
-
-					resolvedAppID = pubAppID
-					if resolvedAppID == "" {
-						resolvedAppID = info.AppID
-					}
-					resolvedArch = pubArch
-					if !cmd.Flags().Changed("arch") {
-						resolvedArch = info.Arch
-					}
-					resolvedBranch = pubBranch
-					if resolvedBranch == "" {
-						resolvedBranch = info.Branch
-					}
+					resolvedApps = infos
+				} else {
+					resolvedApps = []repoinfo.Info{{
+						AppID:    resolvedAppID,
+						Arch:     resolvedArch,
+						Branch:   resolvedBranch,
+						RepoPath: destRepo,
+					}}
 				}
 
 				// Prompt for confirmation if interactive and not bypassed
 				if isInteractive() && !pubConfirm {
 					var confirm bool
+					var appDetails []string
+					for _, ra := range resolvedApps {
+						appDetails = append(appDetails, fmt.Sprintf("%s (%s, channel: %s)", ra.AppID, ra.Arch, ra.Branch))
+					}
 					err := huh.NewConfirm().
-						Title(fmt.Sprintf("Do you want to publish %s (%s, channel: %s)?", resolvedAppID, resolvedArch, resolvedBranch)).
+						Title(fmt.Sprintf("Do you want to publish the following applications?\n- %s", strings.Join(appDetails, "\n- "))).
 						Value(&confirm).
 						Run()
 					if err != nil {
@@ -295,26 +323,33 @@ var publishCmd = &cobra.Command{
 						}
 					}
 
-					destRef := fmt.Sprintf("app/%s/%s/%s", resolvedAppID, resolvedArch, resolvedBranch)
-					logger.Info("Copying ref %s from temp repo to target repo...", destRef)
-					copyCmd := exec.Command("flatpak", "build-commit-from",
-						"--src-repo="+tempRepoDir,
-						"--src-ref="+destRef,
-						"--update-appstream",
-						"--no-update-summary",
-						destRepo,
-						destRef,
-					)
-					var copyStderr bytes.Buffer
-					copyCmd.Stderr = &copyStderr
-					if err := copyCmd.Run(); err != nil {
-						return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
+					for _, ra := range resolvedApps {
+						destRef := fmt.Sprintf("app/%s/%s/%s", ra.AppID, ra.Arch, ra.Branch)
+						logger.Info("Copying ref %s from temp repo to target repo...", destRef)
+						copyCmd := exec.Command("flatpak", "build-commit-from",
+							"--src-repo="+tempRepoDir,
+							"--src-ref="+destRef,
+							"--update-appstream",
+							"--no-update-summary",
+							destRepo,
+							destRef,
+						)
+						var copyStderr bytes.Buffer
+						copyCmd.Stderr = &copyStderr
+						if err := copyCmd.Run(); err != nil {
+							return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
+						}
 					}
 				}
-			}
 
-			// Push to registry
-			return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo, repoPath, recordsDir)
+				// Push to registry
+				for _, ra := range resolvedApps {
+					if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
 		}
 
 		// Otherwise, publish config-driven apps
@@ -558,9 +593,9 @@ func init() {
 	publishCmd.Flags().BoolVar(&pubNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	publishCmd.Flags().BoolVar(&pubAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 	publishCmd.Flags().StringVar(&pubManifest, "manifest", "", "path to a local Flatpak manifest file (bypasses config)")
-	publishCmd.Flags().StringVar(&pubBundle, "bundle", "", "Flatpak bundle URL or path to import and publish")
-	publishCmd.Flags().StringVar(&pubBundleURL, "bundle-url", "", "Flatpak bundle URL to import and publish")
-	publishCmd.Flags().StringVar(&pubBundlePath, "bundle-path", "", "Flatpak bundle local path to import and publish")
+	publishCmd.Flags().StringSliceVar(&pubBundles, "bundle", nil, "Flatpak bundle URL(s) or path(s) to import and publish")
+	publishCmd.Flags().StringSliceVar(&pubBundleURLs, "bundle-url", nil, "Flatpak bundle URL(s) to import and publish")
+	publishCmd.Flags().StringSliceVar(&pubBundlePaths, "bundle-path", nil, "Flatpak bundle local path(s) to import and publish (supports globs)")
 	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
 	publishCmd.Flags().StringVar(&pubLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 	publishCmd.Flags().StringSliceVar(&pubLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")

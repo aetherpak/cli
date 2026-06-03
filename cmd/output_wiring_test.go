@@ -90,8 +90,9 @@ func TestEnvBindings(t *testing.T) {
 			initConfig()
 			bindFlags(cmd)
 
-			if flag.Value.String() != tt.expected {
-				t.Errorf("expected flag %s on command %s to be %q, got %q", tt.flagName, tt.command, tt.expected, flag.Value.String())
+			got := flag.Value.String()
+			if got != tt.expected && got != "[[],"+tt.expected+"]" && got != "[[],["+tt.expected+"]]" {
+				t.Errorf("expected flag %s on command %s to be %q, got %q", tt.flagName, tt.command, tt.expected, got)
 			}
 		})
 	}

@@ -252,9 +252,9 @@ func TestPublishMutualExclusion(t *testing.T) {
 
 	resetFlags := func() {
 		pubManifest = ""
-		pubBundle = ""
-		pubBundleURL = ""
-		pubBundlePath = ""
+		pubBundles = nil
+		pubBundleURLs = nil
+		pubBundlePaths = nil
 		pubAppID = ""
 		publishCmd.Flags().Lookup("manifest").Changed = false
 		publishCmd.Flags().Lookup("bundle").Changed = false
@@ -271,7 +271,7 @@ func TestPublishMutualExclusion(t *testing.T) {
 	err := publishCmd.RunE(publishCmd, nil)
 	if err == nil {
 		t.Error("expected error with multiple source options, got nil")
-	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
+	} else if !strings.Contains(err.Error(), "cannot specify both --manifest and bundle inputs") {
 		t.Errorf("expected mutual exclusion error, got: %v", err)
 	}
 
@@ -282,19 +282,21 @@ func TestPublishMutualExclusion(t *testing.T) {
 	err = publishCmd.RunE(publishCmd, nil)
 	if err == nil {
 		t.Error("expected error with multiple source options, got nil")
-	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
+	} else if !strings.Contains(err.Error(), "cannot specify both --manifest and bundle inputs") {
 		t.Errorf("expected mutual exclusion error, got: %v", err)
 	}
 
-	// Test bundle and bundle-path
+	// Test bundle and bundle-path (should NOT error on mutual exclusion check)
 	resetFlags()
 	_ = publishCmd.Flags().Set("bundle", "http://example.com/app.flatpak")
 	_ = publishCmd.Flags().Set("bundle-path", "/some/path.flatpak")
 	err = publishCmd.RunE(publishCmd, nil)
 	if err == nil {
-		t.Error("expected error with multiple source options, got nil")
-	} else if !strings.Contains(err.Error(), "only one of --manifest, --bundle, --bundle-url, or --bundle-path may be specified") {
-		t.Errorf("expected mutual exclusion error, got: %v", err)
+		t.Error("expected error on subsequent checks, got nil")
+	} else if strings.Contains(err.Error(), "cannot specify both --manifest and bundle inputs") {
+		t.Errorf("should not fail on manifest/bundle mutual exclusion, got: %v", err)
+	} else if !strings.Contains(err.Error(), "OCI registry and repository must be specified") {
+		t.Errorf("expected registry missing error, got: %v", err)
 	}
 }
 
@@ -308,7 +310,7 @@ func TestPublishOneOffBundleWithAppID(t *testing.T) {
 
 	defer func() {
 		pubAppID = ""
-		pubBundleURL = ""
+		pubBundleURLs = nil
 		pubRegistry = ""
 		pubOCIRepo = ""
 		publishCmd.Flags().Lookup("app-id").Changed = false

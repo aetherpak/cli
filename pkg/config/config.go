@@ -54,13 +54,21 @@ type BrandingConfig struct {
 	IndexTemplate string `yaml:"index_template" json:"index_template" mapstructure:"index_template"`
 }
 
+// FlatpakDep represents an external Flatpak dependency (runtime, SDK extension, etc.) to be pre-installed.
+type FlatpakDep struct {
+	Remote string `yaml:"remote" json:"remote" mapstructure:"remote"`
+	Ref    string `yaml:"ref" json:"ref" mapstructure:"ref"`
+}
+
 // DefaultsConfig defines global repository build defaults.
 type DefaultsConfig struct {
-	CCache      *bool    `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
-	CCacheDir   string   `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
-	StateDir    string   `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
-	RunLinter   bool     `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	BuilderArgs []string `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	CCache      *bool             `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
+	CCacheDir   string            `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
+	StateDir    string            `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
+	RunLinter   bool              `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	BuilderArgs []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes     map[string]string `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks    []FlatpakDep      `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
 }
 
 // App represents an individual application configuration.
@@ -81,6 +89,8 @@ type App struct {
 	StateDir       string            `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
 	Bundles        map[string]Bundle `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
 	BuilderArgs    []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes        map[string]string `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks       []FlatpakDep      `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -209,6 +219,42 @@ func (cfg *Config) Normalize() {
 			app.BuilderArgs = make([]string, len(cfg.Defaults.BuilderArgs))
 			copy(app.BuilderArgs, cfg.Defaults.BuilderArgs)
 		}
+
+		if len(app.Remotes) == 0 && len(cfg.Defaults.Remotes) > 0 {
+			app.Remotes = make(map[string]string)
+			for k, v := range cfg.Defaults.Remotes {
+				app.Remotes[k] = v
+			}
+		} else if len(cfg.Defaults.Remotes) > 0 {
+			merged := make(map[string]string)
+			for k, v := range cfg.Defaults.Remotes {
+				merged[k] = v
+			}
+			for k, v := range app.Remotes {
+				merged[k] = v
+			}
+			app.Remotes = merged
+		}
+
+		if len(app.Flatpaks) == 0 && len(cfg.Defaults.Flatpaks) > 0 {
+			app.Flatpaks = make([]FlatpakDep, len(cfg.Defaults.Flatpaks))
+			copy(app.Flatpaks, cfg.Defaults.Flatpaks)
+		} else if len(cfg.Defaults.Flatpaks) > 0 {
+			merged := append([]FlatpakDep(nil), cfg.Defaults.Flatpaks...)
+			for _, dep := range app.Flatpaks {
+				exists := false
+				for _, m := range merged {
+					if m.Remote == dep.Remote && m.Ref == dep.Ref {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					merged = append(merged, dep)
+				}
+			}
+			app.Flatpaks = merged
+		}
 	}
 }
 
@@ -291,6 +337,27 @@ func (app *App) Validate() error {
 		}
 	}
 
+	for name, url := range app.Remotes {
+		if name == "" {
+			return fmt.Errorf("app %q: flatpak remote name cannot be empty", app.ID)
+		}
+		if url == "" {
+			return fmt.Errorf("app %q: flatpak remote %q URL cannot be empty", app.ID, name)
+		}
+		if !urlRegexp.MatchString(url) {
+			return fmt.Errorf("app %q: flatpak remote %q URL %q must start with http:// or https://", app.ID, name, url)
+		}
+	}
+
+	for _, dep := range app.Flatpaks {
+		if dep.Remote == "" {
+			return fmt.Errorf("app %q: flatpak dependency remote cannot be empty", app.ID)
+		}
+		if dep.Ref == "" {
+			return fmt.Errorf("app %q: flatpak dependency ref cannot be empty", app.ID)
+		}
+	}
+
 	return nil
 }
 
@@ -344,6 +411,38 @@ func (app App) Equal(other App) bool {
 		}
 	}
 
+	if !flatpakRemotesEqual(app.Remotes, other.Remotes) {
+		return false
+	}
+
+	if !flatpakDepsEqual(app.Flatpaks, other.Flatpaks) {
+		return false
+	}
+
+	return true
+}
+
+func flatpakRemotesEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
+func flatpakDepsEqual(a, b []FlatpakDep) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Remote != b[i].Remote || a[i].Ref != b[i].Ref {
+			return false
+		}
+	}
 	return true
 }
 

@@ -133,6 +133,66 @@ func TestAppValidate(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid flatpak remote URL scheme",
+			app: App{
+				ID:       "org.example.App",
+				Branch:   "stable",
+				Manifest: "apps/app.yaml",
+				Remotes: map[string]string{
+					"flathub": "ftp://dl.flathub.org/repo/flathub.flatpakrepo",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty flatpak remote name",
+			app: App{
+				ID:       "org.example.App",
+				Branch:   "stable",
+				Manifest: "apps/app.yaml",
+				Remotes: map[string]string{
+					"": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty flatpak remote URL",
+			app: App{
+				ID:       "org.example.App",
+				Branch:   "stable",
+				Manifest: "apps/app.yaml",
+				Remotes: map[string]string{
+					"flathub": "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty flatpak dependency remote",
+			app: App{
+				ID:       "org.example.App",
+				Branch:   "stable",
+				Manifest: "apps/app.yaml",
+				Flatpaks: []FlatpakDep{
+					{Remote: "", Ref: "org.gnome.Sdk//45"},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty flatpak dependency ref",
+			app: App{
+				ID:       "org.example.App",
+				Branch:   "stable",
+				Manifest: "apps/app.yaml",
+				Flatpaks: []FlatpakDep{
+					{Remote: "flathub", Ref: ""},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,6 +215,13 @@ func TestConfigNormalize(t *testing.T) {
 			StateDir:    "/global/state",
 			RunLinter:   true,
 			BuilderArgs: []string{"--foo", "--bar"},
+			Remotes: map[string]string{
+				"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+				"repoA":   "https://example.com/repoA.flatpakrepo",
+			},
+			Flatpaks: []FlatpakDep{
+				{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
+			},
 		},
 		Linter: &LinterConfig{
 			Strict:      &falseVal,
@@ -176,6 +243,13 @@ func TestConfigNormalize(t *testing.T) {
 					Strict:      &trueVal,
 					IgnoreRules: []string{"rule-2"},
 					Exceptions:  []string{"rule-ex2"},
+				},
+				Remotes: map[string]string{
+					"repoA": "https://example.com/repoA-overridden.flatpakrepo",
+					"repoB": "https://example.com/repoB.flatpakrepo",
+				},
+				Flatpaks: []FlatpakDep{
+					{Remote: "repoA", Ref: "org.gnome.Sdk.ExtensionA//45"},
 				},
 			},
 		},
@@ -203,6 +277,12 @@ func TestConfigNormalize(t *testing.T) {
 	if len(app1.BuilderArgs) != 2 || app1.BuilderArgs[0] != "--foo" || app1.BuilderArgs[1] != "--bar" {
 		t.Errorf("App1: expected BuilderArgs inherited, got %v", app1.BuilderArgs)
 	}
+	if len(app1.Remotes) != 2 || app1.Remotes["flathub"] != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app1.Remotes["repoA"] != "https://example.com/repoA.flatpakrepo" {
+		t.Errorf("App1: expected Remotes inherited, got %v", app1.Remotes)
+	}
+	if len(app1.Flatpaks) != 1 || app1.Flatpaks[0].Remote != "flathub" || app1.Flatpaks[0].Ref != "org.gnome.Sdk//45" {
+		t.Errorf("App1: expected Flatpaks inherited, got %v", app1.Flatpaks)
+	}
 
 	// App 2 should preserve local values
 	app2 := cfg.Apps[1]
@@ -220,6 +300,18 @@ func TestConfigNormalize(t *testing.T) {
 	}
 	if len(app2.BuilderArgs) != 1 || app2.BuilderArgs[0] != "--baz" {
 		t.Errorf("App2: expected BuilderArgs overridden/preserved, got %v", app2.BuilderArgs)
+	}
+	if len(app2.Remotes) != 3 || app2.Remotes["flathub"] != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app2.Remotes["repoA"] != "https://example.com/repoA-overridden.flatpakrepo" || app2.Remotes["repoB"] != "https://example.com/repoB.flatpakrepo" {
+		t.Errorf("App2: expected Remotes merged/overridden, got %v", app2.Remotes)
+	}
+	if len(app2.Flatpaks) != 2 {
+		t.Fatalf("App2: expected 2 Flatpaks, got %d: %v", len(app2.Flatpaks), app2.Flatpaks)
+	}
+	if app2.Flatpaks[0].Remote != "flathub" || app2.Flatpaks[0].Ref != "org.gnome.Sdk//45" {
+		t.Errorf("App2: expected first Flatpak to be default flathub:org.gnome.Sdk//45, got %+v", app2.Flatpaks[0])
+	}
+	if app2.Flatpaks[1].Remote != "repoA" || app2.Flatpaks[1].Ref != "org.gnome.Sdk.ExtensionA//45" {
+		t.Errorf("App2: expected second Flatpak to be local repoA:org.gnome.Sdk.ExtensionA//45, got %+v", app2.Flatpaks[1])
 	}
 }
 
@@ -245,6 +337,12 @@ func TestAppEqual(t *testing.T) {
 		BuilderArgs: []string{"--arg1"},
 		Bundles: map[string]Bundle{
 			"x86_64": {URL: "https://example.com/b.flatpak", SHA256: "abcdef"},
+		},
+		Remotes: map[string]string{
+			"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+		},
+		Flatpaks: []FlatpakDep{
+			{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
 		},
 	}
 
@@ -302,5 +400,23 @@ func TestAppEqual(t *testing.T) {
 	}
 	if appA.Equal(appB) {
 		t.Error("differing Bundles should not be equal")
+	}
+
+	// Reset and change Remotes
+	appB = appA
+	appB.Remotes = map[string]string{
+		"flathub": "https://example.com/other.flatpakrepo",
+	}
+	if appA.Equal(appB) {
+		t.Error("differing Remotes values should not be equal")
+	}
+
+	// Reset and change Flatpaks
+	appB = appA
+	appB.Flatpaks = []FlatpakDep{
+		{Remote: "flathub", Ref: "org.gnome.Sdk//46"},
+	}
+	if appA.Equal(appB) {
+		t.Error("differing Flatpaks refs should not be equal")
 	}
 }

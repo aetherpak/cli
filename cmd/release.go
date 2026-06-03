@@ -47,6 +47,8 @@ var (
 	relLandingPage          bool
 	relLinterExceptionsFile string
 	relLinterExceptions     []string
+	relFlatpakRemotes       []string
+	relFlatpakDeps          []string
 )
 
 var releaseCmd = &cobra.Command{
@@ -151,6 +153,8 @@ var releaseCmd = &cobra.Command{
 							var appLinterExceptions []string
 							var appLinterExceptionsFile = ""
 							var appBuilderArgs []string
+							var appRemotes map[string]string
+							var appFlatpaks []config.FlatpakDep
 
 							var matchedApp *config.App
 							for idx := range cfg.Apps {
@@ -165,6 +169,8 @@ var releaseCmd = &cobra.Command{
 								appStateDir = matchedApp.StateDir
 								appRunLinter = matchedApp.RunLinter
 								appBuilderArgs = matchedApp.BuilderArgs
+								appRemotes = matchedApp.Remotes
+								appFlatpaks = matchedApp.Flatpaks
 								if matchedApp.Linter != nil {
 									if matchedApp.Linter.Strict != nil {
 										appLinterStrict = *matchedApp.Linter.Strict
@@ -188,6 +194,8 @@ var releaseCmd = &cobra.Command{
 									}
 									appRunLinter = cfg.Defaults.RunLinter
 									appBuilderArgs = cfg.Defaults.BuilderArgs
+									appRemotes = cfg.Defaults.Remotes
+									appFlatpaks = cfg.Defaults.Flatpaks
 									if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
 										appCCacheDir = ""
 									}
@@ -214,6 +222,20 @@ var releaseCmd = &cobra.Command{
 							if builderArgChanged {
 								appBuilderArgs = relBuilderArgs
 							}
+							if cmd.Flags().Changed("flatpak-remote") {
+								parsed, err := parseFlatpakRemotes(relFlatpakRemotes)
+								if err != nil {
+									return NewCmdError(2, err)
+								}
+								appRemotes = parsed
+							}
+							if cmd.Flags().Changed("flatpak-dep") {
+								parsed, err := parseFlatpakDeps(relFlatpakDeps)
+								if err != nil {
+									return NewCmdError(2, err)
+								}
+								appFlatpaks = parsed
+							}
 
 							appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
 								linterExceptionsFileChanged,
@@ -238,6 +260,8 @@ var releaseCmd = &cobra.Command{
 								LinterExceptions:     appLinterExceptions,
 								LinterExceptionsFile: appLinterExceptionsFile,
 								BuilderArgs:          appBuilderArgs,
+								Remotes:              appRemotes,
+								Flatpaks:             appFlatpaks,
 							}
 							if err := builder.Build(bOpts); err != nil {
 								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -391,4 +415,6 @@ func init() {
 	releaseCmd.Flags().BoolVar(&relLandingPage, "landing-page", true, "generate an index.html landing page")
 	releaseCmd.Flags().StringVar(&relLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 	releaseCmd.Flags().StringSliceVar(&relLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
+	releaseCmd.Flags().StringArrayVar(&relFlatpakRemotes, "flatpak-remote", nil, "Flatpak remote repository to register (format: name=url)")
+	releaseCmd.Flags().StringArrayVar(&relFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
 }

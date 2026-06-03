@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/charmbracelet/lipgloss"
@@ -31,6 +32,8 @@ type BuildOptions struct {
 	LinterExceptionsFile string   // path to linter exceptions configuration file (JSON)
 	BuilderArgs          []string // extra flags passed through to flatpak-builder
 	Executor             executil.Executor
+	Remotes              map[string]string   // external Flatpak remotes to register
+	Flatpaks             []config.FlatpakDep // Flatpaks (runtimes, dependencies) to pre-install
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -57,6 +60,25 @@ func Build(opts BuildOptions) error {
 
 	if err := checkSubmodules(opts.Manifest); err != nil {
 		return err
+	}
+
+	// Pre-register flatpak remotes
+	for name, url := range opts.Remotes {
+		logger.Info("Registering Flatpak remote %s: %s", name, url)
+		if err := runFlatpakCommand(opts.Executor, []string{"remote-add", "--user", "--if-not-exists", name, url}); err != nil {
+			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, url, err)
+		}
+	}
+
+	// Pre-install flatpak dependencies
+	for _, dep := range opts.Flatpaks {
+		if dep.Remote == "" || dep.Ref == "" {
+			continue
+		}
+		logger.Info("Installing Flatpak dependency %s from %s", dep.Ref, dep.Remote)
+		if err := runFlatpakCommand(opts.Executor, []string{"install", "--user", "-y", dep.Remote, dep.Ref}); err != nil {
+			return fmt.Errorf("failed to install flatpak dependency %s from remote %s: %w", dep.Ref, dep.Remote, err)
+		}
 	}
 
 	// Default linter ignore rules for AetherPak (since packages are self-hosted and not on Flathub,
@@ -431,4 +453,61 @@ func loadExceptionsFile(path string) (map[string][]string, error) {
 		return nil, fmt.Errorf("failed to parse linter exceptions file %q: %w", path, err)
 	}
 	return exceptions, nil
+}
+
+func runFlatpakCommand(executor executil.Executor, args []string) error {
+	cmd := executor.Command("flatpak", args...)
+
+	var prefix string
+	if logger.IsPlain() {
+		prefix = "flatpak |"
+	} else {
+		prefix = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Render("flatpak") + lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		stdoutPipe.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		stdoutPipe.Close()
+		stderrPipe.Close()
+		return fmt.Errorf("failed to start flatpak command: %w", err)
+	}
+
+	var dest io.Writer = os.Stdout
+	var lb *executil.LogBox
+	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
+		lb = executil.NewLogBox(os.Stdout, 8)
+		lb.Start()
+		dest = lb
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer stdoutPipe.Close()
+		executil.StreamWithPrefix(stdoutPipe, dest, prefix)
+	}()
+	go func() {
+		defer wg.Done()
+		defer stderrPipe.Close()
+		executil.StreamWithPrefix(stderrPipe, dest, prefix)
+	}()
+
+	wg.Wait()
+	if lb != nil {
+		lb.Close()
+	}
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+	return nil
 }

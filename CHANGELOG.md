@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/aetherpak/cli/compare/v0.13.0...v0.14.0) (2026-06-03)
+
+
+### Features
+
+* support multiple bundle URLs and combined path/url publication ([d6d6243](https://github.com/aetherpak/cli/commit/d6d6243c6e24273578fad307a15b3b887cf1a5ea))
+
 ## [0.13.0](https://github.com/aetherpak/cli/compare/v0.12.0...v0.13.0) (2026-06-03)
 
 

@@ -245,7 +245,9 @@ func BuildSite(opts SiteOptions) error {
 	}
 
 	// 5. Backfill GPG signatures from Pages URL
-	backfillSignatures(opts, index, sigDirName)
+	if err := backfillSignatures(opts, index, sigDirName); err != nil {
+		return fmt.Errorf("failed to backfill signatures: %w", err)
+	}
 
 	// 6. Generate deployment directories and output files
 	if err := writeIndexFile(opts.SiteDir, index); err != nil {
@@ -596,9 +598,9 @@ func writeSigningJSON(siteDir string, sigDirName string, fingerprint string, opt
 	return nil
 }
 
-func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string) {
+func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string) error {
 	if opts.PagesURL == "" {
-		return
+		return nil
 	}
 	pagesURL := strings.TrimSuffix(opts.PagesURL, "/")
 
@@ -627,13 +629,13 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 			g.Go(func() error {
 				// Try signature-1, signature-2, etc.
 				for i := 1; ; i++ {
-					stop := func() bool {
+					stop, err := func() (bool, error) {
 						relPath := fmt.Sprintf("%s/%s@%s=%s/signature-%d", sigDirName, pkgName, algo, hexd, i)
 						localPath := filepath.Join(opts.SiteDir, relPath)
 
 						// If it already exists, proceed to next signature index
 						if _, err := os.Stat(localPath); err == nil {
-							return false
+							return false, nil
 						}
 
 						url := pagesURL + "/" + relPath
@@ -641,35 +643,42 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 
 						resp, err := client.Get(url)
 						if err != nil {
-							logger.Debug("Failed to fetch signature %s: %v", url, err)
-							return true
+							logger.Warn("Failed to fetch signature %s: %v", url, err)
+							return true, err
 						}
 						defer resp.Body.Close()
 
 						if resp.StatusCode != http.StatusOK {
-							// 404/other error means signature index is not present, stop sequential scan
-							return true
+							if resp.StatusCode != http.StatusNotFound {
+								logger.Warn("Unexpected status code %d fetching signature from %s", resp.StatusCode, url)
+								return true, fmt.Errorf("unexpected status %d fetching signature: %s", resp.StatusCode, url)
+							}
+							// 404 means signature index is not present, stop sequential scan
+							return true, nil
 						}
 
 						data, err := io.ReadAll(resp.Body)
 						if err != nil {
-							logger.Debug("Failed to read signature body from %s: %v", url, err)
-							return true
+							logger.Warn("Failed to read signature body from %s: %v", url, err)
+							return true, err
 						}
 
 						if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-							logger.Debug("Failed to create signature directory %s: %v", filepath.Dir(localPath), err)
-							return true
+							logger.Warn("Failed to create signature directory %s: %v", filepath.Dir(localPath), err)
+							return true, err
 						}
 
 						if err := os.WriteFile(localPath, data, 0644); err != nil {
-							logger.Debug("Failed to write signature file %s: %v", localPath, err)
-							return true
+							logger.Warn("Failed to write signature file %s: %v", localPath, err)
+							return true, err
 						}
 
 						logger.Info("Backfilled signature: %s", relPath)
-						return false
+						return false, nil
 					}()
+					if err != nil {
+						return err
+					}
 					if stop {
 						break
 					}
@@ -679,7 +688,7 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 		}
 	}
 
-	_ = g.Wait()
+	return g.Wait()
 }
 
 func appTitle(appdataXML string, appID string) string {

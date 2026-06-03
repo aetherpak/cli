@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/spf13/cobra"
 )
@@ -41,6 +42,9 @@ Rules:
 		channel, err := resolveChannel(refType, refName, defaultBranch)
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
+		}
+		if channel == "" {
+			return NewCmdErrorf(1, "no git reference information available to resolve channel")
 		}
 		fmt.Println(channel)
 		return nil
@@ -84,20 +88,56 @@ func resolveChannel(refType, refName, defaultBranch string) (string, error) {
 			if mapped, exists := cfg.ChannelMappings[refName]; exists {
 				return mapped, nil
 			}
+			type match struct {
+				pattern string
+				target  string
+			}
+			var matches []match
 			for pattern, target := range cfg.ChannelMappings {
-				if matched, _ := filepath.Match(pattern, refName); matched {
-					return target, nil
+				matched, err := filepath.Match(pattern, refName)
+				if err != nil {
+					continue
 				}
+				if matched {
+					matches = append(matches, match{pattern: pattern, target: target})
+				}
+			}
+			if len(matches) > 0 {
+				sort.Slice(matches, func(i, j int) bool {
+					if len(matches[i].pattern) != len(matches[j].pattern) {
+						return len(matches[i].pattern) > len(matches[j].pattern)
+					}
+					return matches[i].pattern < matches[j].pattern
+				})
+				return matches[0].target, nil
 			}
 		}
 		if resolved != "" {
 			if mapped, exists := cfg.ChannelMappings[resolved]; exists {
 				return mapped, nil
 			}
+			type match struct {
+				pattern string
+				target  string
+			}
+			var matches []match
 			for pattern, target := range cfg.ChannelMappings {
-				if matched, _ := filepath.Match(pattern, resolved); matched {
-					return target, nil
+				matched, err := filepath.Match(pattern, resolved)
+				if err != nil {
+					continue
 				}
+				if matched {
+					matches = append(matches, match{pattern: pattern, target: target})
+				}
+			}
+			if len(matches) > 0 {
+				sort.Slice(matches, func(i, j int) bool {
+					if len(matches[i].pattern) != len(matches[j].pattern) {
+						return len(matches[i].pattern) > len(matches[j].pattern)
+					}
+					return matches[i].pattern < matches[j].pattern
+				})
+				return matches[0].target, nil
 			}
 		}
 	}

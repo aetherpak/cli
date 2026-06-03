@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -99,19 +98,7 @@ var releaseCmd = &cobra.Command{
 			return NewCmdErrorf(1, "Release planning failed: %w", err)
 		}
 
-		// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-		var keys []string
-		for _, keyVal := range relGPGKeys {
-			if keyVal != "" {
-				if _, err := os.Stat(keyVal); err == nil {
-					data, err := os.ReadFile(keyVal)
-					if err == nil {
-						keyVal = string(data)
-					}
-				}
-				keys = append(keys, keyVal)
-			}
-		}
+		keys := relGPGKeys
 
 		var passphrase []byte
 		if relGPGPassphrase != "" {
@@ -127,6 +114,13 @@ var releaseCmd = &cobra.Command{
 
 		noSign := relNoSign
 		allowUnsigned := relAllowUnsigned
+
+		ccacheDirChanged := cmd.Flags().Changed("ccache-dir")
+		stateDirChanged := cmd.Flags().Changed("state-dir")
+		runLinterChanged := cmd.Flags().Changed("run-linter")
+		builderArgChanged := cmd.Flags().Changed("builder-arg")
+		linterExceptionsFileChanged := cmd.Flags().Changed("linter-exceptions-file")
+		linterExceptionChanged := cmd.Flags().Changed("linter-exception")
 
 		if len(res.Matrix) == 0 {
 			logger.Info("No application changes detected. Proceeding to site index update.")
@@ -208,39 +202,27 @@ var releaseCmd = &cobra.Command{
 								}
 							}
 
-							if cmd.Flags().Changed("ccache-dir") {
+							if ccacheDirChanged {
 								appCCacheDir = relCCacheDir
 							}
-							if cmd.Flags().Changed("state-dir") {
+							if stateDirChanged {
 								appStateDir = relStateDir
 							}
-							if cmd.Flags().Changed("run-linter") {
+							if runLinterChanged {
 								appRunLinter = relRunLinter
 							}
-							if cmd.Flags().Changed("builder-arg") {
+							if builderArgChanged {
 								appBuilderArgs = relBuilderArgs
 							}
 
-							if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
-								appLinterExceptionsFile = envVal
-							} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
-								if strings.HasSuffix(envVal, ".json") {
-									appLinterExceptionsFile = envVal
-								} else {
-									for _, item := range strings.Split(envVal, ",") {
-										item = strings.TrimSpace(item)
-										if item != "" {
-											appLinterExceptions = append(appLinterExceptions, item)
-										}
-									}
-								}
-							}
-							if cmd.Flags().Changed("linter-exceptions-file") {
-								appLinterExceptionsFile = relLinterExceptionsFile
-							}
-							if cmd.Flags().Changed("linter-exception") {
-								appLinterExceptions = relLinterExceptions
-							}
+							appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
+								linterExceptionsFileChanged,
+								linterExceptionChanged,
+								appLinterExceptions,
+								appLinterExceptionsFile,
+								relLinterExceptions,
+								relLinterExceptionsFile,
+							)
 
 							bOpts := builder.BuildOptions{
 								AppID:                row.AppID,

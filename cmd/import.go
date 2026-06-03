@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -170,6 +173,27 @@ var importCmd = &cobra.Command{
 			}
 		}
 
+		var tempRepoDir string
+		var useTempRepo bool
+
+		if importAppID != "" && cmd.Flags().Changed("arch") && importBranch != "" {
+			useTempRepo = false
+		} else {
+			useTempRepo = true
+			var err error
+			tempRepoDir, err = os.MkdirTemp("", "aetherpak-import-temp-*")
+			if err != nil {
+				return NewCmdErrorf(1, "failed to create temp repo directory: %w", err)
+			}
+			defer os.RemoveAll(tempRepoDir)
+		}
+
+		destRepo := repoPath
+		importRepo := destRepo
+		if useTempRepo {
+			importRepo = tempRepoDir
+		}
+
 		for _, job := range jobs {
 			opts := importer.ImportOptions{
 				AppID:        job.appID,
@@ -178,26 +202,71 @@ var importCmd = &cobra.Command{
 				BundleURL:    job.bundleURL,
 				BundleSHA256: job.bundleSHA256,
 				BundlePath:   job.bundlePath,
-				RepoPath:     repoPath,
+				RepoPath:     importRepo,
 			}
 
 			if err := importer.Import(opts); err != nil {
 				return NewCmdError(1, err)
 			}
+		}
 
-			info, err := repoinfo.Resolve(repoPath)
+		var resolvedApps []repoinfo.Info
+		if useTempRepo {
+			infos, err := repoinfo.ResolveAll(tempRepoDir)
 			if err != nil {
-				return NewCmdErrorf(1, "imported repo has no resolvable ref: %w", err)
+				return NewCmdErrorf(1, "failed to resolve imported bundle refs: %w", err)
 			}
+			resolvedApps = infos
+		} else {
+			resolvedApps = []repoinfo.Info{{
+				AppID:    importAppID,
+				Arch:     importArch,
+				Branch:   importBranch,
+				RepoPath: destRepo,
+			}}
+		}
+
+		if useTempRepo {
+			// Copy from tempRepoDir to destRepo
+			if err := os.MkdirAll(destRepo, 0755); err != nil {
+				return fmt.Errorf("failed to create target repo directory: %w", err)
+			}
+			if _, err := os.Stat(filepath.Join(destRepo, "config")); os.IsNotExist(err) {
+				initCmd := exec.Command("ostree", "--repo="+destRepo, "init", "--mode=archive-z2")
+				if err := initCmd.Run(); err != nil {
+					return fmt.Errorf("failed to initialize target ostree repo: %w", err)
+				}
+			}
+
+			for _, ra := range resolvedApps {
+				destRef := fmt.Sprintf("app/%s/%s/%s", ra.AppID, ra.Arch, ra.Branch)
+				logger.Info("Copying ref %s from temp repo to target repo...", destRef)
+				copyCmd := exec.Command("flatpak", "build-commit-from",
+					"--src-repo="+tempRepoDir,
+					"--src-ref="+destRef,
+					"--update-appstream",
+					"--no-update-summary",
+					destRepo,
+					destRef,
+				)
+				var copyStderr bytes.Buffer
+				copyCmd.Stderr = &copyStderr
+				if err := copyCmd.Run(); err != nil {
+					return fmt.Errorf("failed to copy commit to target repository (%w): %s", err, copyStderr.String())
+				}
+			}
+		}
+
+		for _, ra := range resolvedApps {
 			if err := ciout.Emit(importOutputFile, []ciout.KV{
-				{Key: "app-id", Value: info.AppID},
-				{Key: "branch", Value: info.Branch},
-				{Key: "arch", Value: info.Arch},
-				{Key: "repo-path", Value: repoPath},
+				{Key: "app-id", Value: ra.AppID},
+				{Key: "branch", Value: ra.Branch},
+				{Key: "arch", Value: ra.Arch},
+				{Key: "repo-path", Value: destRepo},
 			}); err != nil {
 				return NewCmdError(1, err)
 			}
-			logger.SuccessBanner("Import Completed", fmt.Sprintf("Successfully imported application %s (%s) for channel %s.", info.AppID, info.Arch, info.Branch))
+			logger.SuccessBanner("Import Completed", fmt.Sprintf("Successfully imported application %s (%s) for channel %s.", ra.AppID, ra.Arch, ra.Branch))
 		}
 
 		return nil

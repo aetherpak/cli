@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -203,26 +201,14 @@ var buildCmd = &cobra.Command{
 				appBuilderArgs = buildBuilderArgs
 			}
 
-			if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
-				appLinterExceptionsFile = envVal
-			} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
-				if strings.HasSuffix(envVal, ".json") {
-					appLinterExceptionsFile = envVal
-				} else {
-					for _, item := range strings.Split(envVal, ",") {
-						item = strings.TrimSpace(item)
-						if item != "" {
-							appLinterExceptions = append(appLinterExceptions, item)
-						}
-					}
-				}
-			}
-			if cmd.Flags().Changed("linter-exceptions-file") {
-				appLinterExceptionsFile = buildLinterExceptionsFile
-			}
-			if cmd.Flags().Changed("linter-exception") {
-				appLinterExceptions = buildLinterExceptions
-			}
+			appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
+				cmd.Flags().Changed("linter-exceptions-file"),
+				cmd.Flags().Changed("linter-exception"),
+				appLinterExceptions,
+				appLinterExceptionsFile,
+				buildLinterExceptions,
+				buildLinterExceptionsFile,
+			)
 
 			opts := builder.BuildOptions{
 				AppID:                job.appID,

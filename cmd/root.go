@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -84,6 +85,7 @@ func NewCmdErrorf(code int, format string, args ...interface{}) *CmdError {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // It returns the process exit code (0 on success).
 func Execute() int {
+	cliChangedFlags = make(map[*cobra.Command]map[string]bool)
 	err := RootCmd.Execute()
 	hasError := err != nil
 
@@ -202,6 +204,13 @@ func LoadConfig() (*config.Config, error) {
 	for i := range cfg.Apps {
 		if err := cfg.Apps[i].Validate(); err != nil {
 			return nil, fmt.Errorf("invalid application config at index %d: %w", i, err)
+		}
+	}
+
+	// Validate channel mappings patterns
+	for pattern := range cfg.ChannelMappings {
+		if _, err := filepath.Match(pattern, "test"); err != nil {
+			return nil, fmt.Errorf("invalid channel mapping pattern %q: %w", pattern, err)
 		}
 	}
 

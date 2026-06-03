@@ -49,9 +49,10 @@ type PlanResult struct {
 
 // ComputePlan generates the build matrix and selected app IDs based on git diffs.
 func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force string, workflowPath string) (*PlanResult, error) {
-	if cfg != nil {
-		cfg.Normalize()
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
 	}
+	cfg.Normalize()
 	baseSHA = strings.TrimSpace(baseSHA)
 	force = strings.TrimSpace(force)
 	workflowPath = strings.TrimSpace(workflowPath)
@@ -140,6 +141,14 @@ func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force st
 								if cf == manifestDir || strings.HasPrefix(cf, prefix) {
 									selectedSet[app.ID] = true
 									logger.Debug("App %s manifest directory %s was touched.", app.ID, manifestDir)
+									break
+								}
+							}
+						} else {
+							for _, cf := range changedFiles {
+								if cf == app.Manifest {
+									selectedSet[app.ID] = true
+									logger.Debug("App %s manifest file %s was touched.", app.ID, app.Manifest)
 									break
 								}
 							}

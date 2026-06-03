@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -71,20 +70,7 @@ var buildSiteCmd = &cobra.Command{
 			siteDirVal = "_site"
 		}
 
-		// Read GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-		var keys []string
-		for _, keyVal := range siteGPGKeys {
-			if keyVal != "" {
-				// Try reading as file path first
-				if _, err := os.Stat(keyVal); err == nil {
-					data, err := os.ReadFile(keyVal)
-					if err == nil {
-						keyVal = string(data)
-					}
-				}
-				keys = append(keys, keyVal)
-			}
-		}
+		keys := siteGPGKeys
 
 		var passphrase []byte
 		if siteGPGPassphrase != "" {

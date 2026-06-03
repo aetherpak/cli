@@ -55,6 +55,12 @@ func TestStreamWithPrefix(t *testing.T) {
 			prefix:   "pref |",
 			expected: "pref | " + strings.Repeat("b", 10000) + "\n",
 		},
+		{
+			name:     "extremely long line triggers flush at 64KB",
+			input:    strings.Repeat("c", 70000),
+			prefix:   "pref |",
+			expected: "pref | " + strings.Repeat("c", 65536) + "\npref | " + strings.Repeat("c", 4464) + "\n",
+		},
 	}
 
 	for _, tc := range tests {

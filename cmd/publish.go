@@ -117,28 +117,14 @@ var publishCmd = &cobra.Command{
 					}
 				}
 
-				var appLinterExceptions []string
-				var appLinterExceptionsFile = ""
-				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
-					appLinterExceptionsFile = envVal
-				} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
-					if strings.HasSuffix(envVal, ".json") {
-						appLinterExceptionsFile = envVal
-					} else {
-						for _, item := range strings.Split(envVal, ",") {
-							item = strings.TrimSpace(item)
-							if item != "" {
-								appLinterExceptions = append(appLinterExceptions, item)
-							}
-						}
-					}
-				}
-				if cmd.Flags().Changed("linter-exceptions-file") {
-					appLinterExceptionsFile = pubLinterExceptionsFile
-				}
-				if cmd.Flags().Changed("linter-exception") {
-					appLinterExceptions = pubLinterExceptions
-				}
+				appLinterExceptions, appLinterExceptionsFile := resolveLinterExceptions(
+					cmd.Flags().Changed("linter-exceptions-file"),
+					cmd.Flags().Changed("linter-exception"),
+					nil,
+					"",
+					pubLinterExceptions,
+					pubLinterExceptionsFile,
+				)
 
 				// Run build
 				buildOpts := builder.BuildOptions{
@@ -439,26 +425,14 @@ var publishCmd = &cobra.Command{
 					appRunLinter = pubRunLinter
 				}
 
-				if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS_FILE"); envVal != "" {
-					appLinterExceptionsFile = envVal
-				} else if envVal := os.Getenv("AETHERPAK_LINTER_EXCEPTIONS"); envVal != "" {
-					if strings.HasSuffix(envVal, ".json") {
-						appLinterExceptionsFile = envVal
-					} else {
-						for _, item := range strings.Split(envVal, ",") {
-							item = strings.TrimSpace(item)
-							if item != "" {
-								appLinterExceptions = append(appLinterExceptions, item)
-							}
-						}
-					}
-				}
-				if cmd.Flags().Changed("linter-exceptions-file") {
-					appLinterExceptionsFile = pubLinterExceptionsFile
-				}
-				if cmd.Flags().Changed("linter-exception") {
-					appLinterExceptions = pubLinterExceptions
-				}
+				appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
+					cmd.Flags().Changed("linter-exceptions-file"),
+					cmd.Flags().Changed("linter-exception"),
+					appLinterExceptions,
+					appLinterExceptionsFile,
+					pubLinterExceptions,
+					pubLinterExceptionsFile,
+				)
 
 				opts := builder.BuildOptions{
 					AppID:                targetApp.ID,
@@ -510,18 +484,7 @@ var publishCmd = &cobra.Command{
 
 func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string) error {
 	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
-	var keys []string
-	for _, keyVal := range pubGPGKeys {
-		if keyVal != "" {
-			if _, err := os.Stat(keyVal); err == nil {
-				data, err := os.ReadFile(keyVal)
-				if err == nil {
-					keyVal = string(data)
-				}
-			}
-			keys = append(keys, keyVal)
-		}
-	}
+	keys := pubGPGKeys
 
 	var passphrase []byte
 	if pubGPGPassphrase != "" {

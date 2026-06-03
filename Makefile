@@ -8,9 +8,11 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 
 ##@ Build & Quality
 
+VERSION ?= dev
+
 build: ## Build the aetherpak CLI binary into bin/
 	@mkdir -p bin
-	go build -o bin/aetherpak main.go
+	go build -ldflags="-X github.com/aetherpak/aetherpak/cmd.Version=$(VERSION)" -o bin/aetherpak main.go
 
 test: ## Run the unit test suite
 	go test -v ./...
@@ -54,8 +56,8 @@ container/builder: ## Build local single-architecture builder image
 
 release/build: ## Cross-compile release binaries and archives into dist/ (Linux only)
 	@mkdir -p dist
-	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/aetherpak-linux-amd64 main.go
-	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/aetherpak-linux-arm64 main.go
+	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X github.com/aetherpak/aetherpak/cmd.Version=$(VERSION)" -o dist/aetherpak-linux-amd64 main.go
+	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X github.com/aetherpak/aetherpak/cmd.Version=$(VERSION)" -o dist/aetherpak-linux-arm64 main.go
 	cd dist && tar -czf aetherpak-linux-amd64.tar.gz aetherpak-linux-amd64
 	cd dist && tar -czf aetherpak-linux-arm64.tar.gz aetherpak-linux-arm64
 

@@ -22,10 +22,14 @@ var (
 	outputDir string
 )
 
+// Version holds the version tag of the AetherPak CLI, injected at build time.
+var Version = "dev"
+
 // RootCmd represents the base command when called without any subcommands.
 var RootCmd = &cobra.Command{
-	Use:   "aetherpak",
-	Short: "AetherPak Core CLI is a tool for building, pushing and releasing Flatpak apps as OCI images",
+	Use:     "aetherpak",
+	Version: Version,
+	Short:   "AetherPak Core CLI is a tool for building, pushing and releasing Flatpak apps as OCI images",
 	Long: `AetherPak Core CLI replaces scripting pipelines for converting flatpak
 applications into OCI hosted repositories on GHCR with deployment sites on Pages.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

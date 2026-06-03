@@ -383,6 +383,10 @@ App: {{.Name}} ({{.ID}}) - {{.Summary}} - {{.Icon}}
 func TestBackfillSignaturesValidation(t *testing.T) {
 	// Setup a mock HTTP server to handle signature downloads
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "trigger-500") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "signature-1") {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("mock-signature-content"))
@@ -402,6 +406,7 @@ func TestBackfillSignaturesValidation(t *testing.T) {
 		name         string
 		pkgName      string
 		digest       string
+		pagesURL     string
 		expectError  bool
 		expectFile   string // Relative path of file we expect to be created, if any
 		expectNoFile string // Path we expect NOT to be created
@@ -448,6 +453,21 @@ func TestBackfillSignaturesValidation(t *testing.T) {
 			expectError:  false,
 			expectNoFile: "sigs/etc/unsafe-package@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
 		},
+		{
+			name:         "network error is skipped gracefully",
+			pkgName:      "my/unreachable-package",
+			digest:       "sha256:d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812",
+			pagesURL:     "http://127.0.0.1:65530", // highly likely unreachable
+			expectError:  false,
+			expectNoFile: "sigs/my/unreachable-package@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
+		},
+		{
+			name:         "server 500 error is skipped gracefully",
+			pkgName:      "trigger-500",
+			digest:       "sha256:d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812",
+			expectError:  false,
+			expectNoFile: "sigs/trigger-500@sha256=d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812/signature-1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -469,7 +489,12 @@ func TestBackfillSignaturesValidation(t *testing.T) {
 				},
 			}
 
-			err := backfillSignatures(opts, index, "sigs")
+			testOpts := opts
+			if tt.pagesURL != "" {
+				testOpts.PagesURL = tt.pagesURL
+			}
+
+			err := backfillSignatures(testOpts, index, "sigs")
 			if (err != nil) != tt.expectError {
 				t.Fatalf("backfillSignatures returned error %v, expected error: %v", err, tt.expectError)
 			}

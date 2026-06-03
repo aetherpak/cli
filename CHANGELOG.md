@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/aetherpak/cli/compare/v0.12.0...v0.13.0) (2026-06-03)
+
+
+### Features
+
+* add version command to CLI and inject version during build ([aa84497](https://github.com/aetherpak/cli/commit/aa84497a10416fb283931cf60ae30984f08558b3))
+
 ## [0.12.0](https://github.com/aetherpak/cli/compare/v0.11.2...v0.12.0) (2026-06-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/aetherpak/cli/compare/v0.15.0...v0.15.1) (2026-06-04)
+
+
+### Miscellaneous Chores
+
+* release 0.15.1 ([093a0fe](https://github.com/aetherpak/cli/commit/093a0fe8ce8e8e95fb22c8da8d1820830136e6f1))
+
 ## [0.15.0](https://github.com/aetherpak/cli/compare/v0.14.2...v0.15.0) (2026-06-03)
 
 

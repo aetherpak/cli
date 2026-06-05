@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/log v1.0.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/google/go-containerregistry v0.21.6
-	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-isatty v0.0.22
 	github.com/muesli/termenv v0.16.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

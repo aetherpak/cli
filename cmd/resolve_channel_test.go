@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bytes"
+	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -209,5 +212,63 @@ func TestResolveChannelFromEnv(t *testing.T) {
 	os.Setenv("CI_DEFAULT_BRANCH", "main")
 	if ch := resolveChannelFromEnv(); ch != "dev" {
 		t.Errorf("expected dev branch resolved channel, got %q", ch)
+	}
+}
+
+func TestResolveChannelCmd(t *testing.T) {
+	viper.Reset()
+
+	rcRefType = "tag"
+	rcRefName = "v1.0.0"
+	rcDefaultBranch = "main"
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := resolveChannelCmd.RunE(resolveChannelCmd, nil)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("resolveChannelCmd.RunE failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := strings.TrimSpace(buf.String())
+
+	if output != "stable" {
+		t.Errorf("expected stdout to be 'stable', got %q", output)
+	}
+}
+
+func TestResolveChannelCmdError(t *testing.T) {
+	viper.Reset()
+
+	rcRefType = ""
+	rcRefName = ""
+	rcDefaultBranch = ""
+
+	// Backup ambient env
+	envVars := []string{"AETHERPAK_REF_TYPE", "AETHERPAK_REF_NAME", "GITHUB_REF_TYPE", "GITHUB_REF_NAME", "CI_COMMIT_TAG", "CI_COMMIT_BRANCH"}
+	backup := make(map[string]string)
+	for _, k := range envVars {
+		backup[k] = os.Getenv(k)
+		os.Unsetenv(k)
+	}
+	defer func() {
+		for _, k := range envVars {
+			if v := backup[k]; v != "" {
+				os.Setenv(k, v)
+			}
+		}
+	}()
+
+	err := resolveChannelCmd.RunE(resolveChannelCmd, nil)
+	if err == nil {
+		t.Error("expected error when no git ref name info is present, got nil")
 	}
 }

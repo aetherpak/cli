@@ -1,7 +1,9 @@
 package repoinfo
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -80,4 +82,46 @@ func TestResolveAll(t *testing.T) {
 	if !found1 || !found2 {
 		t.Fatalf("did not resolve both apps correctly: %+v", infos)
 	}
+}
+
+func TestResolveOstreeFallback(t *testing.T) {
+	// Override execCommand to run this test binary itself with a helper process indicator.
+	execCommand = func(command string, args ...string) *exec.Cmd {
+		cs := []string{"-test.run=TestHelperProcess", "--", command}
+		cs = append(cs, args...)
+		cmd := exec.Command(os.Args[0], cs...)
+		cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
+		return cmd
+	}
+	defer func() { execCommand = exec.Command }()
+
+	tmp := t.TempDir() // empty directory, Walk won't find any app/ ref
+
+	// 1. Test Resolve fallback
+	info, err := Resolve(tmp)
+	if err != nil {
+		t.Fatalf("Resolve fallback failed: %v", err)
+	}
+	if info.AppID != "org.example.MockFromOstree" || info.Arch != "x86_64" || info.Branch != "stable" {
+		t.Fatalf("unexpected Resolve fallback result: %+v", info)
+	}
+
+	// 2. Test ResolveAll fallback
+	infos, err := ResolveAll(tmp)
+	if err != nil {
+		t.Fatalf("ResolveAll fallback failed: %v", err)
+	}
+	if len(infos) != 1 || infos[0].AppID != "org.example.MockFromOstree" {
+		t.Fatalf("unexpected ResolveAll fallback result: %+v", infos)
+	}
+}
+
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	// Print mock output of "ostree refs" and exit
+	fmt.Println("app/org.example.MockFromOstree/x86_64/stable")
+	fmt.Println("runtime/org.gnome.Platform/x86_64/45") // non-app ref to test parser ignoring it
+	os.Exit(0)
 }

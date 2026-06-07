@@ -616,3 +616,90 @@ func TestMapArch(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSiteReconcile(t *testing.T) {
+	// Setup a mock HTTP registry
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// App 1 exists
+		if strings.Contains(r.URL.Path, "sha256:1111111111111111111111111111111111111111111111111111111111111111") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// App 2 does not exist (404)
+		if strings.Contains(r.URL.Path, "sha256:2222222222222222222222222222222222222222222222222222222222222222") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records:
+	// App 1 (valid/exists in registry)
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	// App 2 (missing from registry - should be removed during reconcile!)
+	rec2 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app2",
+		Registry: server.URL,
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		Insecure:      true,
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with reconcile=true: %v", err)
+	}
+
+	// Verify that index/static file was written and only contains app1, NOT app2!
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org.example.app1") {
+		t.Error("expected index to contain app1")
+	}
+	if strings.Contains(content, "org.example.app2") {
+		t.Error("expected index to NOT contain app2 since it failed registry reconciliation")
+	}
+}

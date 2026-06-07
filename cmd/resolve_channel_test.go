@@ -134,3 +134,80 @@ channel_mappings:
 		})
 	}
 }
+
+func TestResolveChannelFromEnv(t *testing.T) {
+	// Clear viper state to prevent config bleed from other tests
+	viper.Reset()
+
+	// Backup ambient env
+	envVars := []string{
+		"AETHERPAK_REF_TYPE", "AETHERPAK_REF_NAME", "AETHERPAK_DEFAULT_BRANCH",
+		"GITHUB_REF_TYPE", "GITHUB_REF_NAME",
+		"CI_COMMIT_TAG", "CI_COMMIT_BRANCH", "CI_COMMIT_REF_NAME", "CI_DEFAULT_BRANCH",
+		"DEFAULT_BRANCH",
+	}
+	backup := make(map[string]string)
+	for _, k := range envVars {
+		backup[k] = os.Getenv(k)
+	}
+	defer func() {
+		for _, k := range envVars {
+			if v := backup[k]; v != "" {
+				os.Setenv(k, v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	// Clear all env vars for test environment isolation
+	for _, k := range envVars {
+		os.Unsetenv(k)
+	}
+
+	// 1. Unset env returns empty
+	if ch := resolveChannelFromEnv(); ch != "" {
+		t.Errorf("expected empty resolution, got %q", ch)
+	}
+
+	// 2. AETHERPAK_* variables take precedence
+	os.Setenv("AETHERPAK_REF_TYPE", "tag")
+	os.Setenv("AETHERPAK_REF_NAME", "v1.2.3")
+	if ch := resolveChannelFromEnv(); ch != "stable" {
+		t.Errorf("expected stable from AETHERPAK_ env, got %q", ch)
+	}
+
+	os.Setenv("AETHERPAK_REF_TYPE", "branch")
+	os.Setenv("AETHERPAK_REF_NAME", "mybranch")
+	os.Setenv("AETHERPAK_DEFAULT_BRANCH", "mybranch")
+	if ch := resolveChannelFromEnv(); ch != "beta" {
+		t.Errorf("expected beta from AETHERPAK_ env matching default branch, got %q", ch)
+	}
+
+	// 3. GITHUB_* variables fallback
+	os.Unsetenv("AETHERPAK_REF_TYPE")
+	os.Unsetenv("AETHERPAK_REF_NAME")
+	os.Unsetenv("AETHERPAK_DEFAULT_BRANCH")
+
+	os.Setenv("GITHUB_REF_TYPE", "tag")
+	os.Setenv("GITHUB_REF_NAME", "v2.0.0")
+	if ch := resolveChannelFromEnv(); ch != "stable" {
+		t.Errorf("expected stable from GITHUB_ env, got %q", ch)
+	}
+
+	// 4. GitLab / general CI fallback
+	os.Unsetenv("GITHUB_REF_TYPE")
+	os.Unsetenv("GITHUB_REF_NAME")
+
+	os.Setenv("CI_COMMIT_TAG", "v3.0.0")
+	if ch := resolveChannelFromEnv(); ch != "stable" {
+		t.Errorf("expected stable from CI_COMMIT_TAG, got %q", ch)
+	}
+
+	os.Unsetenv("CI_COMMIT_TAG")
+	os.Setenv("CI_COMMIT_BRANCH", "dev")
+	os.Setenv("CI_DEFAULT_BRANCH", "main")
+	if ch := resolveChannelFromEnv(); ch != "dev" {
+		t.Errorf("expected dev branch resolved channel, got %q", ch)
+	}
+}

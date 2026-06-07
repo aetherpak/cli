@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 )
 
@@ -181,6 +182,63 @@ func TestBuild(t *testing.T) {
 	}
 	if !linterRan {
 		t.Errorf("expected flatpak-builder-lint to have run")
+	}
+}
+
+func TestBuildWithRemotesAndDependencies(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	opts := BuildOptions{
+		AppID:    "org.example.App",
+		Manifest: "apps/org.example.App.json",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		StateDir: ".state",
+		RepoPath: "repo",
+		Remotes: map[string]string{
+			"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+		},
+		Flatpaks: []config.FlatpakDep{
+			{Remote: "flathub", Ref: "runtime/org.gnome.Platform/x86_64/45"},
+			{Remote: "", Ref: "should-be-skipped"}, // empty remote should be skipped
+		},
+		Executor: mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	var remoteAddRan, installRan bool
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 {
+			if cmd.Args[0] == "remote-add" {
+				remoteAddRan = true
+				expectedArgs := []string{"remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"}
+				for i, arg := range expectedArgs {
+					if cmd.Args[i] != arg {
+						t.Errorf("unexpected arg at index %d for remote-add: got %q, expected %q", i, cmd.Args[i], arg)
+					}
+				}
+			}
+			if cmd.Args[0] == "install" {
+				installRan = true
+				expectedArgs := []string{"install", "--user", "-y", "flathub", "runtime/org.gnome.Platform/x86_64/45"}
+				for i, arg := range expectedArgs {
+					if cmd.Args[i] != arg {
+						t.Errorf("unexpected arg at index %d for install: got %q, expected %q", i, cmd.Args[i], arg)
+					}
+				}
+			}
+		}
+	}
+
+	if !remoteAddRan {
+		t.Error("expected flatpak remote-add command to have run")
+	}
+	if !installRan {
+		t.Error("expected flatpak install command to have run")
 	}
 }
 

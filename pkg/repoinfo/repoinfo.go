@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// For testing
+var execCommand = exec.Command
+
 // Info holds the coordinates resolved from a repo's first app/* ref.
 type Info struct {
 	AppID, Arch, Branch, RepoPath string
@@ -54,7 +57,7 @@ func Resolve(repoPath string) (Info, error) {
 	}
 
 	// Fallback: execute ostree host binary
-	out, err := exec.Command("ostree", "refs", "--repo="+repoPath).Output()
+	out, err := execCommand("ostree", "refs", "--repo="+repoPath).Output()
 	if err != nil {
 		return Info{}, fmt.Errorf("repoinfo: ostree refs: %w", err)
 	}
@@ -107,7 +110,7 @@ func ResolveAll(repoPath string) ([]Info, error) {
 	}
 
 	// Fallback: execute ostree host binary
-	out, err := exec.Command("ostree", "refs", "--repo="+repoPath).Output()
+	out, err := execCommand("ostree", "refs", "--repo="+repoPath).Output()
 	if err != nil {
 		return nil, fmt.Errorf("repoinfo: ostree refs: %w", err)
 	}

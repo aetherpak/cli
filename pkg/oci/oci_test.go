@@ -1,6 +1,7 @@
 package oci
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/google/go-containerregistry/pkg/registry"
 )
@@ -191,5 +194,60 @@ func TestCleanTag(t *testing.T) {
 		if actual != tt.expected {
 			t.Errorf("CleanTag(%q) = %q; expected %q", tt.input, actual, tt.expected)
 		}
+	}
+}
+
+func TestPushSigned(t *testing.T) {
+	// Generate GPG Key
+	entity, err := openpgp.NewEntity("AetherPak Test", "Test key", "test@aetherpak.local", nil)
+	if err != nil {
+		t.Fatalf("failed to generate key entity: %v", err)
+	}
+
+	var privKeyBlock bytes.Buffer
+	wPriv, err := armor.Encode(&privKeyBlock, openpgp.PrivateKeyType, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := entity.SerializePrivate(wPriv, nil); err != nil {
+		t.Fatal(err)
+	}
+	wPriv.Close()
+
+	// Start mock registry
+	regServer := httptest.NewServer(registry.New())
+	defer regServer.Close()
+	regHost := strings.TrimPrefix(regServer.URL, "http://")
+
+	recordsDir := t.TempDir()
+	mockExec := setupMockPushExecutor()
+
+	opts := PushOptions{
+		AppID:         "org.example.App",
+		Arch:          "x86_64",
+		Branch:        "stable",
+		Registry:      regHost,
+		OCIRepository: "org.example.app",
+		RepoPath:      "repo",
+		RecordsDir:    recordsDir,
+		Insecure:      true,
+		Executor:      mockExec,
+		GPGKeys:       []string{privKeyBlock.String()},
+	}
+
+	res, err := Push(opts)
+	if err != nil {
+		t.Fatalf("expected push to succeed when signed, got %v", err)
+	}
+
+	// Verify signature output files are created in the records cell dir
+	if res.CellDir == "" {
+		t.Fatal("expected CellDir to be returned in PushResult")
+	}
+
+	digestHex := strings.TrimPrefix(res.Digest, "sha256:")
+	sigFile := filepath.Join(res.CellDir, "sigs", fmt.Sprintf("org.example.app@sha256=%s", digestHex), "signature-1")
+	if _, err := os.Stat(sigFile); os.IsNotExist(err) {
+		t.Errorf("expected signature file to exist at %s, but got not found", sigFile)
 	}
 }

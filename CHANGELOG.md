@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/aetherpak/cli/compare/v0.16.0...v0.17.0) (2026-06-07)
+
+
+### Features
+
+* add config get/set plumbing commands and sanitizeRemoteName helper ([b15f8b3](https://github.com/aetherpak/cli/commit/b15f8b32fc30962bf584a3cc64fc24dec389f001))
+* add config show command and format config get outputs ([a093d14](https://github.com/aetherpak/cli/commit/a093d148f8b122087aefba80beed98ae3159f318))
+
 ## [0.16.0](https://github.com/aetherpak/cli/compare/v0.15.2...v0.16.0) (2026-06-07)
 
 

@@ -173,3 +173,23 @@ func TestPushNoSignSucceedsUnsigned(t *testing.T) {
 		t.Fatalf("expected push to succeed when no-sign is enabled, got %v", err)
 	}
 }
+
+func TestCleanTag(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"stable", "stable"},
+		{"v1.2.3", "v1_2_3"},
+		{"app-branch", "app-branch"},
+		{"feature/branch", "feature_branch"},
+		{"dirty:tag@name", "dirty_tag_name"},
+	}
+
+	for _, tt := range tests {
+		actual := CleanTag(tt.input)
+		if actual != tt.expected {
+			t.Errorf("CleanTag(%q) = %q; expected %q", tt.input, actual, tt.expected)
+		}
+	}
+}

@@ -556,3 +556,63 @@ func TestIsUnderDir(t *testing.T) {
 		}
 	}
 }
+
+func TestCopyFile(t *testing.T) {
+	tempDir := t.TempDir()
+	src := filepath.Join(tempDir, "src.txt")
+	dst := filepath.Join(tempDir, "dst.txt")
+
+	content := []byte("hello copyFile")
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatalf("failed to write source: %v", err)
+	}
+
+	// Test successful copy
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile failed: %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("failed to read copied file: %v", err)
+	}
+	if string(got) != string(content) {
+		t.Errorf("copied content mismatch: got %q, expected %q", string(got), string(content))
+	}
+
+	// Test copy from non-existent file
+	if err := copyFile(filepath.Join(tempDir, "nonexistent"), dst); err == nil {
+		t.Error("expected error copying from non-existent file")
+	}
+
+	// Test copy to unwritable location
+	if err := copyFile(src, filepath.Join(tempDir, "nonexistent-dir/dst.txt")); err == nil {
+		t.Error("expected error copying to unwritable location")
+	}
+}
+
+func TestMapArch(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"x86_64", "amd64"},
+		{"X86_64", "amd64"},
+		{"aarch64", "arm64"},
+		{"AARCH64", "arm64"},
+		{"i386", "386"},
+		{"i586", "386"},
+		{"i686", "386"},
+		{"arm", "arm"},
+		{"armv7hl", "arm"},
+		{"other", "other"},
+		{"OTHER", "other"},
+	}
+
+	for _, tt := range tests {
+		actual := mapArch(tt.input)
+		if actual != tt.expected {
+			t.Errorf("mapArch(%q) = %q; expected %q", tt.input, actual, tt.expected)
+		}
+	}
+}

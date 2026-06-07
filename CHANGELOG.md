@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/aetherpak/cli/compare/v0.15.1...v0.15.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* **site:** prevent tag collisions in command syntax highlighter ([a34e812](https://github.com/aetherpak/cli/commit/a34e8126bb5f1cb15ec1ba02a718f9119f52148c))
+
 ## [0.15.1](https://github.com/aetherpak/cli/compare/v0.15.0...v0.15.1) (2026-06-04)
 
 

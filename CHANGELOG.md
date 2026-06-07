@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/aetherpak/cli/compare/v0.15.2...v0.16.0) (2026-06-07)
+
+
+### Features
+
+* auto-detect repository refs in push-oci ([dff23a0](https://github.com/aetherpak/cli/commit/dff23a0aa6bd7f4d4bc4d47baf3af56a80cd798e))
+
 ## [0.15.2](https://github.com/aetherpak/cli/compare/v0.15.1...v0.15.2) (2026-06-07)
 
 

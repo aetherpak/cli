@@ -201,3 +201,79 @@ func TestInitFileLoggingTempFailure(t *testing.T) {
 		t.Errorf("expected stderr to contain warning message, got %q", stderrOutput)
 	}
 }
+
+func TestErrorBanner(t *testing.T) {
+	// Initialize with plain mode active
+	Init(true, false, true)
+	if !IsPlain() {
+		t.Error("expected IsPlain() to return true")
+	}
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Output error banner
+	ErrorBanner("Failed", "An error occurred.")
+
+	// Restore stderr and read output
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	if !strings.Contains(output, "Failed") || !strings.Contains(output, "An error occurred.") {
+		t.Errorf("expected plain error banner output to contain 'Failed' and message, got: %q", output)
+	}
+
+	// Test non-plain style (no crash/runs successfully)
+	Init(false, false, false)
+	ErrorBanner("FailedNonPlain", "Styled error.")
+}
+
+func TestLogLevels(t *testing.T) {
+	// Verbose initialization to ensure debug logs are printed
+	Init(true, false, true)
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	appLogger.SetOutput(w)
+
+	// Log at different levels
+	Log(LevelDebug, "debug message %s", "1")
+	Log(LevelWarn, "warn message %s", "2")
+	Log(LevelError, "error message %s", "3")
+	Log(LogLevel("unknown"), "info message %s", "4") // should trigger Info case
+
+	Warn("direct warn %s", "5")
+	Debug("direct debug %s", "6")
+
+	// Restore stderr and read output
+	w.Close()
+	os.Stderr = oldStderr
+	appLogger.SetOutput(os.Stderr)
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	expectedMessages := []string{
+		"debug message 1",
+		"warn message 2",
+		"error message 3",
+		"info message 4",
+		"direct warn 5",
+		"direct debug 6",
+	}
+
+	for _, msg := range expectedMessages {
+		if !strings.Contains(output, msg) {
+			t.Errorf("expected log output to contain %q, got: %q", msg, output)
+		}
+	}
+}

@@ -138,6 +138,17 @@ func initConfig() {
 	_ = viper.BindEnv("oci_username", "OCI_USERNAME")
 	_ = viper.BindEnv("oci_password", "OCI_PASSWORD")
 
+	// Bind all configuration keys to support environment variable overrides in zero-config mode
+	for _, key := range []string{
+		"registry", "pages_url", "oci_repository", "remote_name", "no_sign",
+		"repo_title", "repo_homepage", "runtime_repo", "output_dir",
+		"linter.strict", "linter.ignore_rules", "linter.exceptions", "linter.exceptions_file",
+		"branding.logo_url", "branding.favicon_url", "branding.accent_color", "branding.footer_text", "branding.index_template",
+		"defaults.ccache", "defaults.ccache_dir", "defaults.state_dir", "defaults.run_linter", "defaults.builder_args",
+	} {
+		_ = viper.BindEnv(key)
+	}
+
 	if vCfgFile := viper.GetString("config"); vCfgFile != "" {
 		viper.SetConfigFile(vCfgFile)
 	} else {
@@ -167,6 +178,9 @@ func LoadConfig() (*config.Config, error) {
 			}
 		}
 		if !found {
+			if err := viper.Unmarshal(&cfg); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)
+			}
 			if vOutputDir := viper.GetString("output_dir"); vOutputDir != "" {
 				cfg.OutputDir = vOutputDir
 			}

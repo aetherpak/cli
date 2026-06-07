@@ -92,7 +92,14 @@ defaults:
 	initConfig()
 
 	// Run in rich mode (plain = false)
+	ci := os.Getenv("CI")
+	if ci != "" {
+		os.Unsetenv("CI")
+		defer os.Setenv("CI", ci)
+	}
 	logger.Init(false, false, false)
+	defer logger.Init(false, false, ci != "")
+
 	buf := new(bytes.Buffer)
 	configShowCmd.SetOut(buf)
 	err = configShowCmd.RunE(configShowCmd, []string{})

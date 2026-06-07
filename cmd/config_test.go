@@ -79,9 +79,16 @@ branding:
 	}
 	output = strings.TrimSpace(buf.String())
 	// 5. Test get with rich styling (plain = false)
+	ci := os.Getenv("CI")
+	if ci != "" {
+		os.Unsetenv("CI")
+		defer os.Setenv("CI", ci)
+	}
 	logger.Init(false, false, false)
+	defer logger.Init(false, false, ci != "")
 	lipgloss.SetColorProfile(termenv.ANSI)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
+
 	buf.Reset()
 	err = configGetCmd.RunE(configGetCmd, []string{"remote_name"})
 	if err != nil {

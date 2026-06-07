@@ -808,13 +808,21 @@
 
     function highlightCmd(cmd) {
       let htmlStr = esc(cmd);
+      // Extract URLs first to prevent tag and keyword conflicts
+      const urls = [];
+      htmlStr = htmlStr.replace(/((?:oci\+)?https?:\/\/[^\s\\]+|sigs\/[^\s\\]+)/g, function(match) {
+        urls.push(match);
+        return `__AETHERPAK_URL_PLACEHOLDER_${urls.length - 1}__`;
+      });
       // Replace flags first (preceded by start of string or space) to prevent tag conflicts
       htmlStr = htmlStr.replace(/(^|\s)(--?[a-zA-Z0-9-]+)/g, '$1<span class="code-flag">$2</span>');
-      // Replace keywords
-      htmlStr = htmlStr.replace(/\b(flatpak)\b/g, '<span class="code-keyword">$1</span>');
+      // Replace keywords (only as standalone commands, not part of words or URLs)
+      htmlStr = htmlStr.replace(/(^|\s)(flatpak)\b/g, '$1<span class="code-keyword">$2</span>');
       htmlStr = htmlStr.replace(/\b(install|remote-add|remote-modify)\b/g, '<span class="code-subcommand">$1</span>');
-      // Replace URLs
-      htmlStr = htmlStr.replace(/((?:oci\+)?https?:\/\/[^\s\\]+|sigs\/[^\s\\]+)/g, '<span class="code-url">$1</span>');
+      // Restore URLs wrapped in code-url span
+      for (let i = 0; i < urls.length; i++) {
+        htmlStr = htmlStr.replace(`__AETHERPAK_URL_PLACEHOLDER_${i}__`, `<span class="code-url">${urls[i]}</span>`);
+      }
       return htmlStr;
     }
 

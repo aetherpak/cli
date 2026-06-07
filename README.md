@@ -335,6 +335,18 @@ Resolves the app-id, arch, and branch channel from an existing OSTree repository
 aetherpak inspect-repo --repo-path repo
 ```
 
+#### `config`
+Gets or sets a configuration parameter (supports dot-separated nested keys, parses booleans/numbers):
+```bash
+# Get a configuration value
+aetherpak config get remote_name
+aetherpak config get branding.logo_url
+
+# Set a configuration value
+aetherpak config set remote_name custom-remote
+aetherpak config set branding.logo_url https://new-logo.png
+```
+
 ### Porcelain Commands
 
 #### `add`

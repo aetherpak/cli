@@ -327,6 +327,16 @@ aetherpak publish --bundle https://example.com/app.flatpak</code></pre>
             <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">inspect-repo</h3>
             <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.5rem;">Extracts metadata from an existing OSTree repository:</p>
             <div class="code-block"><pre><code>aetherpak inspect-repo --repo-path repo</code></pre><button class="btn-copy" title="Copy" onclick="copyBlock(this)"></button></div>
+
+            <h3 class="cfg" style="font-size:0.95rem; font-weight:700; color:var(--text); margin-bottom:0.4rem;">config</h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.5rem;">Gets or sets configuration parameters (supports flat and nested dot-notation keys):</p>
+            <div class="code-block"><pre><code># Get a configuration value
+aetherpak config get remote_name
+aetherpak config get branding.logo_url
+
+# Set a configuration value
+aetherpak config set remote_name custom-remote
+aetherpak config set branding.logo_url https://new-logo.png</code></pre><button class="btn-copy" title="Copy" onclick="copyBlock(this)"></button></div>
           </div>
 
           <div class="panel" data-tab="cmd-global" hidden>

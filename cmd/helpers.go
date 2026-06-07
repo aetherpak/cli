@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -82,4 +83,11 @@ func parseFlatpakDeps(deps []string) ([]config.FlatpakDep, error) {
 		})
 	}
 	return out, nil
+}
+
+var nonAlphaNumRegexp = regexp.MustCompile(`[^a-z0-9_-]`)
+
+func sanitizeRemoteName(name string) string {
+	name = strings.ToLower(name)
+	return nonAlphaNumRegexp.ReplaceAllString(name, "-")
 }

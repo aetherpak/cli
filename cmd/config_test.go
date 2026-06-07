@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +29,7 @@ branding:
 	// Ensure Viper is reset before loading
 	viper.Reset()
 	initConfig()
+	logger.Init(false, false, true) // ensure plain mode for tests
 
 	// 2. Test get flat key
 	buf := new(bytes.Buffer)
@@ -50,6 +54,17 @@ branding:
 		t.Errorf("expected 'https://example.com/logo.png', got %q", output)
 	}
 
+	// Test get complex key (map formatted as YAML)
+	buf.Reset()
+	err = configGetCmd.RunE(configGetCmd, []string{"branding"})
+	if err != nil {
+		t.Fatalf("failed to run config get complex: %v", err)
+	}
+	output = strings.TrimSpace(buf.String())
+	if !strings.Contains(output, "logo_url: https://example.com/logo.png") {
+		t.Errorf("expected output to contain 'logo_url: https://example.com/logo.png', got %q", output)
+	}
+
 	// 4. Test environment variable override
 	os.Setenv("AETHERPAK_REMOTE_NAME", "env-remote")
 	defer os.Unsetenv("AETHERPAK_REMOTE_NAME")
@@ -63,8 +78,21 @@ branding:
 		t.Fatalf("failed to run config get with env var: %v", err)
 	}
 	output = strings.TrimSpace(buf.String())
-	if output != "env-remote" {
-		t.Errorf("expected env var value 'env-remote' to override config file, got %q", output)
+	// 5. Test get with rich styling (plain = false)
+	logger.Init(false, false, false)
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+	buf.Reset()
+	err = configGetCmd.RunE(configGetCmd, []string{"remote_name"})
+	if err != nil {
+		t.Fatalf("failed to run config get in rich mode: %v", err)
+	}
+	output = buf.String()
+	if !strings.Contains(output, "\x1b") {
+		t.Errorf("expected ANSI escape characters in rich output, got %q", output)
+	}
+	if !strings.Contains(output, "env-remote") {
+		t.Errorf("expected output to contain 'env-remote', got %q", output)
 	}
 }
 

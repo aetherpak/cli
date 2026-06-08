@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/aetherpak/cli/compare/v0.17.0...v0.17.1) (2026-06-08)
+
+
+### Bug Fixes
+
+* support runtime/* refs in addition to app/* refs ([19c7abc](https://github.com/aetherpak/cli/commit/19c7abc0b505160ac5b2f5508728b7ab8b794989))
+
 ## [0.17.0](https://github.com/aetherpak/cli/compare/v0.16.0...v0.17.0) (2026-06-07)
 
 

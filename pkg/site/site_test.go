@@ -703,3 +703,64 @@ func TestBuildSiteReconcile(t *testing.T) {
 		t.Error("expected index to NOT contain app2 since it failed registry reconciliation")
 	}
 }
+
+func TestBuildSiteRuntimeRef(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up a runtime extension record
+	rec := record.Record{
+		AppID:    "org.freedesktop.Sdk.Extension.xrt",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/sdk-ext",
+		Registry: "ghcr.io",
+		Digest:   "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+		Ref:      "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable",
+	}
+	labels := map[string]string{
+		"org.flatpak.ref":      "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable",
+		"org.flatpak.metadata": "[Extension]\nname=org.freedesktop.Sdk.Extension.xrt",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+		t.Fatalf("failed to write runtime record: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		AllowUnsigned: true,
+		RemoteName:    "myremote",
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed: %v", err)
+	}
+
+	// Verify index/static contains the runtime ref
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org.freedesktop.Sdk.Extension.xrt") {
+		t.Error("expected index to contain runtime extension")
+	}
+	if !strings.Contains(content, "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable") {
+		t.Error("expected index to contain runtime/ ref in org.flatpak.ref label")
+	}
+
+	// Verify flatpakref file has IsRuntime=true
+	refsDir := filepath.Join(siteDir, "refs")
+	refFile := filepath.Join(refsDir, "org.freedesktop.Sdk.Extension.xrt-stable.flatpakref")
+	refData, err := os.ReadFile(refFile)
+	if err != nil {
+		t.Fatalf("failed to read flatpakref file: %v", err)
+	}
+	refContent := string(refData)
+	if !strings.Contains(refContent, "IsRuntime=true") {
+		t.Errorf("expected flatpakref to contain IsRuntime=true, got:\n%s", refContent)
+	}
+}

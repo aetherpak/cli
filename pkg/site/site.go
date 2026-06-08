@@ -402,7 +402,7 @@ func mergeRecord(index *FlatpakIndex, rec record.Record, labels map[string]strin
 	ociArch := mapArch(rec.Arch)
 
 	// Find or update image entry for target ref+arch
-	targetRef := fmt.Sprintf("app/%s/%s/%s", rec.AppID, rec.Arch, rec.Branch)
+	targetRef := rec.Ref
 	var imageIndex = -1
 	for i, img := range pkg.Images {
 		if img.Labels["org.flatpak.ref"] == targetRef && img.Architecture == ociArch {
@@ -528,14 +528,22 @@ func writeFlatpakRefs(siteDir string, index FlatpakIndex, gpgKeyBase64 string, s
 			}
 			refURL := fmt.Sprintf("oci+%s/%s", registryURL, pkg.Name)
 
+			isRuntime := parts[0] == "runtime"
+			var isRuntimeStr string
+			if isRuntime {
+				isRuntimeStr = "true"
+			} else {
+				isRuntimeStr = "false"
+			}
+
 			content := fmt.Sprintf(`[Flatpak Ref]
 Title=%s
 Name=%s
 Branch=%s
 Url=%s
-IsRuntime=false
+IsRuntime=%s
 SuggestRemoteName=%s
-`, sanitizeINIValue(title), sanitizeINIValue(appID), sanitizeINIValue(branch), sanitizeINIValue(refURL), sanitizeINIValue(remoteName))
+`, sanitizeINIValue(title), sanitizeINIValue(appID), sanitizeINIValue(branch), sanitizeINIValue(refURL), isRuntimeStr, sanitizeINIValue(remoteName))
 
 			if opts.RuntimeRepo != "" {
 				content += fmt.Sprintf("RuntimeRepo=%s\n", sanitizeINIValue(opts.RuntimeRepo))

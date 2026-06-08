@@ -251,3 +251,46 @@ func TestPushSigned(t *testing.T) {
 		t.Errorf("expected signature file to exist at %s, but got not found", sigFile)
 	}
 }
+
+func TestPushRuntimeRefType(t *testing.T) {
+	regServer := httptest.NewServer(registry.New())
+	defer regServer.Close()
+
+	regHost := strings.TrimPrefix(regServer.URL, "http://")
+	recordsDir := t.TempDir()
+	mockExec := setupMockPushExecutor()
+
+	opts := PushOptions{
+		AppID:         "org.freedesktop.Sdk.Extension.xrt",
+		Arch:          "x86_64",
+		Branch:        "stable",
+		Registry:      regHost,
+		OCIRepository: "org.freedesktop.sdk.extension.xrt",
+		RepoPath:      "repo",
+		RecordsDir:    recordsDir,
+		Insecure:      true,
+		Executor:      mockExec,
+		AllowUnsigned: true,
+		RefType:       "runtime",
+	}
+
+	res, err := Push(opts)
+	if err != nil {
+		t.Fatalf("expected push to succeed with runtime ref type, got %v", err)
+	}
+
+	if res.CellDir == "" {
+		t.Fatal("expected CellDir to be set")
+	}
+
+	// Verify the record.json contains runtime/ ref prefix
+	recPath := filepath.Join(res.CellDir, "record.json")
+	data, err := os.ReadFile(recPath)
+	if err != nil {
+		t.Fatalf("failed to read record.json: %v", err)
+	}
+
+	if !strings.Contains(string(data), "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable") {
+		t.Errorf("expected record to contain runtime/ ref, got: %s", string(data))
+	}
+}

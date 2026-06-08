@@ -66,9 +66,10 @@ var pushOCICmd = &cobra.Command{
 		}
 
 		type pushTarget struct {
-			AppID  string
-			Arch   string
-			Branch string
+			AppID   string
+			Arch    string
+			Branch  string
+			RefType string
 		}
 
 		var targets []pushTarget
@@ -86,9 +87,10 @@ var pushOCICmd = &cobra.Command{
 					continue
 				}
 				targets = append(targets, pushTarget{
-					AppID:  refInfo.AppID,
-					Arch:   refInfo.Arch,
-					Branch: refInfo.Branch,
+					AppID:   refInfo.AppID,
+					Arch:    refInfo.Arch,
+					Branch:  refInfo.Branch,
+					RefType: refInfo.RefType,
 				})
 			}
 			if pushAppID != "" && len(targets) == 0 {
@@ -209,6 +211,7 @@ var pushOCICmd = &cobra.Command{
 				OCIPassword:   viper.GetString("oci_password"),
 				NoSign:        noSign,
 				AllowUnsigned: allowUnsigned,
+				RefType:       target.RefType,
 			}
 
 			res, err := oci.Push(opts)

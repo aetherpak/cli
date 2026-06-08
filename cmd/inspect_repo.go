@@ -13,7 +13,7 @@ var (
 
 var inspectRepoCmd = &cobra.Command{
 	Use:   "inspect-repo",
-	Short: "Resolve app-id/arch/branch from an existing OSTree repo",
+	Short: "Resolve app-id/arch/branch/ref-type from an existing OSTree repo",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		info, err := repoinfo.Resolve(inspectRepoPath)
 		if err != nil {
@@ -24,6 +24,7 @@ var inspectRepoCmd = &cobra.Command{
 			{Key: "branch", Value: info.Branch},
 			{Key: "arch", Value: info.Arch},
 			{Key: "repo-path", Value: info.RepoPath},
+			{Key: "ref-type", Value: info.RefType},
 		}); err != nil {
 			return NewCmdError(1, err)
 		}

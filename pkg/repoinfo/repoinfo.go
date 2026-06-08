@@ -11,20 +11,37 @@ import (
 // For testing
 var execCommand = exec.Command
 
-// Info holds the coordinates resolved from a repo's first app/* ref.
+// validRefTypes lists the OSTree ref type prefixes that are recognized.
+var validRefTypes = []string{"app", "runtime"}
+
+// Info holds the coordinates resolved from a repo's first app/* or runtime/* ref.
 type Info struct {
-	AppID, Arch, Branch, RepoPath string
+	AppID, Arch, Branch, RepoPath, RefType string
 }
 
-func parseRef(ref string) (id, arch, branch string, err error) {
-	parts := strings.Split(strings.TrimSpace(ref), "/")
-	if len(parts) != 4 || parts[0] != "app" {
-		return "", "", "", fmt.Errorf("repoinfo: not an app ref: %q", ref)
+// Ref returns the full OSTree ref string: <RefType>/<AppID>/<Arch>/<Branch>.
+func (i Info) Ref() string {
+	return fmt.Sprintf("%s/%s/%s/%s", i.RefType, i.AppID, i.Arch, i.Branch)
+}
+
+func isValidRefType(t string) bool {
+	for _, v := range validRefTypes {
+		if t == v {
+			return true
+		}
 	}
-	return parts[1], parts[2], parts[3], nil
+	return false
 }
 
-// Resolve returns the coordinates of the first app/* ref in the repo.
+func parseRef(ref string) (refType, id, arch, branch string, err error) {
+	parts := strings.Split(strings.TrimSpace(ref), "/")
+	if len(parts) != 4 || !isValidRefType(parts[0]) {
+		return "", "", "", "", fmt.Errorf("repoinfo: not a valid ref: %q", ref)
+	}
+	return parts[0], parts[1], parts[2], parts[3], nil
+}
+
+// Resolve returns the coordinates of the first app/* or runtime/* ref in the repo.
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the ref, and falls back to invoking the "ostree" host binary if needed.
 func Resolve(repoPath string) (Info, error) {
@@ -42,17 +59,19 @@ func Resolve(repoPath string) (Info, error) {
 			return err
 		}
 		ref := filepath.ToSlash(rel)
-		if strings.HasPrefix(ref, "app/") {
-			foundRef = ref
-			return fmt.Errorf("stop walk") // sentinel error to abort walking
+		for _, prefix := range validRefTypes {
+			if strings.HasPrefix(ref, prefix+"/") {
+				foundRef = ref
+				return fmt.Errorf("stop walk") // sentinel error to abort walking
+			}
 		}
 		return nil
 	})
 
 	if foundRef != "" {
-		id, arch, branch, err := parseRef(foundRef)
+		refType, id, arch, branch, err := parseRef(foundRef)
 		if err == nil {
-			return Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath}, nil
+			return Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath, RefType: refType}, nil
 		}
 	}
 
@@ -62,18 +81,21 @@ func Resolve(repoPath string) (Info, error) {
 		return Info{}, fmt.Errorf("repoinfo: ostree refs: %w", err)
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "app/") {
-			id, arch, branch, err := parseRef(line)
-			if err != nil {
-				return Info{}, err
+		trimmed := strings.TrimSpace(line)
+		for _, prefix := range validRefTypes {
+			if strings.HasPrefix(trimmed, prefix+"/") {
+				refType, id, arch, branch, err := parseRef(trimmed)
+				if err != nil {
+					return Info{}, err
+				}
+				return Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath, RefType: refType}, nil
 			}
-			return Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath}, nil
 		}
 	}
-	return Info{}, fmt.Errorf("repoinfo: no app/* ref in %s", repoPath)
+	return Info{}, fmt.Errorf("repoinfo: no app/* or runtime/* ref in %s", repoPath)
 }
 
-// ResolveAll returns the coordinates of all app/* refs in the repo.
+// ResolveAll returns the coordinates of all app/* and runtime/* refs in the repo.
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the refs, and falls back to invoking the "ostree" host binary if needed.
 func ResolveAll(repoPath string) ([]Info, error) {
@@ -91,17 +113,20 @@ func ResolveAll(repoPath string) ([]Info, error) {
 			return err
 		}
 		ref := filepath.ToSlash(rel)
-		if strings.HasPrefix(ref, "app/") {
-			foundRefs = append(foundRefs, ref)
+		for _, prefix := range validRefTypes {
+			if strings.HasPrefix(ref, prefix+"/") {
+				foundRefs = append(foundRefs, ref)
+				break
+			}
 		}
 		return nil
 	})
 
 	var results []Info
 	for _, foundRef := range foundRefs {
-		id, arch, branch, err := parseRef(foundRef)
+		refType, id, arch, branch, err := parseRef(foundRef)
 		if err == nil {
-			results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath})
+			results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath, RefType: refType})
 		}
 	}
 
@@ -116,16 +141,19 @@ func ResolveAll(repoPath string) ([]Info, error) {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "app/") {
-			id, arch, branch, err := parseRef(trimmed)
-			if err == nil {
-				results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath})
+		for _, prefix := range validRefTypes {
+			if strings.HasPrefix(trimmed, prefix+"/") {
+				refType, id, arch, branch, err := parseRef(trimmed)
+				if err == nil {
+					results = append(results, Info{AppID: id, Arch: arch, Branch: branch, RepoPath: repoPath, RefType: refType})
+				}
+				break
 			}
 		}
 	}
 
 	if len(results) == 0 {
-		return nil, fmt.Errorf("repoinfo: no app/* refs in %s", repoPath)
+		return nil, fmt.Errorf("repoinfo: no app/* or runtime/* refs in %s", repoPath)
 	}
 	return results, nil
 }

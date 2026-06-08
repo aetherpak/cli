@@ -37,6 +37,7 @@ type PushOptions struct {
 	OCIPassword   string
 	NoSign        bool
 	AllowUnsigned bool
+	RefType       string // "app" or "runtime"; defaults to "app"
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -232,7 +233,11 @@ func Push(opts PushOptions) (PushResult, error) {
 	logger.Info("OCI push completed successfully.")
 
 	// 5. Write parallel records contracts to filesystem
-	ref := fmt.Sprintf("app/%s/%s/%s", opts.AppID, opts.Arch, opts.Branch)
+	refType := opts.RefType
+	if refType == "" {
+		refType = "app"
+	}
+	ref := fmt.Sprintf("%s/%s/%s/%s", refType, opts.AppID, opts.Arch, opts.Branch)
 	scheme := "https://"
 	if opts.Insecure {
 		scheme = "http://"

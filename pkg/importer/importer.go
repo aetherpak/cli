@@ -116,22 +116,23 @@ func Import(opts ImportOptions) error {
 	var srcRef string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "app/") {
+		if strings.HasPrefix(trimmed, "app/") || strings.HasPrefix(trimmed, "runtime/") {
 			srcRef = trimmed
 			break
 		}
 	}
 
 	if srcRef == "" {
-		return fmt.Errorf("no application ref (app/*) found in imported bundle")
+		return fmt.Errorf("no application or runtime ref (app/* or runtime/*) found in imported bundle")
 	}
 	logger.Info("Resolved imported ref: %s", srcRef)
 
-	// Coordinates default to the bundle's ref (app/<id>/<arch>/<branch>); explicit options override.
+	// Coordinates default to the bundle's ref (<type>/<id>/<arch>/<branch>); explicit options override.
 	srcParts := strings.Split(srcRef, "/")
 	if len(srcParts) != 4 {
 		return fmt.Errorf("unexpected source ref format: %q", srcRef)
 	}
+	refType := srcParts[0]
 	appID := opts.AppID
 	if appID == "" {
 		appID = srcParts[1]
@@ -163,7 +164,7 @@ func Import(opts ImportOptions) error {
 		}
 	}
 
-	destRef := fmt.Sprintf("app/%s/%s/%s", appID, arch, branch)
+	destRef := fmt.Sprintf("%s/%s/%s/%s", refType, appID, arch, branch)
 	logger.Info("Rebinding commit: %s -> %s", srcRef, destRef)
 
 	rebindCmd := opts.Executor.Command("flatpak", "build-commit-from",
@@ -276,7 +277,7 @@ func RebindRefs(opts RebindRefsOptions) error {
 	}
 
 	for _, ra := range opts.Refs {
-		destRef := fmt.Sprintf("app/%s/%s/%s", ra.AppID, ra.Arch, ra.Branch)
+		destRef := ra.Ref()
 		logger.Info("Copying ref %s from temp repo to target repo...", destRef)
 		copyCmd := opts.Executor.Command("flatpak", "build-commit-from",
 			"--src-repo="+opts.SrcRepo,

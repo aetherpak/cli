@@ -212,14 +212,16 @@ func TestRebindRefs(t *testing.T) {
 
 	refs := []repoinfo.Info{
 		{
-			AppID:  "org.example.App1",
-			Arch:   "x86_64",
-			Branch: "stable",
+			AppID:   "org.example.App1",
+			Arch:    "x86_64",
+			Branch:  "stable",
+			RefType: "app",
 		},
 		{
-			AppID:  "org.example.App2",
-			Arch:   "aarch64",
-			Branch: "beta",
+			AppID:   "org.example.App2",
+			Arch:    "aarch64",
+			Branch:  "beta",
+			RefType: "app",
 		},
 	}
 
@@ -266,5 +268,94 @@ func TestRebindRefs(t *testing.T) {
 	}
 	if !rebindApp2Ran {
 		t.Errorf("expected flatpak rebind for App2 to run")
+	}
+}
+
+func TestImportRuntimeBundle(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "dummy-bundle-*.flatpak")
+	if err != nil {
+		t.Fatalf("failed to create temp bundle file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.Write([]byte("dummy content")); err != nil {
+		t.Fatalf("failed to write to temp bundle file: %v", err)
+	}
+	tmpFile.Close()
+
+	destRepo, err := os.MkdirTemp("", "aetherpak-test-dest-repo-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dest repo: %v", err)
+	}
+	defer os.RemoveAll(destRepo)
+
+	mockExec := executil.NewMockExecutor()
+
+	// ostree refs returns a runtime ref instead of app ref
+	mockExec.OutMap["ostree"] = []byte("runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable\n")
+
+	opts := ImportOptions{
+		BundlePath: tmpFile.Name(),
+		RepoPath:   destRepo,
+		Executor:   mockExec,
+	}
+
+	err = Import(opts)
+	if err != nil {
+		t.Fatalf("expected import of runtime bundle to succeed, got %v", err)
+	}
+
+	// Verify rebind used runtime/ prefix
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" {
+			argsJoined := strings.Join(cmd.Args, " ")
+			if strings.Contains(argsJoined, "build-commit-from") {
+				if !strings.Contains(argsJoined, "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable") {
+					t.Errorf("expected rebind to use runtime/ ref prefix, got args: %s", argsJoined)
+				}
+			}
+		}
+	}
+}
+
+func TestRebindRefsRuntime(t *testing.T) {
+	destRepo, err := os.MkdirTemp("", "aetherpak-test-rebind-runtime-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dest repo: %v", err)
+	}
+	defer os.RemoveAll(destRepo)
+
+	mockExec := executil.NewMockExecutor()
+
+	refs := []repoinfo.Info{
+		{
+			AppID:   "org.freedesktop.Sdk.Extension.xrt",
+			Arch:    "x86_64",
+			Branch:  "stable",
+			RefType: "runtime",
+		},
+	}
+
+	opts := RebindRefsOptions{
+		SrcRepo:  "/tmp/src-repo",
+		DestRepo: destRepo,
+		Refs:     refs,
+		Executor: mockExec,
+	}
+
+	err = RebindRefs(opts)
+	if err != nil {
+		t.Fatalf("expected RebindRefs to succeed, got %v", err)
+	}
+
+	// Verify runtime/ prefix used in the rebind command
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" {
+			argsJoined := strings.Join(cmd.Args, " ")
+			if strings.Contains(argsJoined, "build-commit-from") {
+				if !strings.Contains(argsJoined, "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable") {
+					t.Errorf("expected rebind to use runtime/ ref, got args: %s", argsJoined)
+				}
+			}
+		}
 	}
 }

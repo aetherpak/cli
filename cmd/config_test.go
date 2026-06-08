@@ -104,8 +104,14 @@ branding:
 }
 
 func TestConfigSet(t *testing.T) {
-	// 1. Create empty config file
-	err := os.WriteFile("aetherpak.yaml", []byte(`{}`), 0644)
+	// 1. Create a config with comments and specific ordering.
+	err := os.WriteFile("aetherpak.yaml", []byte(`# top comment
+registry: ghcr.io
+remote_name: old-remote  # inline
+apps:
+  - id: org.first.App
+    manifest: first.yaml
+`), 0644)
 	if err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
@@ -117,39 +123,43 @@ func TestConfigSet(t *testing.T) {
 		t.Fatalf("failed to set remote_name: %v", err)
 	}
 
-	// 3. Test set nested key
-	err = configSetCmd.RunE(configSetCmd, []string{"branding.logo_url", "https://logo.png"})
-	if err != nil {
-		t.Fatalf("failed to set branding.logo_url: %v", err)
-	}
-
-	// 4. Test set boolean key
-	err = configSetCmd.RunE(configSetCmd, []string{"no_sign", "true"})
-	if err != nil {
-		t.Fatalf("failed to set no_sign: %v", err)
-	}
-
-	// 5. Test set integer key
-	err = configSetCmd.RunE(configSetCmd, []string{"defaults.ccache_dir", "1234"})
-	if err != nil {
-		t.Fatalf("failed to set defaults.ccache_dir: %v", err)
-	}
-
-	// 6. Verify contents written to file
+	// 3. Verify value was set and ordering/comments preserved.
 	updatedData, err := os.ReadFile("aetherpak.yaml")
 	if err != nil {
 		t.Fatalf("failed to read updated config: %v", err)
 	}
+	s := string(updatedData)
+	if !strings.Contains(s, "remote_name: my-custom-remote") {
+		t.Errorf("expected remote_name to be 'my-custom-remote', got:\n%s", s)
+	}
+	if !strings.Contains(s, "# top comment") {
+		t.Errorf("top comment lost:\n%s", s)
+	}
+	if !strings.Contains(s, "# inline") {
+		t.Errorf("inline comment lost:\n%s", s)
+	}
+	// registry must appear before remote_name
+	if strings.Index(s, "registry:") >= strings.Index(s, "remote_name:") {
+		t.Errorf("key ordering not preserved:\n%s", s)
+	}
+	// apps must appear after top-level keys
+	if strings.Index(s, "remote_name:") >= strings.Index(s, "apps:") {
+		t.Errorf("apps ordering not preserved:\n%s", s)
+	}
 
+	// 4. Test set nested key
+	err = configSetCmd.RunE(configSetCmd, []string{"branding.logo_url", "https://logo.png"})
+	if err != nil {
+		t.Fatalf("failed to set branding.logo_url: %v", err)
+	}
+	updatedData, err = os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read updated config: %v", err)
+	}
 	var m map[string]interface{}
 	if err := yaml.Unmarshal(updatedData, &m); err != nil {
-		t.Fatalf("failed to unmarshal updated config: %v", err)
+		t.Fatalf("failed to unmarshal: %v", err)
 	}
-
-	if m["remote_name"] != "my-custom-remote" {
-		t.Errorf("expected remote_name to be 'my-custom-remote', got %v", m["remote_name"])
-	}
-
 	branding, ok := m["branding"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected branding to be map, got %T", m["branding"])
@@ -158,15 +168,83 @@ func TestConfigSet(t *testing.T) {
 		t.Errorf("expected branding.logo_url to be 'https://logo.png', got %v", branding["logo_url"])
 	}
 
+	// 5. Test set boolean key
+	err = configSetCmd.RunE(configSetCmd, []string{"no_sign", "true"})
+	if err != nil {
+		t.Fatalf("failed to set no_sign: %v", err)
+	}
+	updatedData, err = os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read updated config: %v", err)
+	}
+	if err := yaml.Unmarshal(updatedData, &m); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
 	if m["no_sign"] != true {
 		t.Errorf("expected no_sign to be true (boolean), got %v (type %T)", m["no_sign"], m["no_sign"])
 	}
 
+	// 6. Test validation: unknown key should fail
+	err = configSetCmd.RunE(configSetCmd, []string{"foobar_invalid", "xyz"})
+	if err == nil {
+		t.Error("expected error for unknown key, got nil")
+	} else if !strings.Contains(err.Error(), "unknown configuration key") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	// 7. Test validation: invalid boolean should fail
+	err = configSetCmd.RunE(configSetCmd, []string{"no_sign", "banana"})
+	if err == nil {
+		t.Error("expected error for invalid boolean value, got nil")
+	} else if !strings.Contains(err.Error(), "invalid boolean value") {
+		t.Errorf("unexpected error for invalid bool: %v", err)
+	}
+
+	// 8. Test list values (comma-separated)
+	err = configSetCmd.RunE(configSetCmd, []string{"linter.ignore_rules", "rule1,rule2"})
+	if err != nil {
+		t.Fatalf("failed to set linter.ignore_rules: %v", err)
+	}
+	updatedData, err = os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	if err := yaml.Unmarshal(updatedData, &m); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	linter, ok := m["linter"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected linter to be map, got %T", m["linter"])
+	}
+	rules, ok := linter["ignore_rules"].([]interface{})
+	if !ok {
+		t.Fatalf("expected ignore_rules to be list, got %T", linter["ignore_rules"])
+	}
+	if len(rules) != 2 {
+		t.Errorf("expected 2 rules, got %d: %v", len(rules), rules)
+	}
+
+	// 9. Test list values (multiple args)
+	err = configSetCmd.RunE(configSetCmd, []string{"defaults.builder_args", "--foo", "--bar"})
+	if err != nil {
+		t.Fatalf("failed to set defaults.builder_args: %v", err)
+	}
+	updatedData, err = os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	if err := yaml.Unmarshal(updatedData, &m); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
 	defaults, ok := m["defaults"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected defaults to be map, got %T", m["defaults"])
 	}
-	if defaults["ccache_dir"] != 1234 {
-		t.Errorf("expected defaults.ccache_dir to be 1234 (int), got %v (type %T)", defaults["ccache_dir"], defaults["ccache_dir"])
+	builderArgs, ok := defaults["builder_args"].([]interface{})
+	if !ok {
+		t.Fatalf("expected builder_args to be list, got %T", defaults["builder_args"])
+	}
+	if len(builderArgs) != 2 || builderArgs[0] != "--foo" || builderArgs[1] != "--bar" {
+		t.Errorf("expected [--foo, --bar], got %v", builderArgs)
 	}
 }

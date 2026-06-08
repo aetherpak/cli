@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aetherpak/aetherpak/pkg/configedit"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -104,21 +105,37 @@ var configGetCmd = &cobra.Command{
 }
 
 var configSetCmd = &cobra.Command{
-	Use:   "set <key> <value>",
+	Use:   "set <key> <value> [value...]",
 	Short: "Set a configuration value",
-	Args:  cobra.ExactArgs(2),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
-		value := args[1]
+	Long: `Set a configuration value in aetherpak.yaml.
 
-		var parsedValue interface{} = value
-		if value == "true" {
-			parsedValue = true
-		} else if value == "false" {
-			parsedValue = false
-		} else if valInt, err := strconv.Atoi(value); err == nil {
-			parsedValue = valInt
+For scalar keys (string, bool), provide a single value:
+  aetherpak config set remote_name custom-remote
+  aetherpak config set no_sign true
+
+For list keys ([]string), provide multiple values or comma-separated:
+  aetherpak config set linter.ignore_rules rule1,rule2
+  aetherpak config set defaults.builder_args --foo --bar
+
+Use "aetherpak config set --list-keys" to see all settable keys.`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		listKeys, _ := cmd.Flags().GetBool("list-keys")
+		if listKeys {
+			keys := configedit.ValidConfigKeys()
+			for _, k := range keys {
+				fmt.Fprintln(cmd.OutOrStdout(), k)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "channel_mappings.<pattern>")
+			return nil
 		}
+
+		if len(args) < 2 {
+			return fmt.Errorf("requires at least 2 arguments: <key> <value> [value...]")
+		}
+
+		key := args[0]
+		values := args[1:]
 
 		configPath := cfgFile
 		if configPath == "" {
@@ -129,24 +146,16 @@ var configSetCmd = &cobra.Command{
 		}
 
 		data, err := os.ReadFile(configPath)
-		m := make(map[string]interface{})
 		if err != nil {
 			if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to read config file: %w", err)
 			}
-		} else {
-			if err := yaml.Unmarshal(data, &m); err != nil {
-				return fmt.Errorf("failed to parse config file: %w", err)
-			}
+			data = nil
 		}
 
-		if err := setNestedKey(m, key, parsedValue); err != nil {
-			return err
-		}
-
-		out, err := yaml.Marshal(m)
+		out, err := configedit.SetValue(data, key, values)
 		if err != nil {
-			return fmt.Errorf("failed to marshal config to YAML: %w", err)
+			return err
 		}
 
 		if err := os.WriteFile(configPath, out, 0644); err != nil {
@@ -155,41 +164,6 @@ var configSetCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func setNestedKey(m map[string]interface{}, keyPath string, value interface{}) error {
-	parts := strings.Split(keyPath, ".")
-	curr := m
-	for i := 0; i < len(parts)-1; i++ {
-		part := parts[i]
-		next, exists := curr[part]
-		if !exists {
-			nextMap := make(map[string]interface{})
-			curr[part] = nextMap
-			curr = nextMap
-		} else {
-			// Convert generic map to map[string]interface{} if needed
-			switch val := next.(type) {
-			case map[string]interface{}:
-				curr = val
-			case map[interface{}]interface{}:
-				// Sometimes yaml unmarshals as map[interface{}]interface{}
-				strMap := make(map[string]interface{})
-				for k, v := range val {
-					strMap[fmt.Sprintf("%v", k)] = v
-				}
-				curr[part] = strMap
-				curr = strMap
-			default:
-				nextMap := make(map[string]interface{})
-				curr[part] = nextMap
-				curr = nextMap
-			}
-		}
-	}
-	leaf := parts[len(parts)-1]
-	curr[leaf] = value
-	return nil
 }
 
 var configShowCmd = &cobra.Command{
@@ -453,4 +427,6 @@ func init() {
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configShowCmd)
+
+	configSetCmd.Flags().Bool("list-keys", false, "list all settable configuration keys and exit")
 }

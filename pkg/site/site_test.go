@@ -764,3 +764,69 @@ func TestBuildSiteRuntimeRef(t *testing.T) {
 		t.Errorf("expected flatpakref to contain IsRuntime=true, got:\n%s", refContent)
 	}
 }
+
+func TestWriteFlatpakRepoAndRefWithLookaside(t *testing.T) {
+	tempDir := t.TempDir()
+	opts := SiteOptions{
+		PagesURL:   "https://pages.example.com",
+		RemoteName: "myremote",
+		RepoTitle:  "My Repo",
+	}
+
+	// 1. Test writeFlatpakRepoFile
+	err := writeFlatpakRepoFile(tempDir, "ghcr.io", "some-gpg-key-base64", opts)
+	if err != nil {
+		t.Fatalf("writeFlatpakRepoFile failed: %v", err)
+	}
+
+	repoFilePath := filepath.Join(tempDir, "myremote.flatpakrepo")
+	repoBytes, err := os.ReadFile(repoFilePath)
+	if err != nil {
+		t.Fatalf("failed to read generated flatpakrepo file: %v", err)
+	}
+	repoContent := string(repoBytes)
+
+	if !strings.Contains(repoContent, "GPGKey=some-gpg-key-base64") {
+		t.Errorf("expected flatpakrepo to contain GPGKey, got:\n%s", repoContent)
+	}
+	if !strings.Contains(repoContent, "SignatureLookaside=https://pages.example.com/sigs") {
+		t.Errorf("expected flatpakrepo to contain SignatureLookaside, got:\n%s", repoContent)
+	}
+
+	// 2. Test writeFlatpakRefs
+	index := FlatpakIndex{
+		Registry: "ghcr.io",
+		Results: []IndexResultPackage{
+			{
+				Name: "example/app",
+				Images: []IndexImage{
+					{
+						Labels: map[string]string{
+							"org.flatpak.ref": "app/org.example.app/x86_64/stable",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	sigLookasideURL := "https://pages.example.com/sigs"
+	err = writeFlatpakRefs(tempDir, index, "some-gpg-key-base64", sigLookasideURL, opts)
+	if err != nil {
+		t.Fatalf("writeFlatpakRefs failed: %v", err)
+	}
+
+	refFilePath := filepath.Join(tempDir, "refs", "org.example.app-stable.flatpakref")
+	refBytes, err := os.ReadFile(refFilePath)
+	if err != nil {
+		t.Fatalf("failed to read generated flatpakref file: %v", err)
+	}
+	refContent := string(refBytes)
+
+	if !strings.Contains(refContent, "GPGKey=some-gpg-key-base64") {
+		t.Errorf("expected flatpakref to contain GPGKey, got:\n%s", refContent)
+	}
+	if !strings.Contains(refContent, "SignatureLookaside=https://pages.example.com/sigs") {
+		t.Errorf("expected flatpakref to contain SignatureLookaside, got:\n%s", refContent)
+	}
+}

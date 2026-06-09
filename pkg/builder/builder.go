@@ -93,9 +93,6 @@ func Build(opts BuildOptions) error {
 		if !gpgVerify {
 			resolvedURL = resolveFlatpakrepoURL(url)
 			cmdArgs = append(cmdArgs, "--no-gpg-verify")
-			// Delete existing remote first to clear any local GPG keys/keyring for this remote,
-			// since flatpak still enforces GPG signatures on OCI pulls if a key is in the keyring.
-			_ = runFlatpakCommand(opts.Executor, []string{"remote-delete", target, name})
 		}
 		cmdArgs = append(cmdArgs, name, resolvedURL)
 		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {

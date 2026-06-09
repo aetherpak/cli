@@ -14,6 +14,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-isatty"
 )
@@ -38,6 +39,7 @@ type BuildOptions struct {
 	Flatpaks             []config.FlatpakDep // Flatpaks (runtimes, dependencies) to pre-install
 	NoSign               bool                // disable GPG verification for external remotes
 	Install              bool                // install application after build succeeds
+	Bundle               bool                // generate a bundled flatpak binary (.flatpak) for the application
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -368,6 +370,58 @@ func Build(opts BuildOptions) error {
 				return fmt.Errorf("repository linting failed: %w", err)
 			}
 			logger.Info("WARNING: repository linting failed (non-strict mode): %v", err)
+		}
+	}
+
+	if opts.Bundle {
+		resolvedAppID := opts.AppID
+		resolvedBranch := opts.Branch
+		resolvedArch := opts.Arch
+		refType := "app"
+
+		if info, err := repoinfo.Resolve(repoPath); err == nil {
+			if resolvedAppID == "" {
+				resolvedAppID = info.AppID
+			}
+			if resolvedBranch == "" {
+				resolvedBranch = info.Branch
+			}
+			if resolvedArch == "" {
+				resolvedArch = info.Arch
+			}
+			if info.RefType != "" {
+				refType = info.RefType
+			}
+		}
+
+		if resolvedAppID == "" {
+			return fmt.Errorf("failed to generate flatpak bundle: application ID not resolved")
+		}
+
+		bundleDir := filepath.Dir(repoPath)
+		bundleFile := filepath.Join(bundleDir, resolvedAppID+".flatpak")
+		logger.Info("Generating Flatpak bundle: %s", bundleFile)
+
+		bundleArgs := []string{
+			"build-bundle",
+		}
+		if refType == "runtime" {
+			bundleArgs = append(bundleArgs, "--runtime")
+		}
+		if resolvedArch != "" {
+			bundleArgs = append(bundleArgs, "--arch="+resolvedArch)
+		}
+		bundleArgs = append(bundleArgs,
+			repoPath,
+			bundleFile,
+			resolvedAppID,
+		)
+		if resolvedBranch != "" {
+			bundleArgs = append(bundleArgs, resolvedBranch)
+		}
+
+		if err := runFlatpakCommand(opts.Executor, bundleArgs); err != nil {
+			return fmt.Errorf("failed to generate flatpak bundle: %w", err)
 		}
 	}
 

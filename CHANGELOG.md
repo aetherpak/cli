@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/aetherpak/cli/compare/v0.22.0...v0.23.0) (2026-06-09)
+
+
+### Features
+
+* **cli:** dynamically bypass git ownership checking and elevate diff failures ([f535ae5](https://github.com/aetherpak/cli/commit/f535ae5375efeb79d857f7337e4ae2d2f513910c))
+
 ## [0.22.0](https://github.com/aetherpak/cli/compare/v0.21.0...v0.22.0) (2026-06-09)
 
 

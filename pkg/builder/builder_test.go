@@ -210,12 +210,17 @@ func TestBuildWithRemotesAndDependencies(t *testing.T) {
 		t.Fatalf("expected build to succeed, got %v", err)
 	}
 
+	target := "--user"
+	if os.Getuid() == 0 {
+		target = "--system"
+	}
+
 	var remoteAddRan, installRan bool
 	for _, cmd := range mockExec.Commands {
 		if cmd.Name == "flatpak" && len(cmd.Args) > 0 {
 			if cmd.Args[0] == "remote-add" {
 				remoteAddRan = true
-				expectedArgs := []string{"remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"}
+				expectedArgs := []string{"remote-add", target, "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"}
 				for i, arg := range expectedArgs {
 					if cmd.Args[i] != arg {
 						t.Errorf("unexpected arg at index %d for remote-add: got %q, expected %q", i, cmd.Args[i], arg)
@@ -224,7 +229,7 @@ func TestBuildWithRemotesAndDependencies(t *testing.T) {
 			}
 			if cmd.Args[0] == "install" {
 				installRan = true
-				expectedArgs := []string{"install", "--user", "-y", "flathub", "runtime/org.gnome.Platform/x86_64/45"}
+				expectedArgs := []string{"install", target, "-y", "flathub", "runtime/org.gnome.Platform/x86_64/45"}
 				for i, arg := range expectedArgs {
 					if cmd.Args[i] != arg {
 						t.Errorf("unexpected arg at index %d for install: got %q, expected %q", i, cmd.Args[i], arg)

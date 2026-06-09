@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 )
 
@@ -34,9 +35,22 @@ func NewOSExecutor() *OSExecutor {
 	return &OSExecutor{}
 }
 
+// wrapCommand wraps command execution in a transient D-Bus session if no D-Bus session is active
+// and dbus-run-session is available in the PATH.
+func wrapCommand(lookPath func(string) (string, error), getenv func(string) string, name string, args ...string) (string, []string) {
+	if (name == "flatpak" || name == "flatpak-builder") && getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+		if _, err := lookPath("dbus-run-session"); err == nil {
+			newArgs := append([]string{"--", name}, args...)
+			return "dbus-run-session", newArgs
+		}
+	}
+	return name, args
+}
+
 // Command creates a new Command executing the given command and arguments on the OS.
 func (e *OSExecutor) Command(name string, arg ...string) Command {
-	return &osCommand{cmd: exec.Command(name, arg...)}
+	cmdName, cmdArgs := wrapCommand(exec.LookPath, os.Getenv, name, arg...)
+	return &osCommand{cmd: exec.Command(cmdName, cmdArgs...)}
 }
 
 // LookPath searches for an executable binary in the system PATH.

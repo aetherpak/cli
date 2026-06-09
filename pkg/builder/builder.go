@@ -54,6 +54,18 @@ func extraBuilderArgs(passthrough []string, ciEnv string) []string {
 	return append(out, "--disable-rofiles-fuse")
 }
 
+func getInstallationTarget(builderArgs []string) string {
+	for _, arg := range builderArgs {
+		if arg == "--user" || arg == "--system" || strings.HasPrefix(arg, "--installation=") {
+			return arg
+		}
+	}
+	if os.Getuid() == 0 {
+		return "--system"
+	}
+	return "--user"
+}
+
 // Build wraps the flatpak-builder execution.
 func Build(opts BuildOptions) error {
 	if opts.Executor == nil {
@@ -65,10 +77,12 @@ func Build(opts BuildOptions) error {
 		return err
 	}
 
+	target := getInstallationTarget(opts.BuilderArgs)
+
 	// Pre-register flatpak remotes
 	for name, url := range opts.Remotes {
 		logger.Info("Registering Flatpak remote %s: %s", name, url)
-		cmdArgs := []string{"remote-add", "--user", "--if-not-exists"}
+		cmdArgs := []string{"remote-add", target, "--if-not-exists"}
 
 		gpgVerify := (name == "flathub" || name == "flathub-beta")
 		if opts.NoSign {
@@ -81,7 +95,7 @@ func Build(opts BuildOptions) error {
 			cmdArgs = append(cmdArgs, "--no-gpg-verify")
 			// Delete existing remote first to clear any local GPG keys/keyring for this remote,
 			// since flatpak still enforces GPG signatures on OCI pulls if a key is in the keyring.
-			_ = runFlatpakCommand(opts.Executor, []string{"remote-delete", "--user", name})
+			_ = runFlatpakCommand(opts.Executor, []string{"remote-delete", target, name})
 		}
 		cmdArgs = append(cmdArgs, name, resolvedURL)
 		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {
@@ -89,7 +103,7 @@ func Build(opts BuildOptions) error {
 		}
 		if !gpgVerify {
 			// Ensure GPG verification is disabled even if the remote already existed
-			_ = runFlatpakCommand(opts.Executor, []string{"remote-modify", "--user", "--no-gpg-verify", name})
+			_ = runFlatpakCommand(opts.Executor, []string{"remote-modify", target, "--no-gpg-verify", name})
 		}
 	}
 
@@ -99,7 +113,7 @@ func Build(opts BuildOptions) error {
 			continue
 		}
 		logger.Info("Installing Flatpak dependency %s from %s", dep.Ref, dep.Remote)
-		if err := runFlatpakCommand(opts.Executor, []string{"install", "--user", "-y", dep.Remote, dep.Ref}); err != nil {
+		if err := runFlatpakCommand(opts.Executor, []string{"install", target, "-y", dep.Remote, dep.Ref}); err != nil {
 			return fmt.Errorf("failed to install flatpak dependency %s from remote %s: %w", dep.Ref, dep.Remote, err)
 		}
 	}
@@ -254,7 +268,7 @@ func Build(opts BuildOptions) error {
 		args = append(args, "--ccache")
 	}
 
-	// Default to --user installation for flatpak-builder to match the user remote registration,
+	// Default to target installation for flatpak-builder to match the remote registration,
 	// unless explicitly overridden in BuilderArgs.
 	hasInstallLocation := false
 	for _, arg := range opts.BuilderArgs {
@@ -264,7 +278,7 @@ func Build(opts BuildOptions) error {
 		}
 	}
 	if !hasInstallLocation {
-		args = append(args, "--user")
+		args = append(args, target)
 	}
 
 	args = append(args, extraBuilderArgs(opts.BuilderArgs, os.Getenv("CI"))...)

@@ -195,8 +195,8 @@ func TestBuildWithRemotesAndDependencies(t *testing.T) {
 		Branch:   "stable",
 		StateDir: ".state",
 		RepoPath: "repo",
-		Remotes: map[string]string{
-			"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+		Remotes: map[string]config.RemoteConfig{
+			"flathub": {URL: "https://dl.flathub.org/repo/flathub.flatpakrepo"},
 		},
 		Flatpaks: []config.FlatpakDep{
 			{Remote: "flathub", Ref: "runtime/org.gnome.Platform/x86_64/45"},
@@ -690,5 +690,107 @@ func TestBuildLinterExceptionsFileNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to read linter exceptions file") {
 		t.Errorf("expected file read error message, got: %v", err)
+	}
+}
+
+func TestBuildWithExplodedRemotes(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	falseVal := false
+	trueVal := true
+	inlineGPGKey := `-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v2
+
+mQENBFT9...
+-----END PGP PUBLIC KEY BLOCK-----`
+
+	opts := BuildOptions{
+		AppID:    "org.example.App",
+		Manifest: "apps/org.example.App.json",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		StateDir: ".state",
+		RepoPath: "repo",
+		Remotes: map[string]config.RemoteConfig{
+			"remote-no-gpg": {
+				URL:       "https://example.com/no-gpg.flatpakrepo",
+				GPGVerify: &falseVal,
+			},
+			"remote-gpg-key": {
+				URL:          "https://example.com/with-gpg.flatpakrepo",
+				GPGVerify:    &trueVal,
+				GPGKey:       inlineGPGKey,
+				SigVerifyURL: "https://example.com/sigs",
+			},
+		},
+		Executor: mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	// Verify command-line arguments for flatpak remote-add and remote-modify
+	var noGpgAddRan, noGpgModifyRan bool
+	var gpgKeyAddRan, gpgKeyModifyRan bool
+
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 {
+			argsJoin := strings.Join(cmd.Args, " ")
+			if cmd.Args[0] == "remote-add" {
+				if strings.Contains(argsJoin, "remote-no-gpg") {
+					noGpgAddRan = true
+					if !strings.Contains(argsJoin, "--no-gpg-verify") {
+						t.Errorf("expected --no-gpg-verify in remote-add args: %v", cmd.Args)
+					}
+				}
+				if strings.Contains(argsJoin, "remote-gpg-key") {
+					gpgKeyAddRan = true
+					if strings.Contains(argsJoin, "--no-gpg-verify") {
+						t.Errorf("expected no --no-gpg-verify in remote-add args: %v", cmd.Args)
+					}
+					if !strings.Contains(argsJoin, "--gpg-import=") {
+						t.Errorf("expected --gpg-import in remote-add args: %v", cmd.Args)
+					}
+					if !strings.Contains(argsJoin, "--signature-lookaside=https://example.com/sigs") {
+						t.Errorf("expected --signature-lookaside in remote-add args: %v", cmd.Args)
+					}
+				}
+			}
+			if cmd.Args[0] == "remote-modify" {
+				if strings.Contains(argsJoin, "remote-no-gpg") {
+					noGpgModifyRan = true
+					if !strings.Contains(argsJoin, "--no-gpg-verify") {
+						t.Errorf("expected --no-gpg-verify in remote-modify args: %v", cmd.Args)
+					}
+				}
+				if strings.Contains(argsJoin, "remote-gpg-key") {
+					gpgKeyModifyRan = true
+					if !strings.Contains(argsJoin, "--gpg-verify") {
+						t.Errorf("expected --gpg-verify in remote-modify args: %v", cmd.Args)
+					}
+					if !strings.Contains(argsJoin, "--gpg-import=") {
+						t.Errorf("expected --gpg-import in remote-modify args: %v", cmd.Args)
+					}
+					if !strings.Contains(argsJoin, "--signature-lookaside=https://example.com/sigs") {
+						t.Errorf("expected --signature-lookaside in remote-modify args: %v", cmd.Args)
+					}
+				}
+			}
+		}
+	}
+
+	if !noGpgAddRan {
+		t.Error("expected remote-add for remote-no-gpg to have run")
+	}
+	if !noGpgModifyRan {
+		t.Error("expected remote-modify for remote-no-gpg to have run")
+	}
+	if !gpgKeyAddRan {
+		t.Error("expected remote-add for remote-gpg-key to have run")
+	}
+	if !gpgKeyModifyRan {
+		t.Error("expected remote-modify for remote-gpg-key to have run")
 	}
 }

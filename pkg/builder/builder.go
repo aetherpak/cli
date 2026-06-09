@@ -35,11 +35,11 @@ type BuildOptions struct {
 	LinterExceptionsFile string   // path to linter exceptions configuration file (JSON)
 	BuilderArgs          []string // extra flags passed through to flatpak-builder
 	Executor             executil.Executor
-	Remotes              map[string]string   // external Flatpak remotes to register
-	Flatpaks             []config.FlatpakDep // Flatpaks (runtimes, dependencies) to pre-install
-	NoSign               bool                // disable GPG verification for external remotes
-	Install              bool                // install application after build succeeds
-	Bundle               bool                // generate a bundled flatpak binary (.flatpak) for the application
+	Remotes              map[string]config.RemoteConfig // external Flatpak remotes to register
+	Flatpaks             []config.FlatpakDep            // Flatpaks (runtimes, dependencies) to pre-install
+	NoSign               bool                           // disable GPG verification for external remotes
+	Install              bool                           // install application after build succeeds
+	Bundle               bool                           // generate a bundled flatpak binary (.flatpak) for the application
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -83,27 +83,72 @@ func Build(opts BuildOptions) error {
 	target := getInstallationTarget(opts.BuilderArgs)
 
 	// Pre-register flatpak remotes
-	for name, url := range opts.Remotes {
-		logger.Info("Registering Flatpak remote %s: %s", name, url)
-		cmdArgs := []string{"remote-add", target, "--if-not-exists"}
+	for name, r := range opts.Remotes {
+		logger.Info("Registering Flatpak remote %s: %s", name, r.URL)
 
 		gpgVerify := (name == "flathub" || name == "flathub-beta")
+		if r.GPGVerify != nil {
+			gpgVerify = *r.GPGVerify
+		} else if r.GPGKey != "" || r.SigVerifyURL != "" {
+			gpgVerify = true
+		}
 		if opts.NoSign {
 			gpgVerify = false
 		}
 
-		resolvedURL := url
+		resolvedURL := r.URL
 		if !gpgVerify {
-			resolvedURL = resolveFlatpakrepoURL(url)
+			resolvedURL = resolveFlatpakrepoURL(r.URL)
+		}
+
+		// Prepare GPG key file if needed
+		var gpgKeyFile string
+		var cleanupGPGKey func()
+		if gpgVerify && r.GPGKey != "" {
+			var err error
+			gpgKeyFile, cleanupGPGKey, err = prepareGPGKeyFile(r.GPGKey)
+			if err != nil {
+				return fmt.Errorf("failed to prepare GPG key for remote %s: %w", name, err)
+			}
+		}
+		if cleanupGPGKey != nil {
+			defer cleanupGPGKey()
+		}
+
+		cmdArgs := []string{"remote-add", target, "--if-not-exists"}
+		if gpgVerify {
+			if gpgKeyFile != "" {
+				cmdArgs = append(cmdArgs, "--gpg-import="+gpgKeyFile)
+			}
+			if r.SigVerifyURL != "" {
+				cmdArgs = append(cmdArgs, "--signature-lookaside="+r.SigVerifyURL)
+			}
+		} else {
 			cmdArgs = append(cmdArgs, "--no-gpg-verify")
 		}
 		cmdArgs = append(cmdArgs, name, resolvedURL)
+
 		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {
-			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, url, err)
+			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, r.URL, err)
 		}
-		if !gpgVerify {
-			// Ensure GPG verification is disabled even if the remote already existed
-			_ = runFlatpakCommand(opts.Executor, []string{"remote-modify", target, "--no-gpg-verify", name})
+
+		// Modify remote to ensure config settings are applied even if the remote already existed
+		modifyArgs := []string{"remote-modify", target}
+		if gpgVerify {
+			modifyArgs = append(modifyArgs, "--gpg-verify")
+			if gpgKeyFile != "" {
+				modifyArgs = append(modifyArgs, "--gpg-import="+gpgKeyFile)
+			}
+			if r.SigVerifyURL != "" {
+				modifyArgs = append(modifyArgs, "--signature-lookaside="+r.SigVerifyURL)
+			}
+		} else {
+			modifyArgs = append(modifyArgs, "--no-gpg-verify")
+		}
+		modifyArgs = append(modifyArgs, name)
+
+		if err := runFlatpakCommand(opts.Executor, modifyArgs); err != nil {
+			logger.Info("WARNING: failed to modify flatpak remote %s: %v", name, err)
 		}
 	}
 
@@ -654,4 +699,56 @@ func resolveFlatpakrepoURL(url string) string {
 		}
 	}
 	return url
+}
+
+// prepareGPGKeyFile resolves a GPG key (which can be a URL, an inline GPG key, or a local file path)
+// and returns the local file path to the GPG key, along with a cleanup function if a temp file was created.
+func prepareGPGKeyFile(key string) (string, func(), error) {
+	if key == "" {
+		return "", func() {}, nil
+	}
+
+	// 1. If it's inline GPG key
+	if strings.Contains(key, "-----BEGIN PGP PUBLIC KEY BLOCK-----") {
+		tmpFile, err := os.CreateTemp("", "aetherpak-gpg-key-*.asc")
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to create temp file for GPG key: %w", err)
+		}
+		cleanup := func() { os.Remove(tmpFile.Name()) }
+		if _, err := tmpFile.WriteString(key); err != nil {
+			cleanup()
+			tmpFile.Close()
+			return "", nil, fmt.Errorf("failed to write GPG key to temp file: %w", err)
+		}
+		tmpFile.Close()
+		return tmpFile.Name(), cleanup, nil
+	}
+
+	// 2. If it's a URL
+	if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Get(key)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to download GPG key from URL %s: %w", key, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return "", nil, fmt.Errorf("failed to download GPG key from URL %s (status code %d)", key, resp.StatusCode)
+		}
+		tmpFile, err := os.CreateTemp("", "aetherpak-gpg-key-*.asc")
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to create temp file for GPG key: %w", err)
+		}
+		cleanup := func() { os.Remove(tmpFile.Name()) }
+		if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+			cleanup()
+			tmpFile.Close()
+			return "", nil, fmt.Errorf("failed to write downloaded GPG key to temp file: %w", err)
+		}
+		tmpFile.Close()
+		return tmpFile.Name(), cleanup, nil
+	}
+
+	// 3. Otherwise, treat as local file path
+	return key, func() {}, nil
 }

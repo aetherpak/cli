@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/aetherpak/cli/compare/v0.20.0...v0.21.0) (2026-06-09)
+
+
+### Features
+
+* **cli:** auto-inject --install-deps-from remotes and add flags to disable ([57eb18e](https://github.com/aetherpak/cli/commit/57eb18e28ace5f9bd556dbcb2fc6dc268f7ee9b3))
+
 ## [0.20.0](https://github.com/aetherpak/cli/compare/v0.19.2...v0.20.0) (2026-06-09)
 
 

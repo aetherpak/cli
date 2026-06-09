@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/aetherpak/cli/compare/v0.17.2...v0.17.3) (2026-06-09)
+
+
+### Bug Fixes
+
+* resolve application branch from manifest in plan and config ([0215383](https://github.com/aetherpak/cli/commit/02153833674ec1be0ffcc2deaee3c2b3f2d4e3d3))
+
 ## [0.17.2](https://github.com/aetherpak/cli/compare/v0.17.1...v0.17.2) (2026-06-09)
 
 

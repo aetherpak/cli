@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 )
 
 // Command defines the interface for command execution wrappers.
@@ -35,22 +37,34 @@ func NewOSExecutor() *OSExecutor {
 	return &OSExecutor{}
 }
 
-// wrapCommand wraps command execution in a transient D-Bus session if no D-Bus session is active
-// and dbus-run-session is available in the PATH.
-func wrapCommand(lookPath func(string) (string, error), getenv func(string) string, name string, args ...string) (string, []string) {
-	if (name == "flatpak" || name == "flatpak-builder") && getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
-		if _, err := lookPath("dbus-run-session"); err == nil {
-			newArgs := append([]string{"--", name}, args...)
-			return "dbus-run-session", newArgs
-		}
+// startDbusSession starts a new transient dbus-daemon session in the background
+// and returns its session bus address and PID.
+func startDbusSession(lookPath func(string) (string, error)) (string, int, error) {
+	dbusPath, err := lookPath("dbus-daemon")
+	if err != nil {
+		return "", 0, err
 	}
-	return name, args
+	cmd := exec.Command(dbusPath, "--session", "--fork", "--print-address=1", "--print-pid=1")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", 0, err
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) < 2 {
+		return "", 0, fmt.Errorf("unexpected dbus-daemon output: %q", out.String())
+	}
+	address := lines[0]
+	var pid int
+	if _, err := fmt.Sscanf(lines[1], "%d", &pid); err != nil {
+		return "", 0, fmt.Errorf("failed to parse dbus-daemon PID from %q: %w", lines[1], err)
+	}
+	return address, pid, nil
 }
 
 // Command creates a new Command executing the given command and arguments on the OS.
 func (e *OSExecutor) Command(name string, arg ...string) Command {
-	cmdName, cmdArgs := wrapCommand(exec.LookPath, os.Getenv, name, arg...)
-	return &osCommand{cmd: exec.Command(cmdName, cmdArgs...)}
+	return &osCommand{cmd: exec.Command(name, arg...)}
 }
 
 // LookPath searches for an executable binary in the system PATH.
@@ -59,19 +73,49 @@ func (e *OSExecutor) LookPath(file string) (string, error) {
 }
 
 type osCommand struct {
-	cmd *exec.Cmd
+	cmd     *exec.Cmd
+	dbusPID int
 }
 
 func (c *osCommand) Run() error {
-	return c.cmd.Run()
+	if err := c.Start(); err != nil {
+		return err
+	}
+	return c.Wait()
 }
 
 func (c *osCommand) Start() error {
+	// Start D-Bus session if executing flatpak or flatpak-builder and no session is active.
+	if c.dbusPID == 0 && (c.cmd.Path != "" && (strings.HasSuffix(c.cmd.Path, "flatpak") || strings.HasSuffix(c.cmd.Path, "flatpak-builder"))) {
+		hasDbus := false
+		for _, env := range c.cmd.Env {
+			if strings.HasPrefix(env, "DBUS_SESSION_BUS_ADDRESS=") {
+				hasDbus = true
+				break
+			}
+		}
+		if !hasDbus && os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
+			if address, pid, err := startDbusSession(exec.LookPath); err == nil {
+				c.dbusPID = pid
+				if c.cmd.Env == nil {
+					c.cmd.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+address)
+				} else {
+					c.cmd.Env = append(c.cmd.Env, "DBUS_SESSION_BUS_ADDRESS="+address)
+				}
+			}
+		}
+	}
 	return c.cmd.Start()
 }
 
 func (c *osCommand) Wait() error {
-	return c.cmd.Wait()
+	err := c.cmd.Wait()
+	if c.dbusPID > 0 {
+		if proc, err := os.FindProcess(c.dbusPID); err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+	}
+	return err
 }
 
 func (c *osCommand) StdoutPipe() (io.ReadCloser, error) {

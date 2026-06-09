@@ -353,6 +353,38 @@ func TestBuildPassesBuilderArgs(t *testing.T) {
 	}
 }
 
+func TestBuildPassesInstallFlag(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	err := Build(BuildOptions{
+		AppID: "org.example.App", Manifest: "m.json", Arch: "x86_64", Branch: "stable",
+		StateDir: ".state", RepoPath: "repo",
+		Install:  true,
+		Executor: mockExec,
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	var args []string
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak-builder" {
+			args = cmd.Args
+		}
+	}
+	mhas := func(want string) bool {
+		for _, a := range args {
+			if a == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !mhas("--install") {
+		t.Errorf("expected --install flag, but got args: %v", args)
+	}
+}
+
 func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 	mockExec := executil.NewMockExecutor()
 	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"

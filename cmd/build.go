@@ -29,6 +29,7 @@ var (
 	buildFlatpakRemotes       []string
 	buildFlatpakDeps          []string
 	buildNoSign               bool
+	buildInstall              bool
 )
 
 var buildCmd = &cobra.Command{
@@ -258,6 +259,7 @@ var buildCmd = &cobra.Command{
 				Remotes:              appRemotes,
 				Flatpaks:             appFlatpaks,
 				NoSign:               appNoSign,
+				Install:              buildInstall,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -304,4 +306,5 @@ func init() {
 	buildCmd.Flags().StringArrayVar(&buildFlatpakRemotes, "flatpak-remote", nil, "Flatpak remote repository to register (format: name=url)")
 	buildCmd.Flags().StringArrayVar(&buildFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
 	buildCmd.Flags().BoolVar(&buildNoSign, "no-sign", false, "disable GPG verification/signing")
+	buildCmd.Flags().BoolVar(&buildInstall, "install", false, "install application after build")
 }

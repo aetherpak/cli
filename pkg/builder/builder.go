@@ -65,7 +65,12 @@ func Build(opts BuildOptions) error {
 	// Pre-register flatpak remotes
 	for name, url := range opts.Remotes {
 		logger.Info("Registering Flatpak remote %s: %s", name, url)
-		if err := runFlatpakCommand(opts.Executor, []string{"remote-add", "--user", "--if-not-exists", name, url}); err != nil {
+		cmdArgs := []string{"remote-add", "--user", "--if-not-exists"}
+		if !strings.HasSuffix(url, ".flatpakrepo") {
+			cmdArgs = append(cmdArgs, "--no-gpg-verify")
+		}
+		cmdArgs = append(cmdArgs, name, url)
+		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {
 			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, url, err)
 		}
 	}

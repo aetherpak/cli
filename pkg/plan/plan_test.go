@@ -338,3 +338,27 @@ func TestChangeDetectionNormalizationSymmetry(t *testing.T) {
 		t.Fatalf("expected 0 apps selected for unrelated change with implicit config defaults, got %v", res.Apps)
 	}
 }
+
+func TestComputePlanManifestBranchFromManifest(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	manifestContent := `{"id":"org.a.One","runtime":"org.freedesktop.Platform","runtime-version":"24.08","branch":"25.08"}`
+	if err := os.WriteFile("m.json", []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{Apps: []config.App{
+		{ID: "org.a.One", Manifest: "m.json", Runtime: "gnome-50"},
+	}}
+	res, err := ComputePlan(cfg, "aetherpak.yaml", "", "all", "")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(res.MatrixManifest) != 1 {
+		t.Fatalf("expected 1 row: %+v", res.MatrixManifest)
+	}
+	row := res.MatrixManifest[0]
+	if row.Branch != "25.08" {
+		t.Errorf("Branch = %q, want 25.08 resolved from manifest file", row.Branch)
+	}
+}

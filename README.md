@@ -64,6 +64,8 @@ Fallback build configurations applied when individual application settings are o
 * **`state_dir`** (string): Path to store intermediate state outputs (defaults to `.state`).
 * **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
 * **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
+* **`no_install_deps`** (boolean): Disable automatic injection of `--install-deps-from` flags when running `flatpak-builder` (defaults to `false`).
+* **`no_flathub`** (boolean): Disable automatic injection of the `flathub` remote as a dependency source (defaults to `false`).
 * **`remotes`** (map[string]string | map[string]RemoteConfig): Map of Flatpak remote repository names to their configuration (pre-registered before build). Can be a simple URL string or an exploded map supporting:
   * **`url`** (string, required): The flatpakrepo URL.
   * **`gpg_verify`** (boolean, optional): Enable/disable GPG verification.
@@ -80,7 +82,7 @@ A list of applications managed in the repository. Each entry supports the follow
 * **`runtime`** (string): Upstream runtime dependencies list (required for source-based builds).
 * **`run-linter`** (boolean): Local toggle to execute linter validation checks.
 * **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), `exceptions` (list[string]), and `exceptions_file` (string).
-* **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`**: Application-specific overrides for compilation parameters.
+* **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`** / **`no_install_deps`** / **`no_flathub`**: Application-specific overrides for compilation parameters.
 * **`remotes`** / **`flatpaks`**: Application-specific overrides/merges for Flatpak remotes and dependencies.
 * **`bundles`** (map[string]Bundle): Prebuilt Flatpak bundle inputs mapped per architecture. Under each arch (e.g. `x86_64`):
   * **`url`** (string, required): Download link to the `.flatpak` bundle.
@@ -305,6 +307,8 @@ aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x8
 Options:
 * `--flatpak-remote <name>=<url>`: Repeatable flag to register Flatpak remotes before compiling.
 * `--flatpak-dep <remote>:<ref>`: Repeatable flag to install Flatpak dependencies (runtimes, SDK extensions) before compiling.
+* `--no-install-deps`: Disable automatic injection of `--install-deps-from` flags when running `flatpak-builder`.
+* `--no-flathub`: Disable automatic injection of the `flathub` remote as a dependency source.
 
 #### `import`
 Ingests prebuilt bundles (`.flatpak`) and rebinds channels:

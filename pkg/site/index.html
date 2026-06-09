@@ -463,63 +463,7 @@
     footer a { color: var(--primary); text-decoration: none; font-weight: 500; }
     footer a:hover { text-decoration: underline; }
 
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(4px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-      z-index: 100;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-    }
 
-    .modal-backdrop.open {
-      display: flex;
-      animation: fadeInBackdrop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .modal {
-      background: var(--card);
-      border: 1px solid var(--primary);
-      border-radius: 16px;
-      padding: 1.75rem;
-      max-width: 560px;
-      width: 100%;
-      max-height: calc(100vh - 2rem);
-      max-height: calc(100dvh - 2rem);
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      position: relative;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px var(--primary-glow);
-    }
-
-    .modal-backdrop.open .modal {
-      animation: slideUpModal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    @media (max-width: 560px) { .modal { padding: 1.25rem; } .modal-backdrop { padding: 0.5rem; } }
-    .modal h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
-
-    .step-badge {
-      display: inline-block;
-      padding: 0.2rem 0.65rem;
-      background: var(--primary-glow);
-      border: 1px solid var(--primary);
-      border-radius: 9999px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: var(--primary);
-      margin-bottom: 0.9rem;
-    }
-
-    .modal p { color: var(--text-muted); font-size: 0.92rem; margin-bottom: 1rem; }
-    .modal-close { position: absolute; top: 1rem; right: 1rem; background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.4rem; line-height: 1; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-    .modal-close:hover { color: var(--text); }
-    .modal-foot { margin-top: 1.25rem; display: flex; justify-content: flex-end; }
 
     .search-container {
       margin-top: 0.5rem;
@@ -607,15 +551,7 @@
       100% { background-position: -200% 0; }
     }
 
-    @keyframes fadeInBackdrop {
-      from { opacity: 0; backdrop-filter: blur(0px); }
-      to { opacity: 1; backdrop-filter: blur(4px); }
-    }
 
-    @keyframes slideUpModal {
-      from { opacity: 0; transform: translateY(20px) scale(0.95); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
 
     /* Focus visible accessibility outlines */
     :focus-visible {
@@ -721,54 +657,7 @@
       }
     }
 
-    let lastActiveElement = null;
-
-    function openRepoModal(triggerEl) {
-      lastActiveElement = triggerEl || document.activeElement;
-      const backdrop = document.getElementById('repo-modal');
-      if (backdrop) {
-        backdrop.style.display = 'flex';
-        backdrop.offsetHeight;
-        backdrop.classList.add('open');
-        const closeBtn = document.getElementById('modal-close-btn');
-        if (closeBtn) closeBtn.focus();
-      }
-    }
-    function closeRepoModal() {
-      const backdrop = document.getElementById('repo-modal');
-      if (backdrop) {
-        backdrop.classList.remove('open');
-        setTimeout(() => { backdrop.style.display = 'none'; }, 250);
-      }
-      if (lastActiveElement && typeof lastActiveElement.focus === 'function') {
-        lastActiveElement.focus();
-      }
-    }
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeRepoModal();
-
-      // Focus trapping in modal
-      if (e.key === 'Tab') {
-        const backdrop = document.getElementById('repo-modal');
-        if (backdrop && backdrop.classList.contains('open')) {
-          const focusables = backdrop.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-          if (focusables.length === 0) return;
-          const first = focusables[0];
-          const last = focusables[focusables.length - 1];
-          if (e.shiftKey) {
-            if (document.activeElement === first) {
-              last.focus();
-              e.preventDefault();
-            }
-          } else {
-            if (document.activeElement === last) {
-              first.focus();
-              e.preventDefault();
-            }
-          }
-        }
-      }
-
       // Focus search input when "/" is pressed (unless focusing another input/textarea)
       if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
         const searchInput = document.getElementById('app-search');
@@ -933,7 +822,6 @@
         if (signing && signing.enabled && signing.lookaside) {
           const look = `${pagesUrl}/${signing.lookaside}`;
           const verified = `flatpak remote-add --user \\
-  --signature-lookaside=${look} \\
   ${remoteName} \\
   ${pagesUrl}/${repoFile}`;
           const modifyCmd = `flatpak remote-modify --user \\
@@ -941,31 +829,22 @@
   ${remoteName}`;
           return `
             <div class="card setup">
-              ${codeBlock('Add this repository — verified (flatpak ≥ 1.17)', verified)}
+              ${codeBlock('Add this repository (flatpak ≥ 1.17)', verified)}
               <details style="margin-top:1rem;">
-                <summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;">Older clients (&lt; 1.17) — unverified</summary>
-                <p class="app-summary" style="margin-top:0.5rem;">These clients cannot read the signature lookaside; the remote is added without verification.</p>
-                ${codeBlock('Add this repository — unverified', legacyCmd)}
+                <summary style="cursor:pointer;color:var(--text-muted);font-size:0.85rem;">Older clients (&lt; 1.17) setup instructions</summary>
+                <p class="app-summary" style="margin-top:0.5rem;">Older Flatpak versions cannot read the signature lookaside from the repository file directly. Run these commands to add the repository and configure verification manually:</p>
+                ${codeBlock('Add repository unverified', legacyCmd)}
+                ${codeBlock('Configure signature lookaside manually', modifyCmd)}
               </details>
-                <div class="actions">
-                  <a class="btn primary" href="${repoFile}" download onclick="openRepoModal(this)">${ICON_DL} Download .flatpakrepo</a>
-                  ${viewIndex}
-                </div>
-              </div>
-              <div class="modal-backdrop" id="repo-modal" onclick="if (event.target === this) closeRepoModal()">
-                <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-                  <button class="modal-close" id="modal-close-btn" title="Close" aria-label="Close modal" onclick="closeRepoModal()">&times;</button>
-                <span class="step-badge">ONE MORE STEP</span>
-                <h2>Enable verified installs</h2>
-                <p>The repository file adds the remote and trusts the signing key — but Flatpak can’t store the signature location in a repo file. Once the repository is added, run this once to turn on signature verification:</p>
-                ${codeBlock('Enable verification', modifyCmd)}
-                <div class="modal-foot"><button class="btn primary" onclick="closeRepoModal()">Got it</button></div>
+              <div class="actions">
+                <a class="btn primary" href="${repoFile}" download>${ICON_DL} Download .flatpakrepo</a>
+                ${viewIndex}
               </div>
             </div>`;
         }
         return `
           <div class="card setup">
-            ${codeBlock('Add this repository (once)', legacyCmd)}
+            ${codeBlock('Add this repository', legacyCmd)}
             <div class="actions">
               <a class="btn primary" href="${repoFile}" download>${ICON_DL} Download .flatpakrepo</a>
               ${viewIndex}

@@ -149,6 +149,19 @@ var planCmd = &cobra.Command{
 			}
 		}
 
+		if outputFormat == "gitlab" {
+			buildArm64 := os.Getenv("BUILD_ARM64") == "true"
+			yamlContent := plan.GenerateGitLabPipeline(res, buildArm64)
+			if planOutputFile != "" && planOutputFile != "-" {
+				if err := os.WriteFile(planOutputFile, []byte(yamlContent), 0644); err != nil {
+					return NewCmdErrorf(1, "Failed to write GitLab pipeline file: %w", err)
+				}
+			} else {
+				fmt.Print(yamlContent)
+			}
+			return nil
+		}
+
 		var outBytes []byte
 		switch outputFormat {
 		case "matrix":

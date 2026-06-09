@@ -64,7 +64,11 @@ Fallback build configurations applied when individual application settings are o
 * **`state_dir`** (string): Path to store intermediate state outputs (defaults to `.state`).
 * **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
 * **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
-* **`remotes`** (map[string]string): Map of Flatpak remote repository names to their flatpakrepo URLs (pre-registered before build).
+* **`remotes`** (map[string]string | map[string]RemoteConfig): Map of Flatpak remote repository names to their configuration (pre-registered before build). Can be a simple URL string or an exploded map supporting:
+  * **`url`** (string, required): The flatpakrepo URL.
+  * **`gpg_verify`** (boolean, optional): Enable/disable GPG verification.
+  * **`gpg_key`** (string, optional): GPG public key (can be a local path, URL, or inline ASCII-armored GPG public key block).
+  * **`sig_verify_url`** (string, optional): Signature lookaside URL.
 * **`flatpaks`** (list[FlatpakDep]): Flatpak runtimes or SDK extensions/dependencies to pre-install before build. Each entry requires a `remote` (string) and a `ref` (string).
 
 #### `apps`
@@ -107,6 +111,11 @@ defaults:
   builder_args: ["--sandbox", "--disable-rofiles-fuse"]
   remotes:
     flathub: https://dl.flathub.org/repo/flathub.flatpakrepo
+    custom_repo:
+      url: https://example.com/repo.flatpakrepo
+      gpg_verify: true
+      gpg_key: https://example.com/keys/gpg.key
+      sig_verify_url: https://example.com/signatures
   flatpaks:
     - remote: flathub
       ref: org.gnome.Sdk//45

@@ -14,6 +14,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
+	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/aetherpak/aetherpak/pkg/signing"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -221,8 +222,14 @@ func Push(opts PushOptions) (PushResult, error) {
 	if username == "" {
 		username = os.Getenv("OCI_USERNAME")
 	}
+	if username == "" {
+		username = scm.Username()
+	}
 	if password == "" {
 		password = os.Getenv("OCI_PASSWORD")
+	}
+	if password == "" {
+		password = scm.Password()
 	}
 
 	if username != "" && password != "" {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/aetherpak/aetherpak/pkg/site"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +43,9 @@ var buildSiteCmd = &cobra.Command{
 		if siteRemoteName == "" {
 			siteRemoteName = cfg.RemoteName
 		}
+		if siteRemoteName == "" {
+			siteRemoteName = scm.RemoteName()
+		}
 		if siteRuntimeRepo == "" {
 			siteRuntimeRepo = cfg.RuntimeRepo
 		}
@@ -54,6 +58,9 @@ var buildSiteCmd = &cobra.Command{
 
 		if sitePagesURL == "" {
 			sitePagesURL = cfg.PagesURL
+		}
+		if sitePagesURL == "" {
+			sitePagesURL = scm.PagesURL()
 		}
 
 		recordsDir := siteRecordsDir

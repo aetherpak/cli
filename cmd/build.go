@@ -28,6 +28,7 @@ var (
 	buildLinterExceptions     []string
 	buildFlatpakRemotes       []string
 	buildFlatpakDeps          []string
+	buildNoSign               bool
 )
 
 var buildCmd = &cobra.Command{
@@ -148,6 +149,11 @@ var buildCmd = &cobra.Command{
 			var appBuilderArgs []string
 			var appRemotes map[string]string
 			var appFlatpaks []config.FlatpakDep
+			var appNoSign = false
+
+			if cfg != nil {
+				appNoSign = cfg.NoSign
+			}
 
 			if job.appConfig != nil {
 				appCCacheDir = job.appConfig.CCacheDir
@@ -205,6 +211,9 @@ var buildCmd = &cobra.Command{
 			if cmd.Flags().Changed("run-linter") {
 				appRunLinter = buildRunLinter
 			}
+			if cmd.Flags().Changed("no-sign") {
+				appNoSign = buildNoSign
+			}
 			if cmd.Flags().Changed("builder-arg") {
 				appBuilderArgs = buildBuilderArgs
 			}
@@ -248,6 +257,7 @@ var buildCmd = &cobra.Command{
 				BuilderArgs:          appBuilderArgs,
 				Remotes:              appRemotes,
 				Flatpaks:             appFlatpaks,
+				NoSign:               appNoSign,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -293,4 +303,5 @@ func init() {
 	buildCmd.Flags().StringSliceVar(&buildLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
 	buildCmd.Flags().StringArrayVar(&buildFlatpakRemotes, "flatpak-remote", nil, "Flatpak remote repository to register (format: name=url)")
 	buildCmd.Flags().StringArrayVar(&buildFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
+	buildCmd.Flags().BoolVar(&buildNoSign, "no-sign", false, "disable GPG verification/signing")
 }

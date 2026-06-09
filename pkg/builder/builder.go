@@ -34,6 +34,7 @@ type BuildOptions struct {
 	Executor             executil.Executor
 	Remotes              map[string]string   // external Flatpak remotes to register
 	Flatpaks             []config.FlatpakDep // Flatpaks (runtimes, dependencies) to pre-install
+	NoSign               bool                // disable GPG verification for external remotes
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -66,12 +67,16 @@ func Build(opts BuildOptions) error {
 	for name, url := range opts.Remotes {
 		logger.Info("Registering Flatpak remote %s: %s", name, url)
 		cmdArgs := []string{"remote-add", "--user", "--if-not-exists"}
-		if !strings.HasSuffix(url, ".flatpakrepo") {
+		if opts.NoSign || !strings.HasSuffix(url, ".flatpakrepo") {
 			cmdArgs = append(cmdArgs, "--no-gpg-verify")
 		}
 		cmdArgs = append(cmdArgs, name, url)
 		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {
 			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, url, err)
+		}
+		if opts.NoSign || !strings.HasSuffix(url, ".flatpakrepo") {
+			// Ensure GPG verification is disabled even if the remote already existed
+			_ = runFlatpakCommand(opts.Executor, []string{"remote-modify", "--user", "--no-gpg-verify", name})
 		}
 	}
 

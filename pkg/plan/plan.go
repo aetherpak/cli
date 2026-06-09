@@ -101,7 +101,7 @@ func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force st
 		// Collect changed files from git
 		changedFiles, err := getChangedFiles(baseSHA)
 		if err != nil {
-			logger.Debug("Failed to get git diff (assuming all changed): %v", err)
+			logger.Warn("Git diff failed (falling back to rebuilding all apps): %v", err)
 			selected = allIDs
 		} else if changedFiles == nil {
 			logger.Debug("Base SHA not found or unreachable, building all.")

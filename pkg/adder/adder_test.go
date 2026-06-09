@@ -317,7 +317,7 @@ func TestRunGitRollbackOnDecline(t *testing.T) {
 		t.Fatalf("expected add+init+removal commands, got %v", names)
 	}
 	// The removal sequence begins with submodule deinit.
-	if names[2][0] != "submodule" || names[2][1] != "deinit" {
+	if names[2][0] != "-c" || names[2][1] != "safe.directory=*" || names[2][2] != "submodule" || names[2][3] != "deinit" {
 		t.Errorf("rollback sequence not invoked: %v", names)
 	}
 }

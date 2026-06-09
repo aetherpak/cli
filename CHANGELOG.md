@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/aetherpak/cli/compare/v0.18.0...v0.19.0) (2026-06-09)
+
+
+### Features
+
+* **builder:** bypass GPG verification for direct repository remotes ([74b198f](https://github.com/aetherpak/cli/commit/74b198f50e02caf043700a437cc53f6e072a5bfe))
+* **executil:** make LogBox render lazily and support dynamic titles/prefixes ([fb2550f](https://github.com/aetherpak/cli/commit/fb2550f0700b3d6cd5ff94735153f7abd7d42f7a))
+
 ## [0.18.0](https://github.com/aetherpak/cli/compare/v0.17.3...v0.18.0) (2026-06-09)
 
 

@@ -80,3 +80,38 @@ func TestSanitizeRemoteName(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitAndCleanSlice(t *testing.T) {
+	tests := []struct {
+		input    []string
+		expected []string
+	}{
+		{
+			input:    []string{"a, b, c"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			input:    []string{"a\nb\nc"},
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			input:    []string{"a,b\n   c  , d\r\n e"},
+			expected: []string{"a", "b", "c", "d", "e"},
+		},
+		{
+			input:    []string{"", "  ", "a", "b"},
+			expected: []string{"a", "b"},
+		},
+		{
+			input:    []string{"a, b", "c\nd, e"},
+			expected: []string{"a", "b", "c", "d", "e"},
+		},
+	}
+
+	for _, tt := range tests {
+		actual := SplitAndCleanSlice(tt.input)
+		if !reflect.DeepEqual(actual, tt.expected) {
+			t.Errorf("SplitAndCleanSlice(%v) = %v; expected %v", tt.input, actual, tt.expected)
+		}
+	}
+}

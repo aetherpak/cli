@@ -91,3 +91,21 @@ func sanitizeRemoteName(name string) string {
 	name = strings.ToLower(name)
 	return nonAlphaNumRegexp.ReplaceAllString(name, "-")
 }
+
+// SplitAndCleanSlice splits each string in the slice by comma and newline,
+// and trims whitespace around each resulting element.
+func SplitAndCleanSlice(slice []string) []string {
+	var cleaned []string
+	for _, s := range slice {
+		s = strings.ReplaceAll(s, "\r", "")
+		s = strings.ReplaceAll(s, "\n", ",")
+		parts := strings.Split(s, ",")
+		for _, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			if trimmed != "" {
+				cleaned = append(cleaned, trimmed)
+			}
+		}
+	}
+	return cleaned
+}

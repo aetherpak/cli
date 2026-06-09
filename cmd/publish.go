@@ -92,6 +92,10 @@ var publishCmd = &cobra.Command{
 			recordsDir = "records"
 		}
 
+		pubBundles = SplitAndCleanSlice(pubBundles)
+		pubBundleURLs = SplitAndCleanSlice(pubBundleURLs)
+		pubBundlePaths = SplitAndCleanSlice(pubBundlePaths)
+
 		// Validate mutual exclusion: manifest cannot be specified with any bundle input
 		if pubManifest != "" && (len(pubBundles) > 0 || len(pubBundleURLs) > 0 || len(pubBundlePaths) > 0) {
 			return NewCmdErrorf(2, "cannot specify both --manifest and bundle inputs (--bundle, --bundle-url, or --bundle-path)")

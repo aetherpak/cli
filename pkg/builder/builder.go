@@ -236,6 +236,19 @@ func Build(opts BuildOptions) error {
 		args = append(args, "--ccache")
 	}
 
+	// Default to --user installation for flatpak-builder to match the user remote registration,
+	// unless explicitly overridden in BuilderArgs.
+	hasInstallLocation := false
+	for _, arg := range opts.BuilderArgs {
+		if arg == "--user" || arg == "--system" || strings.HasPrefix(arg, "--installation=") {
+			hasInstallLocation = true
+			break
+		}
+	}
+	if !hasInstallLocation {
+		args = append(args, "--user")
+	}
+
 	args = append(args, extraBuilderArgs(opts.BuilderArgs, os.Getenv("CI"))...)
 
 	// Append build directory and manifest file

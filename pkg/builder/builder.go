@@ -271,7 +271,10 @@ func Build(opts BuildOptions) error {
 	var dest io.Writer = os.Stdout
 	var lb *executil.LogBox
 	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 12)
+		lb = executil.NewLogBox(os.Stdout, 12).
+			SetTitle(" flatpak-builder logs ").
+			SetPrefixText("flatpak-builder").
+			SetPrefixColor("99")
 		lb.Start()
 		dest = lb
 	}
@@ -408,7 +411,10 @@ func runLinter(executor executil.Executor, args []string, prefix string) error {
 	var dest io.Writer = os.Stdout
 	var lb *executil.LogBox
 	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 8)
+		lb = executil.NewLogBox(os.Stdout, 8).
+			SetTitle(" flatpak-builder-lint logs ").
+			SetPrefixText("flatpak-builder-lint").
+			SetPrefixColor("13")
 		lb.Start()
 		dest = lb
 	}
@@ -458,11 +464,13 @@ func loadExceptionsFile(path string) (map[string][]string, error) {
 func runFlatpakCommand(executor executil.Executor, args []string) error {
 	cmd := executor.Command("flatpak", args...)
 
-	var prefix string
+	var stdoutPrefix, stderrPrefix string
 	if logger.IsPlain() {
-		prefix = "flatpak |"
+		stdoutPrefix = "flatpak |"
+		stderrPrefix = "flatpak |"
 	} else {
-		prefix = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Render("flatpak") + lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
+		stdoutPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Render("flatpak") + lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
+		stderrPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true).Render("flatpak") + lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -484,7 +492,10 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 	var dest io.Writer = os.Stdout
 	var lb *executil.LogBox
 	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 8)
+		lb = executil.NewLogBox(os.Stdout, 8).
+			SetTitle(" flatpak logs ").
+			SetPrefixText("flatpak").
+			SetPrefixColor("39")
 		lb.Start()
 		dest = lb
 	}
@@ -494,12 +505,12 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, dest, prefix)
+		executil.StreamWithPrefix(stdoutPipe, dest, stdoutPrefix)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, dest, prefix)
+		executil.StreamWithPrefix(stderrPipe, dest, stderrPrefix)
 	}()
 
 	wg.Wait()

@@ -23,27 +23,52 @@ type LogBox struct {
 	initialized bool
 	writer      io.Writer
 	buf         bytes.Buffer
+	title       string
+	prefixText  string
+	prefixColor string
 }
 
 // NewLogBox creates a new LogBox instance.
 func NewLogBox(writer io.Writer, maxLines int) *LogBox {
 	return &LogBox{
-		writer:   writer,
-		maxLines: maxLines,
-		lines:    make([]string, 0, maxLines),
+		writer:      writer,
+		maxLines:    maxLines,
+		lines:       make([]string, 0, maxLines),
+		title:       " flatpak-builder logs ",
+		prefixText:  "flatpak-builder",
+		prefixColor: "99",
 	}
 }
 
-// Start prints the initial layout of the LogBox.
+// SetTitle sets the title of the LogBox.
+func (lb *LogBox) SetTitle(title string) *LogBox {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+	lb.title = title
+	return lb
+}
+
+// SetPrefixText sets the prefix text of the LogBox.
+func (lb *LogBox) SetPrefixText(prefixText string) *LogBox {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+	lb.prefixText = prefixText
+	return lb
+}
+
+// SetPrefixColor sets the prefix color of the LogBox.
+func (lb *LogBox) SetPrefixColor(color string) *LogBox {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+	lb.prefixColor = color
+	return lb
+}
+
+// Start prepares the LogBox for writing. It does not render anything yet.
 func (lb *LogBox) Start() {
 	lb.mu.Lock()
 	defer lb.mu.Unlock()
-
-	// Disable line wrapping
-	fmt.Fprint(lb.writer, "\033[?7l")
-
-	lb.redrawLocked()
-	lb.initialized = true
+	// Initialization is done lazily when the first line is written.
 }
 
 func (lb *LogBox) Write(p []byte) (n int, err error) {
@@ -79,8 +104,10 @@ func (lb *LogBox) Close() error {
 		lb.buf.Reset()
 	}
 
-	// Re-enable line wrapping
-	fmt.Fprint(lb.writer, "\033[?7h")
+	if lb.initialized {
+		// Re-enable line wrapping
+		fmt.Fprint(lb.writer, "\033[?7h")
+	}
 	return nil
 }
 
@@ -111,7 +138,10 @@ func (lb *LogBox) addLineLocked(rawLine string) {
 }
 
 func (lb *LogBox) formatLine(clean string, isStderr, isLinter bool, limit int) string {
-	prefixText := "flatpak-builder"
+	prefixText := lb.prefixText
+	if prefixText == "" {
+		prefixText = "flatpak-builder"
+	}
 	if isLinter {
 		prefixText = "flatpak-builder-lint"
 	}
@@ -146,7 +176,11 @@ func (lb *LogBox) formatLine(clean string, isStderr, isLinter bool, limit int) s
 		styledPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true).Render(prefixText) +
 			lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
 	} else {
-		styledPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(prefixText) +
+		color := lb.prefixColor
+		if color == "" {
+			color = "99"
+		}
+		styledPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(prefixText) +
 			lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(" │")
 	}
 
@@ -165,12 +199,24 @@ func (lb *LogBox) redrawLocked() {
 	// Move cursor up if we previously drew a box
 	if lb.initialized {
 		fmt.Fprintf(lb.writer, "\r\033[%dA", lb.maxLines+2)
+	} else {
+		// Disable line wrapping when we first draw the box
+		fmt.Fprint(lb.writer, "\033[?7l")
+		lb.initialized = true
 	}
 
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true)
 
-	title := " flatpak-builder logs "
+	color := lb.prefixColor
+	if color == "" {
+		color = "99"
+	}
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
+
+	title := lb.title
+	if title == "" {
+		title = " flatpak-builder logs "
+	}
 	titleLen := len(title)
 	borderWidth := width - titleLen - 4
 	if borderWidth < 2 {

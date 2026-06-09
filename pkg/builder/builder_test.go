@@ -794,3 +794,135 @@ mQENBFT9...
 		t.Error("expected remote-modify for remote-gpg-key to have run")
 	}
 }
+
+func TestBuildAutoInjectsInstallDepsFrom(t *testing.T) {
+	cases := []struct {
+		name          string
+		noInstallDeps bool
+		noFlathub     bool
+		remotes       map[string]config.RemoteConfig
+		builderArgs   []string
+		wantArgs      []string
+		dontWantArgs  []string
+		wantRemotes   []string
+	}{
+		{
+			name:        "default auto-injects flathub",
+			wantArgs:    []string{"--install-deps-from=flathub"},
+			wantRemotes: []string{"flathub"},
+		},
+		{
+			name:          "no-install-deps disables all auto-injections",
+			noInstallDeps: true,
+			dontWantArgs:  []string{"--install-deps-from=flathub"},
+			wantRemotes:   []string{"flathub"}, // Flathub is still auto-registered as a remote
+		},
+		{
+			name:         "no-flathub disables flathub remote and flathub auto-inject",
+			noFlathub:    true,
+			dontWantArgs: []string{"--install-deps-from=flathub"},
+			wantRemotes:  []string{}, // No flathub remote registered
+		},
+		{
+			name: "auto-injects custom remotes and flathub",
+			remotes: map[string]config.RemoteConfig{
+				"custom-repo": {URL: "https://example.com/repo"},
+			},
+			wantArgs:    []string{"--install-deps-from=flathub", "--install-deps-from=custom-repo"},
+			wantRemotes: []string{"flathub", "custom-repo"},
+		},
+		{
+			name: "custom flathub override is preserved",
+			remotes: map[string]config.RemoteConfig{
+				"flathub": {URL: "https://custom.flathub.org/repo"},
+			},
+			wantArgs:    []string{"--install-deps-from=flathub"},
+			wantRemotes: []string{"flathub"},
+		},
+		{
+			name:        "no duplicates when explicitly set in builder args",
+			builderArgs: []string{"--install-deps-from=flathub"},
+			wantArgs:    []string{"--install-deps-from=flathub"}, // check that it is not added twice
+			wantRemotes: []string{"flathub"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockExec := executil.NewMockExecutor()
+
+			opts := BuildOptions{
+				AppID:         "org.example.App",
+				Manifest:      "apps/org.example.App.json",
+				StateDir:      ".state",
+				RepoPath:      "repo",
+				NoInstallDeps: tc.noInstallDeps,
+				NoFlathub:     tc.noFlathub,
+				Remotes:       tc.remotes,
+				BuilderArgs:   tc.builderArgs,
+				Executor:      mockExec,
+			}
+
+			err := Build(opts)
+			if err != nil {
+				t.Fatalf("build failed: %v", err)
+			}
+
+			// Find flatpak-builder command and verify args
+			var builderArgs []string
+			for _, cmd := range mockExec.Commands {
+				if cmd.Name == "flatpak-builder" {
+					builderArgs = cmd.Args
+					break
+				}
+			}
+
+			if len(builderArgs) == 0 {
+				t.Fatalf("flatpak-builder did not run")
+			}
+
+			// Helper to check if slice contains arg
+			contains := func(slice []string, val string) bool {
+				for _, item := range slice {
+					if item == val {
+						return true
+					}
+				}
+				return false
+			}
+
+			for _, want := range tc.wantArgs {
+				if !contains(builderArgs, want) {
+					t.Errorf("expected argument %q not found. Got: %v", want, builderArgs)
+				}
+			}
+
+			for _, dontWant := range tc.dontWantArgs {
+				if contains(builderArgs, dontWant) {
+					t.Errorf("unexpected argument %q found. Got: %v", dontWant, builderArgs)
+				}
+			}
+
+			// Verify registered remotes
+			var registeredRemotes []string
+			for _, cmd := range mockExec.Commands {
+				if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "remote-add" {
+					name := cmd.Args[len(cmd.Args)-2]
+					registeredRemotes = append(registeredRemotes, name)
+				}
+			}
+
+			// Check all expected remotes registered
+			for _, wantRem := range tc.wantRemotes {
+				if !contains(registeredRemotes, wantRem) {
+					t.Errorf("expected remote %q to be registered. Registered remotes: %v", wantRem, registeredRemotes)
+				}
+			}
+
+			// Check no unexpected remotes registered
+			if len(tc.wantRemotes) == 0 && len(registeredRemotes) > 0 {
+				t.Errorf("expected no remotes registered, but got: %v", registeredRemotes)
+			}
+		})
+	}
+}

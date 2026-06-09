@@ -31,6 +31,8 @@ var (
 	buildNoSign               bool
 	buildInstall              bool
 	buildBundle               bool
+	buildNoInstallDeps        bool
+	buildNoFlathub            bool
 )
 
 var buildCmd = &cobra.Command{
@@ -152,6 +154,8 @@ var buildCmd = &cobra.Command{
 			var appRemotes map[string]config.RemoteConfig
 			var appFlatpaks []config.FlatpakDep
 			var appNoSign = false
+			var appNoInstallDeps = false
+			var appNoFlathub = false
 
 			if cfg != nil {
 				appNoSign = cfg.NoSign
@@ -164,6 +168,12 @@ var buildCmd = &cobra.Command{
 				appBuilderArgs = job.appConfig.BuilderArgs
 				appRemotes = job.appConfig.Remotes
 				appFlatpaks = job.appConfig.Flatpaks
+				if job.appConfig.NoInstallDeps != nil {
+					appNoInstallDeps = *job.appConfig.NoInstallDeps
+				}
+				if job.appConfig.NoFlathub != nil {
+					appNoFlathub = *job.appConfig.NoFlathub
+				}
 				if job.appConfig.Linter != nil {
 					if job.appConfig.Linter.Strict != nil {
 						appLinterStrict = *job.appConfig.Linter.Strict
@@ -189,6 +199,12 @@ var buildCmd = &cobra.Command{
 					appBuilderArgs = cfg.Defaults.BuilderArgs
 					appRemotes = cfg.Defaults.Remotes
 					appFlatpaks = cfg.Defaults.Flatpaks
+					if cfg.Defaults.NoInstallDeps != nil {
+						appNoInstallDeps = *cfg.Defaults.NoInstallDeps
+					}
+					if cfg.Defaults.NoFlathub != nil {
+						appNoFlathub = *cfg.Defaults.NoFlathub
+					}
 					if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
 						appCCacheDir = ""
 					}
@@ -215,6 +231,12 @@ var buildCmd = &cobra.Command{
 			}
 			if cmd.Flags().Changed("no-sign") {
 				appNoSign = buildNoSign
+			}
+			if cmd.Flags().Changed("no-install-deps") {
+				appNoInstallDeps = buildNoInstallDeps
+			}
+			if cmd.Flags().Changed("no-flathub") {
+				appNoFlathub = buildNoFlathub
 			}
 			if cmd.Flags().Changed("builder-arg") {
 				appBuilderArgs = buildBuilderArgs
@@ -262,6 +284,8 @@ var buildCmd = &cobra.Command{
 				NoSign:               appNoSign,
 				Install:              buildInstall,
 				Bundle:               buildBundle,
+				NoInstallDeps:        appNoInstallDeps,
+				NoFlathub:            appNoFlathub,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -316,4 +340,6 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildNoSign, "no-sign", false, "disable GPG verification/signing")
 	buildCmd.Flags().BoolVar(&buildInstall, "install", false, "install application after build")
 	buildCmd.Flags().BoolVar(&buildBundle, "bundle", false, "generate a bundled flatpak binary (.flatpak) for the application")
+	buildCmd.Flags().BoolVar(&buildNoInstallDeps, "no-install-deps", false, "disable auto-injection of --install-deps-from flags for remotes")
+	buildCmd.Flags().BoolVar(&buildNoFlathub, "no-flathub", false, "disable auto-injection of flathub as a dependency remote")
 }

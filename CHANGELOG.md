@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.1](https://github.com/aetherpak/cli/compare/v0.19.0...v0.19.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* **builder:** dynamically select --user or --system installation target ([c460bf4](https://github.com/aetherpak/cli/commit/c460bf477748e4569fec135fbc5fef5eeb689562))
+* **builder:** pass --user to flatpak-builder by default ([35f024a](https://github.com/aetherpak/cli/commit/35f024a73b5ea09c8571656b9217380939a54ed2))
+* **builder:** support disabling remote GPG checks via no-sign config/flag ([bed0578](https://github.com/aetherpak/cli/commit/bed05781fcd90e4965864cbeb7bd2d5ca9f37e34))
+* **site:** include SignatureLookaside in generated .flatpakrepo and resolve OCI remotes directly ([47a3a16](https://github.com/aetherpak/cli/commit/47a3a16342a8ddbd87d1f6885c1ff8c5a47f1a4d))
+* **site:** simplify repository setup instructions and remove modal ([19f1f27](https://github.com/aetherpak/cli/commit/19f1f27b4d336fc3cb788d4e1e42f23a0588777f))
+
 ## [0.19.0](https://github.com/aetherpak/cli/compare/v0.18.0...v0.19.0) (2026-06-09)
 
 

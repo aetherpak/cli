@@ -350,6 +350,18 @@ var configShowCmd = &cobra.Command{
 			printKV("run_linter", cfg.Defaults.RunLinter)
 			printKV("builder_args", cfg.Defaults.BuilderArgs)
 
+			var noInstallDepsVal bool
+			if cfg.Defaults.NoInstallDeps != nil {
+				noInstallDepsVal = *cfg.Defaults.NoInstallDeps
+			}
+			printKV("no_install_deps", noInstallDepsVal)
+
+			var noFlathubVal bool
+			if cfg.Defaults.NoFlathub != nil {
+				noFlathubVal = *cfg.Defaults.NoFlathub
+			}
+			printKV("no_flathub", noFlathubVal)
+
 			if len(cfg.Defaults.Remotes) > 0 {
 				var remotes []string
 				for k, v := range cfg.Defaults.Remotes {
@@ -423,6 +435,30 @@ var configShowCmd = &cobra.Command{
 				fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("ccache:"), ccacheStr)
 				fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("ccache_dir:"), valStyle.Render(app.CCacheDir))
 				fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("state_dir:"), valStyle.Render(app.StateDir))
+
+				var noInstallDepsStr string
+				if app.NoInstallDeps != nil {
+					if *app.NoInstallDeps {
+						noInstallDepsStr = boolTrueStyle.Render("true")
+					} else {
+						noInstallDepsStr = boolFalseStyle.Render("false")
+					}
+				} else {
+					noInstallDepsStr = dimmedStyle.Render("(inherited)")
+				}
+				fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("no_install_deps:"), noInstallDepsStr)
+
+				var noFlathubStr string
+				if app.NoFlathub != nil {
+					if *app.NoFlathub {
+						noFlathubStr = boolTrueStyle.Render("true")
+					} else {
+						noFlathubStr = boolFalseStyle.Render("false")
+					}
+				} else {
+					noFlathubStr = dimmedStyle.Render("(inherited)")
+				}
+				fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("no_flathub:"), noFlathubStr)
 			}
 		} else {
 			fmt.Fprintln(w, "  "+dimmedStyle.Render("(no applications configured)"))

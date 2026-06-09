@@ -68,13 +68,15 @@ type FlatpakDep struct {
 
 // DefaultsConfig defines global repository build defaults.
 type DefaultsConfig struct {
-	CCache      *bool                   `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
-	CCacheDir   string                  `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
-	StateDir    string                  `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
-	RunLinter   bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	BuilderArgs []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes     map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks    []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	CCache        *bool                   `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
+	CCacheDir     string                  `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
+	StateDir      string                  `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
+	RunLinter     bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	BuilderArgs   []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes       map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks      []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	NoInstallDeps *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
+	NoFlathub     *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 }
 
 // App represents an individual application configuration.
@@ -97,6 +99,8 @@ type App struct {
 	BuilderArgs    []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
 	Remotes        map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
 	Flatpaks       []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	NoInstallDeps  *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
+	NoFlathub      *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -323,6 +327,16 @@ func (cfg *Config) Normalize() {
 			app.CCache = &c
 		}
 
+		if app.NoInstallDeps == nil && cfg.Defaults.NoInstallDeps != nil {
+			val := *cfg.Defaults.NoInstallDeps
+			app.NoInstallDeps = &val
+		}
+
+		if app.NoFlathub == nil && cfg.Defaults.NoFlathub != nil {
+			val := *cfg.Defaults.NoFlathub
+			app.NoFlathub = &val
+		}
+
 		if app.CCacheDir == "" {
 			if cfg.Defaults.CCacheDir != "" {
 				app.CCacheDir = cfg.Defaults.CCacheDir
@@ -533,6 +547,20 @@ func (app App) Equal(other App) bool {
 		return false
 	}
 	if app.CCache != nil && *app.CCache != *other.CCache {
+		return false
+	}
+
+	if (app.NoInstallDeps == nil) != (other.NoInstallDeps == nil) {
+		return false
+	}
+	if app.NoInstallDeps != nil && *app.NoInstallDeps != *other.NoInstallDeps {
+		return false
+	}
+
+	if (app.NoFlathub == nil) != (other.NoFlathub == nil) {
+		return false
+	}
+	if app.NoFlathub != nil && *app.NoFlathub != *other.NoFlathub {
 		return false
 	}
 

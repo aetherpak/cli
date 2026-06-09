@@ -146,6 +146,7 @@ func initConfig() {
 		"linter.strict", "linter.ignore_rules", "linter.exceptions", "linter.exceptions_file",
 		"branding.logo_url", "branding.favicon_url", "branding.accent_color", "branding.footer_text", "branding.index_template",
 		"defaults.ccache", "defaults.ccache_dir", "defaults.state_dir", "defaults.run_linter", "defaults.builder_args",
+		"defaults.no_install_deps", "defaults.no_flathub",
 	} {
 		_ = viper.BindEnv(key)
 	}

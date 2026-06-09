@@ -226,6 +226,8 @@ func TestConfigNormalize(t *testing.T) {
 			Flatpaks: []FlatpakDep{
 				{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
 			},
+			NoInstallDeps: &trueVal,
+			NoFlathub:     &falseVal,
 		},
 		Linter: &LinterConfig{
 			Strict:      &falseVal,
@@ -255,6 +257,8 @@ func TestConfigNormalize(t *testing.T) {
 				Flatpaks: []FlatpakDep{
 					{Remote: "repoA", Ref: "org.gnome.Sdk.ExtensionA//45"},
 				},
+				NoInstallDeps: &falseVal,
+				NoFlathub:     &trueVal,
 			},
 		},
 	}
@@ -287,6 +291,12 @@ func TestConfigNormalize(t *testing.T) {
 	if len(app1.Flatpaks) != 1 || app1.Flatpaks[0].Remote != "flathub" || app1.Flatpaks[0].Ref != "org.gnome.Sdk//45" {
 		t.Errorf("App1: expected Flatpaks inherited, got %v", app1.Flatpaks)
 	}
+	if app1.NoInstallDeps == nil || !*app1.NoInstallDeps {
+		t.Errorf("App1: expected NoInstallDeps to be true (inherited), got %v", app1.NoInstallDeps)
+	}
+	if app1.NoFlathub == nil || *app1.NoFlathub {
+		t.Errorf("App1: expected NoFlathub to be false (inherited), got %v", app1.NoFlathub)
+	}
 
 	// App 2 should preserve local values
 	app2 := cfg.Apps[1]
@@ -316,6 +326,12 @@ func TestConfigNormalize(t *testing.T) {
 	}
 	if app2.Flatpaks[1].Remote != "repoA" || app2.Flatpaks[1].Ref != "org.gnome.Sdk.ExtensionA//45" {
 		t.Errorf("App2: expected second Flatpak to be local repoA:org.gnome.Sdk.ExtensionA//45, got %+v", app2.Flatpaks[1])
+	}
+	if app2.NoInstallDeps == nil || *app2.NoInstallDeps {
+		t.Errorf("App2: expected NoInstallDeps to be false (overridden), got %v", app2.NoInstallDeps)
+	}
+	if app2.NoFlathub == nil || !*app2.NoFlathub {
+		t.Errorf("App2: expected NoFlathub to be true (overridden), got %v", app2.NoFlathub)
 	}
 }
 
@@ -348,6 +364,8 @@ func TestAppEqual(t *testing.T) {
 		Flatpaks: []FlatpakDep{
 			{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
 		},
+		NoInstallDeps: &trueVal,
+		NoFlathub:     &falseVal,
 	}
 
 	appB := appA
@@ -422,6 +440,20 @@ func TestAppEqual(t *testing.T) {
 	}
 	if appA.Equal(appB) {
 		t.Error("differing Flatpaks refs should not be equal")
+	}
+
+	// Reset and change NoInstallDeps
+	appB = appA
+	appB.NoInstallDeps = &falseVal
+	if appA.Equal(appB) {
+		t.Error("differing NoInstallDeps value should not be equal")
+	}
+
+	// Reset and change NoFlathub
+	appB = appA
+	appB.NoFlathub = &trueVal
+	if appA.Equal(appB) {
+		t.Error("differing NoFlathub value should not be equal")
 	}
 }
 

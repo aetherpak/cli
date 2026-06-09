@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,8 @@ type BuildOptions struct {
 	NoSign               bool                           // disable GPG verification for external remotes
 	Install              bool                           // install application after build succeeds
 	Bundle               bool                           // generate a bundled flatpak binary (.flatpak) for the application
+	NoInstallDeps        bool                           // disable auto-injection of --install-deps-from flags
+	NoFlathub            bool                           // disable auto-injection of flathub as a dependency remote
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -69,6 +72,16 @@ func getInstallationTarget(builderArgs []string) string {
 	return "--user"
 }
 
+func hasInstallDepsFrom(args []string, remote string) bool {
+	prefix := "--install-deps-from=" + remote
+	for _, arg := range args {
+		if arg == prefix {
+			return true
+		}
+	}
+	return false
+}
+
 // Build wraps the flatpak-builder execution.
 func Build(opts BuildOptions) error {
 	if opts.Executor == nil {
@@ -82,8 +95,29 @@ func Build(opts BuildOptions) error {
 
 	target := getInstallationTarget(opts.BuilderArgs)
 
+	// Copy remotes and auto-register flathub if necessary
+	remotes := make(map[string]config.RemoteConfig)
+	for k, v := range opts.Remotes {
+		remotes[k] = v
+	}
+	if !opts.NoFlathub {
+		if _, exists := remotes["flathub"]; !exists {
+			remotes["flathub"] = config.RemoteConfig{
+				URL: "https://dl.flathub.org/repo/flathub.flatpakrepo",
+			}
+		}
+	}
+
 	// Pre-register flatpak remotes
-	for name, r := range opts.Remotes {
+	// Sort remotes for deterministic iteration/registration order
+	var remoteNames []string
+	for name := range remotes {
+		remoteNames = append(remoteNames, name)
+	}
+	sort.Strings(remoteNames)
+
+	for _, name := range remoteNames {
+		r := remotes[name]
 		logger.Info("Registering Flatpak remote %s: %s", name, r.URL)
 
 		gpgVerify := (name == "flathub" || name == "flathub-beta")
@@ -306,6 +340,19 @@ func Build(opts BuildOptions) error {
 	}
 	if opts.Branch != "" {
 		args = append(args, "--default-branch="+opts.Branch)
+	}
+
+	if !opts.NoInstallDeps {
+		var depRemotes []string
+		for name := range remotes {
+			depRemotes = append(depRemotes, name)
+		}
+		sort.Strings(depRemotes)
+		for _, name := range depRemotes {
+			if !hasInstallDepsFrom(opts.BuilderArgs, name) {
+				args = append(args, "--install-deps-from="+name)
+			}
+		}
 	}
 	args = append(args, "--state-dir="+flatpakBuilderStateDir)
 

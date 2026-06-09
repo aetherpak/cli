@@ -845,6 +845,20 @@ func TestBuildAutoInjectsInstallDepsFrom(t *testing.T) {
 			wantArgs:    []string{"--install-deps-from=flathub"}, // check that it is not added twice
 			wantRemotes: []string{"flathub"},
 		},
+		{
+			name:          "explicit user --install-deps-from=custom-remote is preserved even with no-install-deps",
+			noInstallDeps: true,
+			builderArgs:   []string{"--install-deps-from=custom-remote"},
+			wantArgs:      []string{"--install-deps-from=custom-remote"},
+			dontWantArgs:  []string{"--install-deps-from=flathub"},
+			wantRemotes:   []string{"flathub"},
+		},
+		{
+			name:        "explicit user other args are preserved",
+			builderArgs: []string{"--jobs=4"},
+			wantArgs:    []string{"--jobs=4", "--install-deps-from=flathub"},
+			wantRemotes: []string{"flathub"},
+		},
 	}
 
 	for _, tc := range cases {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/aetherpak/cli/compare/v0.19.1...v0.19.2) (2026-06-09)
+
+
+### Bug Fixes
+
+* **builder:** remove redundant and unsafe remote-delete call ([db971ba](https://github.com/aetherpak/cli/commit/db971ba9dbd91c1ec5211f87ad2af68b03cd540f))
+
 ## [0.19.1](https://github.com/aetherpak/cli/compare/v0.19.0...v0.19.1) (2026-06-09)
 
 

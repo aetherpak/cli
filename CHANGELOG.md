@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.20.0](https://github.com/aetherpak/cli/compare/v0.19.2...v0.20.0) (2026-06-09)
+
+
+### Features
+
+* **build:** add --bundle flag to generate a bundled flatpak package ([f729c5d](https://github.com/aetherpak/cli/commit/f729c5dc3d1600c286ff0b168441ed53dc76d6aa))
+* **build:** add --install flag to flatpak-builder execution ([edd08e4](https://github.com/aetherpak/cli/commit/edd08e480854f0b72402c72f191fb6acf99ff389))
+* support exploded flatpak remotes configuration ([aff4650](https://github.com/aetherpak/cli/commit/aff46508772c8c54accde634173341a64c1cdf87))
+
 ## [0.19.2](https://github.com/aetherpak/cli/compare/v0.19.1...v0.19.2) (2026-06-09)
 
 

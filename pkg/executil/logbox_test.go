@@ -11,13 +11,12 @@ func TestLogBox(t *testing.T) {
 	lb := NewLogBox(&buf, 3)
 
 	lb.Start()
-	// Box should draw initially
+	// Box should not draw initially (lazy rendering)
 	initialStr := buf.String()
-	if !strings.Contains(initialStr, "┌──") || !strings.Contains(initialStr, "└──") {
-		t.Errorf("expected initial box rendering, got: %q", initialStr)
+	if initialStr != "" {
+		t.Errorf("expected no initial box rendering, got: %q", initialStr)
 	}
 
-	buf.Reset()
 	_, err := lb.Write([]byte("flatpak-builder │ first line\n"))
 	if err != nil {
 		t.Fatalf("unexpected write error: %v", err)

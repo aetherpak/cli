@@ -45,6 +45,7 @@ func parseRef(ref string) (refType, id, arch, branch string, err error) {
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the ref, and falls back to invoking the "ostree" host binary if needed.
 func Resolve(repoPath string) (Info, error) {
+	_ = RestoreEmptyDirs(repoPath)
 	headsDir := filepath.Join(repoPath, "refs", "heads")
 	var foundRef string
 	_ = filepath.Walk(headsDir, func(path string, info os.FileInfo, err error) error {
@@ -99,6 +100,7 @@ func Resolve(repoPath string) (Info, error) {
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the refs, and falls back to invoking the "ostree" host binary if needed.
 func ResolveAll(repoPath string) ([]Info, error) {
+	_ = RestoreEmptyDirs(repoPath)
 	headsDir := filepath.Join(repoPath, "refs", "heads")
 	var foundRefs []string
 	_ = filepath.Walk(headsDir, func(path string, info os.FileInfo, err error) error {

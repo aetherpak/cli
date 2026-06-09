@@ -13,6 +13,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
+	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/aetherpak/aetherpak/pkg/signing"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -50,6 +51,7 @@ type PushResult struct {
 // Push converts the OSTree repo branch to OCI, signs it with each GPGKey, pushes to registry,
 // and writes the parallel execution record packages.
 func Push(opts PushOptions) (PushResult, error) {
+	_ = repoinfo.RestoreEmptyDirs(opts.RepoPath)
 	if opts.Executor == nil {
 		opts.Executor = executil.NewOSExecutor()
 	}

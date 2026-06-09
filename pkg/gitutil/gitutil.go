@@ -55,7 +55,8 @@ func (g *ExecGit) run(args ...string) ([]byte, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("git: no arguments provided")
 	}
-	cmd := g.exec.Command("git", args...)
+	gitArgs := append([]string{"-c", "safe.directory=*"}, args...)
+	cmd := g.exec.Command("git", gitArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.SetStdout(&stdout)
 	cmd.SetStderr(&stderr)

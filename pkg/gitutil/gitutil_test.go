@@ -18,7 +18,7 @@ func TestSubmoduleAddArgs(t *testing.T) {
 		t.Fatalf("expected 1 command, got %d", len(mock.Commands))
 	}
 	c := mock.Commands[0]
-	want := []string{"submodule", "add", "https://example.com/repo.git", "sources/org.example.App"}
+	want := []string{"-c", "safe.directory=*", "submodule", "add", "https://example.com/repo.git", "sources/org.example.App"}
 	if c.Name != "git" || !equal(c.Args, want) {
 		t.Errorf("got git %v, want git %v", c.Args, want)
 	}
@@ -30,7 +30,7 @@ func TestSubmoduleUpdateInitRecursive(t *testing.T) {
 	if err := g.SubmoduleUpdateInit(true); err != nil {
 		t.Fatalf("SubmoduleUpdateInit: %v", err)
 	}
-	want := []string{"submodule", "update", "--init", "--recursive"}
+	want := []string{"-c", "safe.directory=*", "submodule", "update", "--init", "--recursive"}
 	if !equal(mock.Commands[0].Args, want) {
 		t.Errorf("got %v, want %v", mock.Commands[0].Args, want)
 	}
@@ -52,9 +52,9 @@ func TestSubmoduleRemoveSequence(t *testing.T) {
 	// Steps 1-2 are git commands; step 3 resolves the module store via
 	// rev-parse, then removes it from the filesystem (no git command).
 	wantCmds := [][]string{
-		{"submodule", "deinit", "-f", "sources/org.example.App"},
-		{"rm", "-f", "sources/org.example.App"},
-		{"rev-parse", "--git-common-dir"},
+		{"-c", "safe.directory=*", "submodule", "deinit", "-f", "sources/org.example.App"},
+		{"-c", "safe.directory=*", "rm", "-f", "sources/org.example.App"},
+		{"-c", "safe.directory=*", "rev-parse", "--git-common-dir"},
 	}
 	if len(gotCmds) != len(wantCmds) {
 		t.Fatalf("got %d commands, want %d: %v", len(gotCmds), len(wantCmds), gotCmds)
@@ -86,7 +86,7 @@ func TestSubmoduleUpdateInitNonRecursive(t *testing.T) {
 	if err := g.SubmoduleUpdateInit(false); err != nil {
 		t.Fatalf("SubmoduleUpdateInit: %v", err)
 	}
-	want := []string{"submodule", "update", "--init"}
+	want := []string{"-c", "safe.directory=*", "submodule", "update", "--init"}
 	if !equal(mock.Commands[0].Args, want) {
 		t.Errorf("got %v, want %v", mock.Commands[0].Args, want)
 	}

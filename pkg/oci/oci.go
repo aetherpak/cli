@@ -69,14 +69,21 @@ func Push(opts PushOptions) (PushResult, error) {
 	defer os.RemoveAll(ociDir)
 
 	logger.Info("Exporting application from OSTree to OCI bundle...")
-	bundleCmd := opts.Executor.Command("flatpak", "build-bundle",
+	bundleArgs := []string{
+		"build-bundle",
 		"--oci",
-		"--arch="+opts.Arch,
+		"--arch=" + opts.Arch,
+	}
+	if opts.RefType == "runtime" {
+		bundleArgs = append(bundleArgs, "--runtime")
+	}
+	bundleArgs = append(bundleArgs,
 		opts.RepoPath,
 		ociDir,
 		opts.AppID,
 		opts.Branch,
 	)
+	bundleCmd := opts.Executor.Command("flatpak", bundleArgs...)
 	var bundleStderr bytes.Buffer
 	bundleCmd.SetStderr(&bundleStderr)
 	if err := bundleCmd.Run(); err != nil {

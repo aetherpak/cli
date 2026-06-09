@@ -21,9 +21,15 @@ func setupMockPushExecutor() executil.Executor {
 	mockExec.OnCommand = func(cmd *executil.MockCommand) {
 		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-bundle" {
 			cmd.RunFunc = func() error {
+				var nonFlags []string
+				for _, arg := range cmd.Args[1:] {
+					if !strings.HasPrefix(arg, "-") {
+						nonFlags = append(nonFlags, arg)
+					}
+				}
 				var ociDir string
-				if len(cmd.Args) > 4 {
-					ociDir = cmd.Args[4]
+				if len(nonFlags) >= 2 {
+					ociDir = nonFlags[1]
 				}
 				if ociDir == "" {
 					return nil
@@ -281,6 +287,26 @@ func TestPushRuntimeRefType(t *testing.T) {
 
 	if res.CellDir == "" {
 		t.Fatal("expected CellDir to be set")
+	}
+
+	// Verify that flatpak build-bundle was run with --runtime
+	var bundleRan bool
+	var runtimeFlagPassed bool
+	for _, cmd := range mockExec.(*executil.MockExecutor).Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-bundle" {
+			bundleRan = true
+			for _, arg := range cmd.Args {
+				if arg == "--runtime" {
+					runtimeFlagPassed = true
+				}
+			}
+		}
+	}
+	if !bundleRan {
+		t.Errorf("expected flatpak build-bundle to have run")
+	}
+	if !runtimeFlagPassed {
+		t.Errorf("expected --runtime flag to be passed to flatpak build-bundle")
 	}
 
 	// Verify the record.json contains runtime/ ref prefix

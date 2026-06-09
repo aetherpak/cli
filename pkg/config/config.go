@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 )
 
 var (
@@ -262,6 +264,13 @@ func (cfg *Config) Normalize() {
 func (app *App) Normalize() {
 	if app.RunLinterKebab {
 		app.RunLinter = true
+	}
+	if app.Branch == "" {
+		if app.Manifest != "" {
+			if m, err := manifest.ParseManifest(app.Manifest); err == nil && m.Branch != "" {
+				app.Branch = m.Branch
+			}
+		}
 	}
 	if app.Branch == "" {
 		app.Branch = "stable"

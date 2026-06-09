@@ -18,7 +18,7 @@ func writeFile(t *testing.T, dir, name, content string) string {
 func TestParseManifestYAML(t *testing.T) {
 	dir := t.TempDir()
 	p := writeFile(t, dir, "org.example.App.yaml",
-		"app-id: org.example.App\nruntime: org.freedesktop.Platform\nruntime-version: \"24.08\"\n")
+		"app-id: org.example.App\nruntime: org.freedesktop.Platform\nruntime-version: \"24.08\"\nbranch: \"25.08\"\n")
 	m, err := ParseManifest(p)
 	if err != nil {
 		t.Fatalf("ParseManifest: %v", err)
@@ -28,6 +28,9 @@ func TestParseManifestYAML(t *testing.T) {
 	}
 	if m.Runtime != "org.freedesktop.Platform" || m.RuntimeVersion != "24.08" {
 		t.Errorf("runtime fields = %q/%q", m.Runtime, m.RuntimeVersion)
+	}
+	if m.Branch != "25.08" {
+		t.Errorf("Branch = %q, want 25.08", m.Branch)
 	}
 }
 

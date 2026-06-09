@@ -20,6 +20,7 @@ type FlatpakManifest struct {
 	Runtime        string
 	RuntimeVersion string
 	SDK            string
+	Branch         string
 }
 
 // flatpakManifestRaw represents the raw JSON/YAML structure of a Flatpak manifest.
@@ -29,6 +30,7 @@ type flatpakManifestRaw struct {
 	Runtime        string `json:"runtime" yaml:"runtime"`
 	RuntimeVersion string `json:"runtime-version" yaml:"runtime-version"`
 	SDK            string `json:"sdk" yaml:"sdk"`
+	Branch         string `json:"branch" yaml:"branch"`
 }
 
 // ParseManifest parses a Flatpak manifest file (JSON or YAML) and extracts key metadata.
@@ -59,6 +61,7 @@ func ParseManifest(path string) (*FlatpakManifest, error) {
 		Runtime:        strings.TrimSpace(m.Runtime),
 		RuntimeVersion: strings.TrimSpace(m.RuntimeVersion),
 		SDK:            strings.TrimSpace(m.SDK),
+		Branch:         strings.TrimSpace(m.Branch),
 	}, nil
 }
 

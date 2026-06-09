@@ -461,4 +461,120 @@ apps:
 			}
 		}
 	})
+
+	t.Run("Scenario 4: Push a runtime (extension) ref and verify it succeeds using autodetect", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "aetherpak-sc4-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		repoPath := filepath.Join(tempDir, "repo")
+		recordsDir := filepath.Join(tempDir, "records")
+
+		// Create mock runtime
+		createMockFlatpakRuntimeCustom(t, repoPath, "org.freedesktop.Sdk.Extension.mock", "x86_64", "stable")
+
+		pushCmd := exec.Command(binaryPath, "push-oci",
+			"--registry=localhost:"+registryPort,
+			"--oci-repository=aetherpak/test-runtime",
+			"--repo-path="+repoPath,
+			"--records-dir="+recordsDir,
+			"--allow-unsigned",
+		)
+		pushCmd.Dir = tempDir
+		var stdout, stderr bytes.Buffer
+		pushCmd.Stdout = &stdout
+		pushCmd.Stderr = &stderr
+
+		if err := pushCmd.Run(); err != nil {
+			t.Fatalf("push-oci runtime push failed: %v\nStdout: %s\nStderr: %s", err, stdout.String(), stderr.String())
+		}
+
+		// Verify record exists and has runtime ref
+		rec := filepath.Join(recordsDir, "org.freedesktop.Sdk.Extension.mock-x86_64", "record.json")
+		if _, err := os.Stat(rec); os.IsNotExist(err) {
+			t.Fatalf("Expected record for runtime to exist: %s", rec)
+		}
+
+		data, err := os.ReadFile(rec)
+		if err != nil {
+			t.Fatalf("failed to read record: %v", err)
+		}
+		if !strings.Contains(string(data), "runtime/org.freedesktop.Sdk.Extension.mock/x86_64/stable") {
+			t.Errorf("expected record to contain runtime ref, got: %s", string(data))
+		}
+	})
+}
+
+func createMockFlatpakRuntimeCustom(t *testing.T, repoPath string, appID string, arch string, branch string) {
+	// Create temp directories
+	tmpApp, err := os.MkdirTemp("", "aetherpak-mock-runtime-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpApp)
+
+	tmpRepo, err := os.MkdirTemp("", "aetherpak-mock-repo-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpRepo)
+
+	filesDir := filepath.Join(tmpApp, "files")
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	metadata := fmt.Sprintf(`[Runtime]
+name=%s
+`, appID)
+
+	if err := os.WriteFile(filepath.Join(tmpApp, "metadata"), []byte(metadata), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize temporary repo if not existing
+	initTmpCmd := exec.Command("ostree", "init", "--mode=archive", "--repo="+tmpRepo)
+	if err := initTmpCmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	commitCmd := exec.Command("ostree", "commit",
+		"--repo="+tmpRepo,
+		"--branch=temp-branch",
+		"--owner-uid=0",
+		"--owner-gid=0",
+		"--canonical-permissions",
+		"--add-metadata-string=xa.metadata="+metadata,
+		"-s", "Mock runtime commit",
+		tmpApp,
+	)
+	var commitStderr bytes.Buffer
+	commitCmd.Stderr = &commitStderr
+	if err := commitCmd.Run(); err != nil {
+		t.Fatalf("ostree commit failed: %s", commitStderr.String())
+	}
+
+	// Initialize destination repo if not existing
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		initCmd := exec.Command("ostree", "init", "--mode=archive", "--repo="+repoPath)
+		if err := initCmd.Run(); err != nil {
+			t.Fatalf("failed to init repo: %v", err)
+		}
+	}
+
+	// Commit to destination repo with ref-binding
+	rebindCmd := exec.Command("flatpak", "build-commit-from",
+		"--src-repo="+tmpRepo,
+		"--src-ref=temp-branch",
+		"--no-update-summary",
+		repoPath,
+		fmt.Sprintf("runtime/%s/%s/%s", appID, arch, branch),
+	)
+	var rebindStderr bytes.Buffer
+	rebindCmd.Stderr = &rebindStderr
+	if err := rebindCmd.Run(); err != nil {
+		t.Fatalf("flatpak build-commit-from failed: %s", rebindStderr.String())
+	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
+	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -67,8 +68,14 @@ var publishCmd = &cobra.Command{
 		if pubRegistry == "" {
 			pubRegistry = cfg.Registry
 		}
+		if pubRegistry == "" {
+			pubRegistry = scm.Registry()
+		}
 		if pubOCIRepo == "" {
 			pubOCIRepo = cfg.OCIRepository
+		}
+		if pubOCIRepo == "" {
+			pubOCIRepo = scm.OCIRepository()
 		}
 
 		repoPath := pubRepoPath
@@ -358,9 +365,15 @@ var publishCmd = &cobra.Command{
 			if appRegistry == "" {
 				appRegistry = cfg.Registry
 			}
+			if appRegistry == "" {
+				appRegistry = scm.Registry()
+			}
 			appOCIRepo := pubOCIRepo
 			if appOCIRepo == "" {
 				appOCIRepo = cfg.OCIRepository
+			}
+			if appOCIRepo == "" {
+				appOCIRepo = scm.OCIRepository()
 			}
 
 			// Phase 1: Local compilation or import

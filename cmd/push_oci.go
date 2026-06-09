@@ -10,6 +10,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
+	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -161,17 +162,26 @@ var pushOCICmd = &cobra.Command{
 			pushRegistry = cfg.Registry
 		}
 		if pushRegistry == "" {
+			pushRegistry = scm.Registry()
+		}
+		if pushRegistry == "" {
 			return NewCmdError(2, fmt.Errorf("registry is required"))
 		}
 
 		if pushOCIRepository == "" {
 			pushOCIRepository = cfg.OCIRepository
 		}
+		if pushOCIRepository == "" {
+			pushOCIRepository = scm.OCIRepository()
+		}
 
 		for _, target := range targets {
 			appOCIRepository := pushOCIRepository
 			if appOCIRepository == "" {
 				appOCIRepository = cfg.OCIRepository
+			}
+			if appOCIRepository == "" {
+				appOCIRepository = scm.OCIRepository()
 			}
 
 			// Read GPG keys from files if passed

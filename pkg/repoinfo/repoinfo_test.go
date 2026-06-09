@@ -220,3 +220,30 @@ func TestHelperProcess(t *testing.T) {
 	fmt.Println("runtime/org.gnome.Platform/x86_64/45")
 	os.Exit(0)
 }
+
+func TestRestoreEmptyDirs(t *testing.T) {
+	tmp := t.TempDir()
+	// Initially, folders refs/heads, refs/mirrors, refs/remotes do not exist.
+	subdirs := []string{
+		filepath.Join(tmp, "refs", "heads"),
+		filepath.Join(tmp, "refs", "mirrors"),
+		filepath.Join(tmp, "refs", "remotes"),
+	}
+	for _, dir := range subdirs {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("directory %q already exists before restoration", dir)
+		}
+	}
+
+	// Run RestoreEmptyDirs
+	if err := RestoreEmptyDirs(tmp); err != nil {
+		t.Fatalf("RestoreEmptyDirs failed: %v", err)
+	}
+
+	// Verify they now exist
+	for _, dir := range subdirs {
+		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+			t.Fatalf("directory %q was not restored properly", dir)
+		}
+	}
+}

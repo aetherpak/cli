@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/aetherpak/cli/compare/v0.21.0...v0.22.0) (2026-06-09)
+
+
+### Features
+
+* **executil:** wrap flatpak/flatpak-builder in dbus-run-session when needed ([cd299dd](https://github.com/aetherpak/cli/commit/cd299dd222048502de2976ddc0cf2f53bd9b1f70))
+
 ## [0.21.0](https://github.com/aetherpak/cli/compare/v0.20.0...v0.21.0) (2026-06-09)
 
 

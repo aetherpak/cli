@@ -8,6 +8,7 @@ import (
 
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -178,7 +179,13 @@ func LoadConfig() (*config.Config, error) {
 			}
 		}
 		if !found {
-			if err := viper.Unmarshal(&cfg); err != nil {
+			if err := viper.Unmarshal(&cfg, viper.DecodeHook(
+				mapstructure.ComposeDecodeHookFunc(
+					mapstructure.StringToTimeDurationHookFunc(),
+					mapstructure.StringToSliceHookFunc(","),
+					config.RemoteConfigDecodeHook(),
+				),
+			)); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)
 			}
 			if vOutputDir := viper.GetString("output_dir"); vOutputDir != "" {
@@ -203,7 +210,13 @@ func LoadConfig() (*config.Config, error) {
 		logger.Debug("Using config file: %s", viper.ConfigFileUsed())
 	}
 
-	if err := viper.Unmarshal(&cfg); err != nil {
+	if err := viper.Unmarshal(&cfg, viper.DecodeHook(
+		mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+			config.RemoteConfigDecodeHook(),
+		),
+	)); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)
 	}
 

@@ -1,7 +1,11 @@
 package config
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestAppValidate(t *testing.T) {
@@ -139,8 +143,8 @@ func TestAppValidate(t *testing.T) {
 				ID:       "org.example.App",
 				Branch:   "stable",
 				Manifest: "apps/app.yaml",
-				Remotes: map[string]string{
-					"flathub": "ftp://dl.flathub.org/repo/flathub.flatpakrepo",
+				Remotes: map[string]RemoteConfig{
+					"flathub": {URL: "ftp://dl.flathub.org/repo/flathub.flatpakrepo"},
 				},
 			},
 			wantErr: true,
@@ -151,8 +155,8 @@ func TestAppValidate(t *testing.T) {
 				ID:       "org.example.App",
 				Branch:   "stable",
 				Manifest: "apps/app.yaml",
-				Remotes: map[string]string{
-					"": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+				Remotes: map[string]RemoteConfig{
+					"": {URL: "https://dl.flathub.org/repo/flathub.flatpakrepo"},
 				},
 			},
 			wantErr: true,
@@ -163,8 +167,8 @@ func TestAppValidate(t *testing.T) {
 				ID:       "org.example.App",
 				Branch:   "stable",
 				Manifest: "apps/app.yaml",
-				Remotes: map[string]string{
-					"flathub": "",
+				Remotes: map[string]RemoteConfig{
+					"flathub": {URL: ""},
 				},
 			},
 			wantErr: true,
@@ -215,9 +219,9 @@ func TestConfigNormalize(t *testing.T) {
 			StateDir:    "/global/state",
 			RunLinter:   true,
 			BuilderArgs: []string{"--foo", "--bar"},
-			Remotes: map[string]string{
-				"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
-				"repoA":   "https://example.com/repoA.flatpakrepo",
+			Remotes: map[string]RemoteConfig{
+				"flathub": {URL: "https://dl.flathub.org/repo/flathub.flatpakrepo"},
+				"repoA":   {URL: "https://example.com/repoA.flatpakrepo"},
 			},
 			Flatpaks: []FlatpakDep{
 				{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
@@ -244,9 +248,9 @@ func TestConfigNormalize(t *testing.T) {
 					IgnoreRules: []string{"rule-2"},
 					Exceptions:  []string{"rule-ex2"},
 				},
-				Remotes: map[string]string{
-					"repoA": "https://example.com/repoA-overridden.flatpakrepo",
-					"repoB": "https://example.com/repoB.flatpakrepo",
+				Remotes: map[string]RemoteConfig{
+					"repoA": {URL: "https://example.com/repoA-overridden.flatpakrepo"},
+					"repoB": {URL: "https://example.com/repoB.flatpakrepo"},
 				},
 				Flatpaks: []FlatpakDep{
 					{Remote: "repoA", Ref: "org.gnome.Sdk.ExtensionA//45"},
@@ -277,7 +281,7 @@ func TestConfigNormalize(t *testing.T) {
 	if len(app1.BuilderArgs) != 2 || app1.BuilderArgs[0] != "--foo" || app1.BuilderArgs[1] != "--bar" {
 		t.Errorf("App1: expected BuilderArgs inherited, got %v", app1.BuilderArgs)
 	}
-	if len(app1.Remotes) != 2 || app1.Remotes["flathub"] != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app1.Remotes["repoA"] != "https://example.com/repoA.flatpakrepo" {
+	if len(app1.Remotes) != 2 || app1.Remotes["flathub"].URL != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app1.Remotes["repoA"].URL != "https://example.com/repoA.flatpakrepo" {
 		t.Errorf("App1: expected Remotes inherited, got %v", app1.Remotes)
 	}
 	if len(app1.Flatpaks) != 1 || app1.Flatpaks[0].Remote != "flathub" || app1.Flatpaks[0].Ref != "org.gnome.Sdk//45" {
@@ -301,7 +305,7 @@ func TestConfigNormalize(t *testing.T) {
 	if len(app2.BuilderArgs) != 1 || app2.BuilderArgs[0] != "--baz" {
 		t.Errorf("App2: expected BuilderArgs overridden/preserved, got %v", app2.BuilderArgs)
 	}
-	if len(app2.Remotes) != 3 || app2.Remotes["flathub"] != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app2.Remotes["repoA"] != "https://example.com/repoA-overridden.flatpakrepo" || app2.Remotes["repoB"] != "https://example.com/repoB.flatpakrepo" {
+	if len(app2.Remotes) != 3 || app2.Remotes["flathub"].URL != "https://dl.flathub.org/repo/flathub.flatpakrepo" || app2.Remotes["repoA"].URL != "https://example.com/repoA-overridden.flatpakrepo" || app2.Remotes["repoB"].URL != "https://example.com/repoB.flatpakrepo" {
 		t.Errorf("App2: expected Remotes merged/overridden, got %v", app2.Remotes)
 	}
 	if len(app2.Flatpaks) != 2 {
@@ -338,8 +342,8 @@ func TestAppEqual(t *testing.T) {
 		Bundles: map[string]Bundle{
 			"x86_64": {URL: "https://example.com/b.flatpak", SHA256: "abcdef"},
 		},
-		Remotes: map[string]string{
-			"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+		Remotes: map[string]RemoteConfig{
+			"flathub": {URL: "https://dl.flathub.org/repo/flathub.flatpakrepo"},
 		},
 		Flatpaks: []FlatpakDep{
 			{Remote: "flathub", Ref: "org.gnome.Sdk//45"},
@@ -404,8 +408,8 @@ func TestAppEqual(t *testing.T) {
 
 	// Reset and change Remotes
 	appB = appA
-	appB.Remotes = map[string]string{
-		"flathub": "https://example.com/other.flatpakrepo",
+	appB.Remotes = map[string]RemoteConfig{
+		"flathub": {URL: "https://example.com/other.flatpakrepo"},
 	}
 	if appA.Equal(appB) {
 		t.Error("differing Remotes values should not be equal")
@@ -418,5 +422,122 @@ func TestAppEqual(t *testing.T) {
 	}
 	if appA.Equal(appB) {
 		t.Error("differing Flatpaks refs should not be equal")
+	}
+}
+
+func TestRemoteConfigParsing(t *testing.T) {
+	// 1. Test YAML Parsing
+	yamlStr := `
+remotes:
+  flat_str: https://dl.flathub.org/repo/flathub.flatpakrepo
+  exploded:
+    url: https://example.com/repo.flatpakrepo
+    gpg_verify: false
+    gpg_key: "/path/to/key"
+    sig_verify_url: "https://example.com/sig"
+`
+	var cfg struct {
+		Remotes map[string]RemoteConfig `yaml:"remotes"`
+	}
+	err := yaml.Unmarshal([]byte(yamlStr), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal YAML: %v", err)
+	}
+
+	if len(cfg.Remotes) != 2 {
+		t.Fatalf("expected 2 remotes, got %d", len(cfg.Remotes))
+	}
+
+	flatStr, ok := cfg.Remotes["flat_str"]
+	if !ok {
+		t.Errorf("missing flat_str remote")
+	} else {
+		if flatStr.URL != "https://dl.flathub.org/repo/flathub.flatpakrepo" {
+			t.Errorf("expected URL https://dl.flathub.org/repo/flathub.flatpakrepo, got %q", flatStr.URL)
+		}
+		if flatStr.GPGVerify != nil {
+			t.Errorf("expected GPGVerify to be nil, got %v", flatStr.GPGVerify)
+		}
+	}
+
+	exploded, ok := cfg.Remotes["exploded"]
+	if !ok {
+		t.Errorf("missing exploded remote")
+	} else {
+		if exploded.URL != "https://example.com/repo.flatpakrepo" {
+			t.Errorf("expected URL https://example.com/repo.flatpakrepo, got %q", exploded.URL)
+		}
+		if exploded.GPGVerify == nil || *exploded.GPGVerify != false {
+			t.Errorf("expected GPGVerify to be false, got %v", exploded.GPGVerify)
+		}
+		if exploded.GPGKey != "/path/to/key" {
+			t.Errorf("expected GPGKey /path/to/key, got %q", exploded.GPGKey)
+		}
+		if exploded.SigVerifyURL != "https://example.com/sig" {
+			t.Errorf("expected SigVerifyURL https://example.com/sig, got %q", exploded.SigVerifyURL)
+		}
+	}
+
+	// 2. Test JSON Parsing
+	jsonStr := `{
+		"remotes": {
+			"flat_str": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+			"exploded": {
+				"url": "https://example.com/repo.flatpakrepo",
+				"gpg_verify": true,
+				"gpg_key": "some-key",
+				"sig_verify_url": "some-sig-url"
+			}
+		}
+	}`
+	var cfgJSON struct {
+		Remotes map[string]RemoteConfig `json:"remotes"`
+	}
+	err = json.Unmarshal([]byte(jsonStr), &cfgJSON)
+	if err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	flatStrJSON, ok := cfgJSON.Remotes["flat_str"]
+	if !ok {
+		t.Errorf("missing flat_str remote in JSON")
+	} else if flatStrJSON.URL != "https://dl.flathub.org/repo/flathub.flatpakrepo" {
+		t.Errorf("expected URL from JSON string, got %q", flatStrJSON.URL)
+	}
+
+	explodedJSON, ok := cfgJSON.Remotes["exploded"]
+	if !ok {
+		t.Errorf("missing exploded remote in JSON")
+	} else {
+		if explodedJSON.URL != "https://example.com/repo.flatpakrepo" {
+			t.Errorf("expected URL from JSON object, got %q", explodedJSON.URL)
+		}
+		if explodedJSON.GPGVerify == nil || *explodedJSON.GPGVerify != true {
+			t.Errorf("expected GPGVerify to be true in JSON, got %v", explodedJSON.GPGVerify)
+		}
+		if explodedJSON.GPGKey != "some-key" {
+			t.Errorf("expected GPGKey some-key, got %q", explodedJSON.GPGKey)
+		}
+		if explodedJSON.SigVerifyURL != "some-sig-url" {
+			t.Errorf("expected SigVerifyURL some-sig-url, got %q", explodedJSON.SigVerifyURL)
+		}
+	}
+
+	// 3. Test Equal / String
+	falseVal := false
+	r1 := RemoteConfig{URL: "https://url", GPGVerify: &falseVal}
+	r2 := RemoteConfig{URL: "https://url", GPGVerify: &falseVal}
+	if !r1.Equal(r2) {
+		t.Errorf("expected r1 to equal r2")
+	}
+
+	r3 := RemoteConfig{URL: "https://url", GPGVerify: &falseVal, GPGKey: "key"}
+	if r1.Equal(r3) {
+		t.Errorf("expected r1 to not equal r3")
+	}
+
+	str := r3.String()
+	if !strings.Contains(str, "gpg_key=key") || !strings.Contains(str, "gpg_verify=false") {
+		t.Errorf("expected string representation to contain key/verify, got %q", str)
 	}
 }

@@ -353,7 +353,7 @@ var configShowCmd = &cobra.Command{
 			if len(cfg.Defaults.Remotes) > 0 {
 				var remotes []string
 				for k, v := range cfg.Defaults.Remotes {
-					remotes = append(remotes, fmt.Sprintf("%s=%s", k, v))
+					remotes = append(remotes, fmt.Sprintf("%s=%s", k, v.String()))
 				}
 				printKV("remotes", remotes)
 			} else {

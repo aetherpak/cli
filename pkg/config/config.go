@@ -1,12 +1,16 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/manifest"
+	"github.com/go-viper/mapstructure/v2"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -64,13 +68,13 @@ type FlatpakDep struct {
 
 // DefaultsConfig defines global repository build defaults.
 type DefaultsConfig struct {
-	CCache      *bool             `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
-	CCacheDir   string            `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
-	StateDir    string            `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
-	RunLinter   bool              `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	BuilderArgs []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes     map[string]string `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks    []FlatpakDep      `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	CCache      *bool                   `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
+	CCacheDir   string                  `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
+	StateDir    string                  `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
+	RunLinter   bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	BuilderArgs []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes     map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks    []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
 }
 
 // App represents an individual application configuration.
@@ -82,23 +86,149 @@ type App struct {
 	// Runtime is deprecated and is no longer required or used by the actions.
 	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
 	// RuntimeVersion is deprecated and is no longer required or used by the actions.
-	RuntimeVersion string            `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
-	RunLinter      bool              `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	RunLinterKebab bool              `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
-	Linter         *LinterConfig     `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
-	CCache         *bool             `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
-	CCacheDir      string            `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
-	StateDir       string            `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
-	Bundles        map[string]Bundle `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
-	BuilderArgs    []string          `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes        map[string]string `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks       []FlatpakDep      `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	RuntimeVersion string                  `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
+	RunLinter      bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	RunLinterKebab bool                    `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
+	Linter         *LinterConfig           `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
+	CCache         *bool                   `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
+	CCacheDir      string                  `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
+	StateDir       string                  `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
+	Bundles        map[string]Bundle       `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
+	BuilderArgs    []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes        map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks       []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
 type Bundle struct {
 	URL    string `yaml:"url" json:"url" mapstructure:"url"`
 	SHA256 string `yaml:"sha256" json:"sha256" mapstructure:"sha256"`
+}
+
+// RemoteConfig represents a Flatpak remote configuration.
+type RemoteConfig struct {
+	URL          string `yaml:"url" json:"url" mapstructure:"url"`
+	GPGVerify    *bool  `yaml:"gpg_verify,omitempty" json:"gpg_verify,omitempty" mapstructure:"gpg_verify"`
+	GPGKey       string `yaml:"gpg_key,omitempty" json:"gpg_key,omitempty" mapstructure:"gpg_key"`
+	SigVerifyURL string `yaml:"sig_verify_url,omitempty" json:"sig_verify_url,omitempty" mapstructure:"sig_verify_url"`
+}
+
+// UnmarshalYAML customizes YAML unmarshaling for RemoteConfig to handle both strings and map structures.
+func (r *RemoteConfig) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err == nil {
+		r.URL = s
+		return nil
+	}
+	type rawRemoteConfig RemoteConfig
+	var raw rawRemoteConfig
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*r = RemoteConfig(raw)
+	return nil
+}
+
+// UnmarshalJSON customizes JSON unmarshaling for RemoteConfig to handle both strings and object structures.
+func (r *RemoteConfig) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		r.URL = s
+		return nil
+	}
+	type rawRemoteConfig RemoteConfig
+	var raw rawRemoteConfig
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*r = RemoteConfig(raw)
+	return nil
+}
+
+// Equal returns true if the RemoteConfig is structurally identical to another.
+func (r RemoteConfig) Equal(other RemoteConfig) bool {
+	if r.URL != other.URL || r.GPGKey != other.GPGKey || r.SigVerifyURL != other.SigVerifyURL {
+		return false
+	}
+	if (r.GPGVerify == nil) != (other.GPGVerify == nil) {
+		return false
+	}
+	if r.GPGVerify != nil && *r.GPGVerify != *other.GPGVerify {
+		return false
+	}
+	return true
+}
+
+// String returns a friendly string representation of RemoteConfig.
+func (r RemoteConfig) String() string {
+	if r.GPGVerify == nil && r.GPGKey == "" && r.SigVerifyURL == "" {
+		return r.URL
+	}
+	var parts []string
+	parts = append(parts, "url="+r.URL)
+	if r.GPGVerify != nil {
+		parts = append(parts, fmt.Sprintf("gpg_verify=%v", *r.GPGVerify))
+	}
+	if r.GPGKey != "" {
+		parts = append(parts, "gpg_key="+r.GPGKey)
+	}
+	if r.SigVerifyURL != "" {
+		parts = append(parts, "sig_verify_url="+r.SigVerifyURL)
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// RemoteConfigDecodeHook returns a mapstructure.DecodeHookFunc that decodes a string or a map into a RemoteConfig.
+func RemoteConfigDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(RemoteConfig{}) {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case string:
+			return RemoteConfig{URL: v}, nil
+		case map[string]interface{}:
+			var r RemoteConfig
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &r,
+				TagName:  "mapstructure",
+			}
+			decoder, err := mapstructure.NewDecoder(cfg)
+			if err != nil {
+				return nil, err
+			}
+			if err := decoder.Decode(v); err != nil {
+				return nil, err
+			}
+			return r, nil
+		case map[interface{}]interface{}:
+			m := make(map[string]interface{})
+			for key, val := range v {
+				m[fmt.Sprintf("%v", key)] = val
+			}
+			var r RemoteConfig
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &r,
+				TagName:  "mapstructure",
+			}
+			decoder, err := mapstructure.NewDecoder(cfg)
+			if err != nil {
+				return nil, err
+			}
+			if err := decoder.Decode(m); err != nil {
+				return nil, err
+			}
+			return r, nil
+		default:
+			return data, nil
+		}
+	}
 }
 
 // Normalize sets default values for config and app fields.
@@ -223,12 +353,12 @@ func (cfg *Config) Normalize() {
 		}
 
 		if len(app.Remotes) == 0 && len(cfg.Defaults.Remotes) > 0 {
-			app.Remotes = make(map[string]string)
+			app.Remotes = make(map[string]RemoteConfig)
 			for k, v := range cfg.Defaults.Remotes {
 				app.Remotes[k] = v
 			}
 		} else if len(cfg.Defaults.Remotes) > 0 {
-			merged := make(map[string]string)
+			merged := make(map[string]RemoteConfig)
 			for k, v := range cfg.Defaults.Remotes {
 				merged[k] = v
 			}
@@ -346,15 +476,15 @@ func (app *App) Validate() error {
 		}
 	}
 
-	for name, url := range app.Remotes {
+	for name, r := range app.Remotes {
 		if name == "" {
 			return fmt.Errorf("app %q: flatpak remote name cannot be empty", app.ID)
 		}
-		if url == "" {
+		if r.URL == "" {
 			return fmt.Errorf("app %q: flatpak remote %q URL cannot be empty", app.ID, name)
 		}
-		if !urlRegexp.MatchString(url) {
-			return fmt.Errorf("app %q: flatpak remote %q URL %q must start with http:// or https://", app.ID, name, url)
+		if !urlRegexp.MatchString(r.URL) {
+			return fmt.Errorf("app %q: flatpak remote %q URL %q must start with http:// or https://", app.ID, name, r.URL)
 		}
 	}
 
@@ -431,12 +561,13 @@ func (app App) Equal(other App) bool {
 	return true
 }
 
-func flatpakRemotesEqual(a, b map[string]string) bool {
+func flatpakRemotesEqual(a, b map[string]RemoteConfig) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for k, v := range a {
-		if bv, ok := b[k]; !ok || bv != v {
+		bv, ok := b[k]
+		if !ok || !v.Equal(bv) {
 			return false
 		}
 	}

@@ -51,14 +51,14 @@ func resolveLinterExceptions(
 	return exceptions, exceptionsFile
 }
 
-func parseFlatpakRemotes(remotes []string) (map[string]string, error) {
-	out := make(map[string]string)
+func parseFlatpakRemotes(remotes []string) (map[string]config.RemoteConfig, error) {
+	out := make(map[string]config.RemoteConfig)
 	for _, r := range remotes {
 		parts := strings.SplitN(r, "=", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return nil, fmt.Errorf("invalid flatpak remote format %q, must be name=url", r)
 		}
-		out[parts[0]] = parts[1]
+		out[parts[0]] = config.RemoteConfig{URL: parts[1]}
 	}
 	return out, nil
 }

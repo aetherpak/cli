@@ -149,7 +149,7 @@ var buildCmd = &cobra.Command{
 			var appLinterExceptions []string
 			var appLinterExceptionsFile = ""
 			var appBuilderArgs []string
-			var appRemotes map[string]string
+			var appRemotes map[string]config.RemoteConfig
 			var appFlatpaks []config.FlatpakDep
 			var appNoSign = false
 

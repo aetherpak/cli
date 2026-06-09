@@ -2,21 +2,23 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/aetherpak/aetherpak/pkg/config"
 )
 
 func TestParseFlatpakRemotes(t *testing.T) {
 	tests := []struct {
 		name    string
 		remotes []string
-		want    map[string]string
+		want    map[string]config.RemoteConfig
 		wantErr bool
 	}{
 		{
 			name:    "valid remotes",
 			remotes: []string{"flathub=https://dl.flathub.org/repo/flathub.flatpakrepo", "repoA=https://example.com/repoA.flatpakrepo"},
-			want: map[string]string{
-				"flathub": "https://dl.flathub.org/repo/flathub.flatpakrepo",
-				"repoA":   "https://example.com/repoA.flatpakrepo",
+			want: map[string]config.RemoteConfig{
+				"flathub": {URL: "https://dl.flathub.org/repo/flathub.flatpakrepo"},
+				"repoA":   {URL: "https://example.com/repoA.flatpakrepo"},
 			},
 			wantErr: false,
 		},
@@ -48,8 +50,8 @@ func TestParseFlatpakRemotes(t *testing.T) {
 					t.Errorf("expected len %d, got %d", len(tt.want), len(got))
 				}
 				for k, v := range tt.want {
-					if got[k] != v {
-						t.Errorf("expected key %q to be %q, got %q", k, v, got[k])
+					if got[k].URL != v.URL {
+						t.Errorf("expected key %q URL to be %q, got %q", k, v.URL, got[k].URL)
 					}
 				}
 			}

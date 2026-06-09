@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/aetherpak/cli/compare/v0.17.1...v0.17.2) (2026-06-09)
+
+
+### Bug Fixes
+
+* support runtime refs in build-bundle OCI export ([5203f79](https://github.com/aetherpak/cli/commit/5203f79e50614e9497e6044adc040d06060355e4))
+
 ## [0.17.1](https://github.com/aetherpak/cli/compare/v0.17.0...v0.17.1) (2026-06-08)
 
 

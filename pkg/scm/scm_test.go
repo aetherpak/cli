@@ -5,18 +5,50 @@ import (
 	"testing"
 )
 
+// isolateEnv backs up and unsets all SCM/CI variables used by the package,
+// returning a restore function to put them back.
+func isolateEnv() func() {
+	vars := []string{
+		"GITHUB_ACTIONS",
+		"GITHUB_REPOSITORY",
+		"GITHUB_REPOSITORY_OWNER",
+		"GITHUB_ACTOR",
+		"GITLAB_CI",
+		"CI_REGISTRY",
+		"CI_REGISTRY_IMAGE",
+		"CI_PROJECT_PATH",
+		"CI_PAGES_URL",
+		"CI_REGISTRY_USER",
+		"CI_JOB_TOKEN",
+		"CI_PROJECT_PATH_SLUG",
+	}
+
+	backup := make(map[string]string)
+	for _, v := range vars {
+		if val, exists := os.LookupEnv(v); exists {
+			backup[v] = val
+		}
+		os.Unsetenv(v)
+	}
+
+	return func() {
+		for _, v := range vars {
+			os.Unsetenv(v)
+		}
+		for k, v := range backup {
+			os.Setenv(k, v)
+		}
+	}
+}
+
 func TestSCMAutodetectGitHub(t *testing.T) {
-	// Setup env
+	defer isolateEnv()()
+
+	// Setup GitHub Actions env
 	os.Setenv("GITHUB_ACTIONS", "true")
 	os.Setenv("GITHUB_REPOSITORY", "Owner/Repo-Name")
 	os.Setenv("GITHUB_REPOSITORY_OWNER", "Owner")
 	os.Setenv("GITHUB_ACTOR", "octocat")
-	defer func() {
-		os.Unsetenv("GITHUB_ACTIONS")
-		os.Unsetenv("GITHUB_REPOSITORY")
-		os.Unsetenv("GITHUB_REPOSITORY_OWNER")
-		os.Unsetenv("GITHUB_ACTOR")
-	}()
 
 	if provider := DetectProvider(); provider != GitHub {
 		t.Errorf("expected provider GitHub, got %v", provider)
@@ -42,7 +74,9 @@ func TestSCMAutodetectGitHub(t *testing.T) {
 }
 
 func TestSCMAutodetectGitLab(t *testing.T) {
-	// Setup env
+	defer isolateEnv()()
+
+	// Setup GitLab CI env
 	os.Setenv("GITLAB_CI", "true")
 	os.Setenv("CI_REGISTRY", "registry.example.com")
 	os.Setenv("CI_REGISTRY_IMAGE", "registry.example.com/some-group/sub-group/my-project")
@@ -50,15 +84,6 @@ func TestSCMAutodetectGitLab(t *testing.T) {
 	os.Setenv("CI_REGISTRY_USER", "gitlab-ci-token")
 	os.Setenv("CI_JOB_TOKEN", "mock-job-token")
 	os.Setenv("CI_PROJECT_PATH_SLUG", "some-group-my-project")
-	defer func() {
-		os.Unsetenv("GITLAB_CI")
-		os.Unsetenv("CI_REGISTRY")
-		os.Unsetenv("CI_REGISTRY_IMAGE")
-		os.Unsetenv("CI_PAGES_URL")
-		os.Unsetenv("CI_REGISTRY_USER")
-		os.Unsetenv("CI_JOB_TOKEN")
-		os.Unsetenv("CI_PROJECT_PATH_SLUG")
-	}()
 
 	if provider := DetectProvider(); provider != GitLab {
 		t.Errorf("expected provider GitLab, got %v", provider)
@@ -84,6 +109,8 @@ func TestSCMAutodetectGitLab(t *testing.T) {
 }
 
 func TestSCMAutodetectUnknown(t *testing.T) {
+	defer isolateEnv()()
+
 	if provider := DetectProvider(); provider != Unknown {
 		t.Errorf("expected Unknown provider, got %v", provider)
 	}

@@ -385,6 +385,115 @@ func TestBuildPassesInstallFlag(t *testing.T) {
 	}
 }
 
+func TestBuildWithBundle(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	err := Build(BuildOptions{
+		AppID:    "org.example.App",
+		Manifest: "m.json",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		StateDir: ".state",
+		RepoPath: "repo",
+		Bundle:   true,
+		Executor: mockExec,
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	var hasBundleCmd bool
+	var bundleArgs []string
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-bundle" {
+			hasBundleCmd = true
+			bundleArgs = cmd.Args
+		}
+	}
+
+	if !hasBundleCmd {
+		t.Fatal("expected flatpak build-bundle command to have run")
+	}
+
+	expectedArgs := []string{
+		"build-bundle",
+		"--arch=x86_64",
+		"repo",
+		"org.example.App.flatpak",
+		"org.example.App",
+		"stable",
+	}
+
+	if len(bundleArgs) != len(expectedArgs) {
+		t.Fatalf("unexpected number of arguments: got %d, expected %d. Args: %v", len(bundleArgs), len(expectedArgs), bundleArgs)
+	}
+
+	for i, arg := range expectedArgs {
+		if bundleArgs[i] != arg {
+			t.Errorf("unexpected arg at index %d: got %q, expected %q", i, bundleArgs[i], arg)
+		}
+	}
+}
+
+func TestBuildWithBundleResolvesFromRepo(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+
+	// Create a temp directory for the repo
+	repoDir := t.TempDir()
+
+	// Create refs/heads/app/org.example.App/x86_64/stable file
+	refsDir := filepath.Join(repoDir, "refs", "heads", "app", "org.example.App", "x86_64")
+	if err := os.MkdirAll(refsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(refsDir, "stable"), []byte("commit-hash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Build(BuildOptions{
+		Manifest: "m.json",
+		StateDir: ".state",
+		RepoPath: repoDir,
+		Bundle:   true,
+		Executor: mockExec,
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	var hasBundleCmd bool
+	var bundleArgs []string
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-bundle" {
+			hasBundleCmd = true
+			bundleArgs = cmd.Args
+		}
+	}
+
+	if !hasBundleCmd {
+		t.Fatal("expected flatpak build-bundle command to have run")
+	}
+
+	expectedArgs := []string{
+		"build-bundle",
+		"--arch=x86_64",
+		repoDir,
+		filepath.Join(filepath.Dir(repoDir), "org.example.App.flatpak"),
+		"org.example.App",
+		"stable",
+	}
+
+	if len(bundleArgs) != len(expectedArgs) {
+		t.Fatalf("unexpected number of arguments: got %d, expected %d. Args: %v", len(bundleArgs), len(expectedArgs), bundleArgs)
+	}
+
+	for i, arg := range expectedArgs {
+		if bundleArgs[i] != arg {
+			t.Errorf("unexpected arg at index %d: got %q, expected %q", i, bundleArgs[i], arg)
+		}
+	}
+}
+
 func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 	mockExec := executil.NewMockExecutor()
 	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"

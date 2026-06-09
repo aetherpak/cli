@@ -30,6 +30,7 @@ var (
 	buildFlatpakDeps          []string
 	buildNoSign               bool
 	buildInstall              bool
+	buildBundle               bool
 )
 
 var buildCmd = &cobra.Command{
@@ -260,6 +261,7 @@ var buildCmd = &cobra.Command{
 				Flatpaks:             appFlatpaks,
 				NoSign:               appNoSign,
 				Install:              buildInstall,
+				Bundle:               buildBundle,
 			}
 
 			if err := builder.Build(opts); err != nil {
@@ -271,12 +273,18 @@ var buildCmd = &cobra.Command{
 			if info, err := repoinfo.Resolve(repoPath); err == nil {
 				resolvedAppID, resolvedBranch, resolvedArch = info.AppID, info.Branch, info.Arch
 			}
-			if err := ciout.Emit(buildOutputFile, []ciout.KV{
+			kvList := []ciout.KV{
 				{Key: "app-id", Value: resolvedAppID},
 				{Key: "branch", Value: resolvedBranch},
 				{Key: "arch", Value: resolvedArch},
 				{Key: "repo-path", Value: repoPath},
-			}); err != nil {
+			}
+			if buildBundle {
+				bundleDir := filepath.Dir(repoPath)
+				bundleFile := filepath.Join(bundleDir, resolvedAppID+".flatpak")
+				kvList = append(kvList, ciout.KV{Key: "bundle-path", Value: bundleFile})
+			}
+			if err := ciout.Emit(buildOutputFile, kvList); err != nil {
 				return NewCmdError(1, err)
 			}
 			logger.SuccessBanner("Build Completed", fmt.Sprintf("Successfully built application %s (%s) for channel %s.", resolvedAppID, resolvedArch, resolvedBranch))
@@ -307,4 +315,5 @@ func init() {
 	buildCmd.Flags().StringArrayVar(&buildFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
 	buildCmd.Flags().BoolVar(&buildNoSign, "no-sign", false, "disable GPG verification/signing")
 	buildCmd.Flags().BoolVar(&buildInstall, "install", false, "install application after build")
+	buildCmd.Flags().BoolVar(&buildBundle, "bundle", false, "generate a bundled flatpak binary (.flatpak) for the application")
 }

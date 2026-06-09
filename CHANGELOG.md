@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/aetherpak/cli/compare/v0.23.0...v0.23.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* manage transient dbus-daemon session inside osCommand to avoid GHA hang ([dc57a42](https://github.com/aetherpak/cli/commit/dc57a42ef2ed11f0c38b70f2694932d34164a1f3))
+
 ## [0.23.0](https://github.com/aetherpak/cli/compare/v0.22.0...v0.23.0) (2026-06-09)
 
 

@@ -37,6 +37,7 @@ type BuildOptions struct {
 	Remotes              map[string]string   // external Flatpak remotes to register
 	Flatpaks             []config.FlatpakDep // Flatpaks (runtimes, dependencies) to pre-install
 	NoSign               bool                // disable GPG verification for external remotes
+	Install              bool                // install application after build succeeds
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -263,6 +264,9 @@ func Build(opts BuildOptions) error {
 
 	if opts.CCacheDir != "" {
 		args = append(args, "--ccache")
+	}
+	if opts.Install {
+		args = append(args, "--install")
 	}
 
 	// Default to target installation for flatpak-builder to match the remote registration,

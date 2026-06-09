@@ -50,6 +50,9 @@ var importCmd = &cobra.Command{
 			repoPath = "repo"
 		}
 
+		importBundleURLs = SplitAndCleanSlice(importBundleURLs)
+		importBundlePaths = SplitAndCleanSlice(importBundlePaths)
+
 		// Expand glob patterns for paths
 		var resolvedPaths []string
 		for _, pat := range importBundlePaths {

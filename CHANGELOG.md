@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.18.0](https://github.com/aetherpak/cli/compare/v0.17.3...v0.18.0) (2026-06-09)
+
+
+### Features
+
+* autodetect SCM provider defaults (registry, repo name, credentials, remote name, Pages URL) ([70266f2](https://github.com/aetherpak/cli/commit/70266f23260fc94cf94be76dee200db3db0a6a30))
+* automatically restore empty OSTree directories refs/heads, refs/mirrors, and refs/remotes ([6269ccd](https://github.com/aetherpak/cli/commit/6269ccd4a4811dfb075e6696385b883802fe3eff))
+* natively generate GitLab CI child pipeline from plan ([1417c59](https://github.com/aetherpak/cli/commit/1417c596a7abe043a781da3eccd8a462c7a7886d))
+* robustly split and clean comma- and newline-separated flag slices ([ac511a2](https://github.com/aetherpak/cli/commit/ac511a294443517e812d3c14546fb87ab465d375))
+
 ## [0.17.3](https://github.com/aetherpak/cli/compare/v0.17.2...v0.17.3) (2026-06-09)
 
 

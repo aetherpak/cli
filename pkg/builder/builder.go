@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
@@ -67,14 +69,25 @@ func Build(opts BuildOptions) error {
 	for name, url := range opts.Remotes {
 		logger.Info("Registering Flatpak remote %s: %s", name, url)
 		cmdArgs := []string{"remote-add", "--user", "--if-not-exists"}
-		if opts.NoSign || !strings.HasSuffix(url, ".flatpakrepo") {
-			cmdArgs = append(cmdArgs, "--no-gpg-verify")
+
+		gpgVerify := (name == "flathub" || name == "flathub-beta")
+		if opts.NoSign {
+			gpgVerify = false
 		}
-		cmdArgs = append(cmdArgs, name, url)
+
+		resolvedURL := url
+		if !gpgVerify {
+			resolvedURL = resolveFlatpakrepoURL(url)
+			cmdArgs = append(cmdArgs, "--no-gpg-verify")
+			// Delete existing remote first to clear any local GPG keys/keyring for this remote,
+			// since flatpak still enforces GPG signatures on OCI pulls if a key is in the keyring.
+			_ = runFlatpakCommand(opts.Executor, []string{"remote-delete", "--user", name})
+		}
+		cmdArgs = append(cmdArgs, name, resolvedURL)
 		if err := runFlatpakCommand(opts.Executor, cmdArgs); err != nil {
 			return fmt.Errorf("failed to add flatpak remote %s (%s): %w", name, url, err)
 		}
-		if opts.NoSign || !strings.HasSuffix(url, ".flatpakrepo") {
+		if !gpgVerify {
 			// Ensure GPG verification is disabled even if the remote already existed
 			_ = runFlatpakCommand(opts.Executor, []string{"remote-modify", "--user", "--no-gpg-verify", name})
 		}
@@ -544,4 +557,32 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 		return err
 	}
 	return nil
+}
+
+// resolveFlatpakrepoURL fetches the .flatpakrepo content and extracts the direct Url parameter.
+// This allows registering OCI remotes directly to completely bypass keyring / GPG key imports.
+func resolveFlatpakrepoURL(url string) string {
+	if !strings.HasSuffix(url, ".flatpakrepo") {
+		return url
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return url
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return url
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return url
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Url=") {
+			return strings.TrimPrefix(line, "Url=")
+		}
+	}
+	return url
 }

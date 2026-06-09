@@ -483,6 +483,10 @@ Comment=Flatpak repository powered by AetherPak (Pages index + OCI registry blob
 
 	if gpgKeyBase64 != "" {
 		content += fmt.Sprintf("GPGKey=%s\n", sanitizeINIValue(gpgKeyBase64))
+		if opts.PagesURL != "" {
+			sigLookasideURL := strings.TrimSuffix(opts.PagesURL, "/") + "/sigs"
+			content += fmt.Sprintf("SignatureLookaside=%s\n", sanitizeINIValue(sigLookasideURL))
+		}
 	}
 
 	if err := os.WriteFile(repoPath, []byte(content), 0644); err != nil {

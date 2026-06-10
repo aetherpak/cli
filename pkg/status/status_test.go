@@ -3,6 +3,8 @@ package status
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -240,5 +242,46 @@ func TestCheckGPGSigningWithPassphrase(t *testing.T) {
 	}
 	if report3.SigningError == nil {
 		t.Error("expected signing error for nil passphrase")
+	}
+}
+
+func TestCheckConfigValidationRelativeManifest(t *testing.T) {
+	tempDir := t.TempDir()
+	configDir := filepath.Join(tempDir, "config_subdir")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+
+	manifestDir := filepath.Join(configDir, "manifests")
+	if err := os.MkdirAll(manifestDir, 0755); err != nil {
+		t.Fatalf("failed to create manifest dir: %v", err)
+	}
+
+	manifestPath := filepath.Join(manifestDir, "app.json")
+	if err := os.WriteFile(manifestPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	cfg := &config.Config{
+		Apps: []config.App{
+			{
+				ID:       "org.example.App",
+				Manifest: "manifests/app.json", // Relative path
+			},
+		},
+	}
+
+	configPath := filepath.Join(configDir, "aetherpak.yaml")
+	report := Check(nil, cfg, nil, configPath, nil, nil)
+	if !report.ConfigLoaded {
+		t.Errorf("expected config to be loaded")
+	}
+
+	if len(report.Apps) != 1 {
+		t.Fatalf("expected 1 diagnostic app, got %d", len(report.Apps))
+	}
+
+	if !report.Apps[0].Valid {
+		t.Errorf("expected relative manifest path to resolve and validate, got error: %s", report.Apps[0].Error)
 	}
 }

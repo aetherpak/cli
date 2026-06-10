@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +40,12 @@ Rules:
 			defaultBranch = getEnvDefaultBranch()
 		}
 
-		channel, err := resolveChannel(refType, refName, defaultBranch)
+		cfg, err := LoadConfig()
+		if err != nil {
+			return NewCmdErrorf(2, "Configuration error: %w", err)
+		}
+
+		channel, err := resolveChannel(cfg, refType, refName, defaultBranch)
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
@@ -64,7 +70,7 @@ func init() {
 //	tag            → stable
 //	default branch → beta
 //	other          → ref name
-func resolveChannel(refType, refName, defaultBranch string) (string, error) {
+func resolveChannel(cfg *config.Config, refType, refName, defaultBranch string) (string, error) {
 	if defaultBranch == "" {
 		defaultBranch = "main"
 	}
@@ -76,11 +82,6 @@ func resolveChannel(refType, refName, defaultBranch string) (string, error) {
 		resolved = "beta"
 	} else if refName != "" {
 		resolved = refName
-	}
-
-	cfg, err := LoadConfig()
-	if err != nil {
-		return "", err
 	}
 
 	if cfg != nil && len(cfg.ChannelMappings) > 0 {
@@ -183,13 +184,13 @@ func getEnvDefaultBranch() string {
 // resolveChannelFromEnv returns the channel name derived from environment
 // variables, or empty string if the environment doesn't provide enough
 // information (e.g. running outside CI).
-func resolveChannelFromEnv() string {
+func resolveChannelFromEnv(cfg *config.Config) string {
 	refType := getEnvRefType()
 	refName := getEnvRefName()
 	defaultBranch := getEnvDefaultBranch()
 	if refType == "" && refName == "" {
 		return ""
 	}
-	ch, _ := resolveChannel(refType, refName, defaultBranch)
+	ch, _ := resolveChannel(cfg, refType, refName, defaultBranch)
 	return ch
 }

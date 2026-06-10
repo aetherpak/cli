@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/spf13/viper"
 )
 
@@ -59,7 +60,7 @@ func TestResolveChannel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear viper state to make resolveChannel clean of any testing files
 			viper.Reset()
-			actual, err := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			actual, err := resolveChannel(nil, tt.refType, tt.refName, tt.defaultBranch)
 			if err != nil {
 				t.Fatalf("unexpected error resolving channel: %v", err)
 			}
@@ -71,22 +72,14 @@ func TestResolveChannel(t *testing.T) {
 }
 
 func TestResolveChannelWithMappings(t *testing.T) {
-	configData := []byte(`
-channel_mappings:
-  "main": "beta"
-  "staging/*": "alpha"
-  "release-*": "stable"
-  "stable": "prod"
-`)
-	err := os.WriteFile("aetherpak.yaml", configData, 0644)
-	if err != nil {
-		t.Fatalf("failed to write config: %v", err)
+	cfg := &config.Config{
+		ChannelMappings: map[string]string{
+			"main":      "beta",
+			"staging/*": "alpha",
+			"release-*": "stable",
+			"stable":    "prod",
+		},
 	}
-	defer os.Remove("aetherpak.yaml")
-
-	// Reset viper config state to force re-reading
-	viper.Reset()
-	initConfig()
 
 	tests := []struct {
 		name          string
@@ -127,7 +120,7 @@ channel_mappings:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			actual, err := resolveChannel(tt.refType, tt.refName, tt.defaultBranch)
+			actual, err := resolveChannel(cfg, tt.refType, tt.refName, tt.defaultBranch)
 			if err != nil {
 				t.Fatalf("unexpected error resolving channel: %v", err)
 			}
@@ -169,21 +162,21 @@ func TestResolveChannelFromEnv(t *testing.T) {
 	}
 
 	// 1. Unset env returns empty
-	if ch := resolveChannelFromEnv(); ch != "" {
+	if ch := resolveChannelFromEnv(nil); ch != "" {
 		t.Errorf("expected empty resolution, got %q", ch)
 	}
 
 	// 2. AETHERPAK_* variables take precedence
 	os.Setenv("AETHERPAK_REF_TYPE", "tag")
 	os.Setenv("AETHERPAK_REF_NAME", "v1.2.3")
-	if ch := resolveChannelFromEnv(); ch != "stable" {
+	if ch := resolveChannelFromEnv(nil); ch != "stable" {
 		t.Errorf("expected stable from AETHERPAK_ env, got %q", ch)
 	}
 
 	os.Setenv("AETHERPAK_REF_TYPE", "branch")
 	os.Setenv("AETHERPAK_REF_NAME", "mybranch")
 	os.Setenv("AETHERPAK_DEFAULT_BRANCH", "mybranch")
-	if ch := resolveChannelFromEnv(); ch != "beta" {
+	if ch := resolveChannelFromEnv(nil); ch != "beta" {
 		t.Errorf("expected beta from AETHERPAK_ env matching default branch, got %q", ch)
 	}
 
@@ -194,7 +187,7 @@ func TestResolveChannelFromEnv(t *testing.T) {
 
 	os.Setenv("GITHUB_REF_TYPE", "tag")
 	os.Setenv("GITHUB_REF_NAME", "v2.0.0")
-	if ch := resolveChannelFromEnv(); ch != "stable" {
+	if ch := resolveChannelFromEnv(nil); ch != "stable" {
 		t.Errorf("expected stable from GITHUB_ env, got %q", ch)
 	}
 
@@ -203,14 +196,14 @@ func TestResolveChannelFromEnv(t *testing.T) {
 	os.Unsetenv("GITHUB_REF_NAME")
 
 	os.Setenv("CI_COMMIT_TAG", "v3.0.0")
-	if ch := resolveChannelFromEnv(); ch != "stable" {
+	if ch := resolveChannelFromEnv(nil); ch != "stable" {
 		t.Errorf("expected stable from CI_COMMIT_TAG, got %q", ch)
 	}
 
 	os.Unsetenv("CI_COMMIT_TAG")
 	os.Setenv("CI_COMMIT_BRANCH", "dev")
 	os.Setenv("CI_DEFAULT_BRANCH", "main")
-	if ch := resolveChannelFromEnv(); ch != "dev" {
+	if ch := resolveChannelFromEnv(nil); ch != "dev" {
 		t.Errorf("expected dev branch resolved channel, got %q", ch)
 	}
 }

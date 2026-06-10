@@ -98,6 +98,15 @@ func (o *Options) defaults() {
 func Run(opts Options) error {
 	opts.defaults()
 
+	if opts.WorkDir != "" {
+		if opts.ConfigPath != "" && !filepath.IsAbs(opts.ConfigPath) {
+			opts.ConfigPath = filepath.Join(opts.WorkDir, opts.ConfigPath)
+		}
+		if opts.ManifestPath != "" && !filepath.IsAbs(opts.ManifestPath) {
+			opts.ManifestPath = filepath.Join(opts.WorkDir, opts.ManifestPath)
+		}
+	}
+
 	app, cleanup, err := buildApp(&opts)
 	if err != nil {
 		return err
@@ -185,7 +194,15 @@ func buildFromManifest(opts *Options) (config.App, func(), error) {
 		}
 		id = m.ID
 	}
-	rel, err := relativeTo(filepath.Dir(opts.ConfigPath), opts.ManifestPath)
+	baseDir := filepath.Dir(opts.ConfigPath)
+	if !filepath.IsAbs(baseDir) && opts.WorkDir != "" {
+		baseDir = filepath.Join(opts.WorkDir, baseDir)
+	}
+	manifestPath := opts.ManifestPath
+	if !filepath.IsAbs(manifestPath) && opts.WorkDir != "" {
+		manifestPath = filepath.Join(opts.WorkDir, manifestPath)
+	}
+	rel, err := relativeTo(baseDir, manifestPath)
 	if err != nil {
 		return config.App{}, nil, fmt.Errorf("failed to resolve manifest path: %w", err)
 	}
@@ -297,9 +314,11 @@ func buildFromGit(opts *Options) (config.App, func(), error) {
 		id = m.ID
 	}
 
-	// Store the manifest path relative to the config directory, consistent with
-	// the local-manifest source.
-	manifestPath, err := relativeTo(filepath.Dir(opts.ConfigPath), filepath.Join(subAbs, relManifest))
+	baseDir := filepath.Dir(opts.ConfigPath)
+	if !filepath.IsAbs(baseDir) && opts.WorkDir != "" {
+		baseDir = filepath.Join(opts.WorkDir, baseDir)
+	}
+	manifestPath, err := relativeTo(baseDir, filepath.Join(subAbs, relManifest))
 	if err != nil {
 		cleanup()
 		return config.App{}, nil, fmt.Errorf("failed to resolve manifest path: %w", err)

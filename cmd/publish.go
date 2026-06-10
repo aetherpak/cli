@@ -65,6 +65,18 @@ func runPublish(cmd *cobra.Command, args []string) error {
 		hasConfig = false
 	}
 
+	var passphrase []byte
+	if pubGPGPassphrase != "" {
+		passphrase = []byte(pubGPGPassphrase)
+	}
+	defer func() {
+		if len(passphrase) > 0 {
+			for i := range passphrase {
+				passphrase[i] = 0
+			}
+		}
+	}()
+
 	if err := config.ValidateArch(pubArch); err != nil {
 		return NewCmdError(2, err)
 	}
@@ -134,7 +146,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			resolvedArch = pubArch
 			resolvedBranch = pubBranch
 			if resolvedBranch == "" {
-				if ch := resolveChannelFromEnv(); ch != "" {
+				if ch := resolveChannelFromEnv(cfg); ch != "" {
 					resolvedBranch = ch
 				} else {
 					resolvedBranch = "stable"
@@ -183,7 +195,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, resolvedAppID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir, passphrase); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -355,7 +367,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 			// Push to registry
 			for _, ra := range resolvedApps {
-				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir); err != nil {
+				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir, passphrase); err != nil {
 					return err
 				}
 			}
@@ -395,7 +407,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			appBranch = targetApp.Branch
 		}
 		if appBranch == "" {
-			if ch := resolveChannelFromEnv(); ch != "" {
+			if ch := resolveChannelFromEnv(cfg); ch != "" {
 				appBranch = ch
 			} else {
 				appBranch = "stable"
@@ -518,7 +530,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, targetApp.ID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -528,7 +540,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 				return NewCmdErrorf(1, "no related refs found to push")
 			}
 		} else {
-			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
+			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase); err != nil {
 				return err
 			}
 		}
@@ -537,14 +549,9 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string) error {
+func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string, passphrase []byte) error {
 	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 	keys := pubGPGKeys
-
-	var passphrase []byte
-	if pubGPGPassphrase != "" {
-		passphrase = []byte(pubGPGPassphrase)
-	}
 
 	logger.Info("Step 2: Pushing %s to registry...", appID)
 	pushOpts := oci.PushOptions{
@@ -566,11 +573,6 @@ func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir st
 	}
 
 	res, err := oci.Push(pushOpts)
-	if len(passphrase) > 0 {
-		for i := range passphrase {
-			passphrase[i] = 0
-		}
-	}
 	if err != nil {
 		return NewCmdError(1, err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
@@ -120,8 +121,12 @@ func Check(
 			}
 			if app.Manifest != "" {
 				diag.Type = "manifest"
+				checkPath := app.Manifest
+				if !filepath.IsAbs(checkPath) && configPath != "" {
+					checkPath = filepath.Join(filepath.Dir(configPath), checkPath)
+				}
 				// Check if manifest file exists
-				if _, err := os.Stat(app.Manifest); err != nil {
+				if _, err := os.Stat(checkPath); err != nil {
 					diag.Valid = false
 					diag.Error = fmt.Sprintf("Manifest file not found: %s", app.Manifest)
 				} else {

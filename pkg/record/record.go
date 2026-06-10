@@ -5,8 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
-	"strings"
+)
+
+var (
+	appIDRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`)
+	archRegexp  = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 )
 
 // Record is an immutable snapshot of one published (app, arch) cell.
@@ -34,16 +39,12 @@ func (r Record) Validate() error {
 		return fmt.Errorf("Record requires app-id and arch")
 	}
 
-	for _, field := range []struct {
-		name  string
-		value string
-	}{
-		{"app-id", r.AppID},
-		{"arch", r.Arch},
-	} {
-		if strings.Contains(field.value, "/") || strings.Contains(field.value, "\\") || field.value == "." || field.value == ".." {
-			return fmt.Errorf("Record %q must not contain path separators or traversal segments", field.name)
-		}
+	if !appIDRegexp.MatchString(r.AppID) {
+		return fmt.Errorf("Record app-id %q is invalid (must match %s)", r.AppID, appIDRegexp.String())
+	}
+
+	if !archRegexp.MatchString(r.Arch) {
+		return fmt.Errorf("Record arch %q is invalid (must match %s)", r.Arch, archRegexp.String())
 	}
 
 	return nil

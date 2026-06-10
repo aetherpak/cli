@@ -42,6 +42,22 @@ func TestRecordValidation(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "null byte in app-id",
+			rec: Record{
+				AppID: "org.example\x00App",
+				Arch:  "x86_64",
+			},
+			wantErr: true,
+		},
+		{
+			name: "spaces in app-id",
+			rec: Record{
+				AppID: "org.example App",
+				Arch:  "x86_64",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

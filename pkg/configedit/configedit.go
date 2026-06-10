@@ -5,6 +5,7 @@ package configedit
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"gopkg.in/yaml.v3"
@@ -152,4 +153,101 @@ func HasApp(existing []byte, id string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// SetValue sets a value (scalar or structure) at keyPath in the YAML document,
+// preserving comments and formatting, and returning the updated document bytes.
+func SetValue(existing []byte, keyPath string, value interface{}) ([]byte, error) {
+	doc, root, err := rootMapping(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	parts := strings.Split(keyPath, ".")
+	curr := root
+	for i := 0; i < len(parts); i++ {
+		part := parts[i]
+		// Find key in mapping
+		var valueNode *yaml.Node
+		for j := 0; j+1 < len(curr.Content); j += 2 {
+			if curr.Content[j].Value == part {
+				valueNode = curr.Content[j+1]
+				break
+			}
+		}
+
+		if i == len(parts)-1 {
+			// Leaf node: set or insert
+			var newValNode *yaml.Node
+			switch val := value.(type) {
+			case string:
+				newValNode = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: val}
+			case bool:
+				valStr := "false"
+				if val {
+					valStr = "true"
+				}
+				newValNode = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: valStr}
+			case int:
+				newValNode = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("%d", val)}
+			default:
+				// Fallback to marshal
+				var tempNode yaml.Node
+				data, err := yaml.Marshal(val)
+				if err != nil {
+					return nil, err
+				}
+				if err := yaml.Unmarshal(data, &tempNode); err != nil {
+					return nil, err
+				}
+				if len(tempNode.Content) > 0 {
+					newValNode = tempNode.Content[0]
+				} else {
+					newValNode = &tempNode
+				}
+			}
+
+			if valueNode != nil {
+				// Retain comments
+				newValNode.HeadComment = valueNode.HeadComment
+				newValNode.LineComment = valueNode.LineComment
+				newValNode.FootComment = valueNode.FootComment
+
+				// Replace in mapping
+				for j := 0; j+1 < len(curr.Content); j += 2 {
+					if curr.Content[j].Value == part {
+						curr.Content[j+1] = newValNode
+						break
+					}
+				}
+			} else {
+				// Insert new key and value
+				newKeyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: part}
+				curr.Content = append(curr.Content, newKeyNode, newValNode)
+			}
+		} else {
+			// Nested map node traversal
+			if valueNode == nil {
+				newKeyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: part}
+				newValueNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+				curr.Content = append(curr.Content, newKeyNode, newValueNode)
+				curr = newValueNode
+			} else if valueNode.Kind == yaml.MappingNode {
+				curr = valueNode
+			} else {
+				return nil, fmt.Errorf("key path %q conflicts with existing non-map value at %q", keyPath, part)
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return nil, fmt.Errorf("failed to render config: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close yaml encoder: %w", err)
+	}
+	return buf.Bytes(), nil
 }

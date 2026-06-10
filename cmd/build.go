@@ -153,7 +153,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			jobBranch = job.branch
 		}
 		if jobBranch == "" {
-			if ch := resolveChannelFromEnv(); ch != "" {
+			if ch := resolveChannelFromEnv(cfg); ch != "" {
 				jobBranch = ch
 			} else {
 				jobBranch = "stable"

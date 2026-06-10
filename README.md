@@ -451,6 +451,29 @@ Options:
 * `--gpg-key-passphrase <passphrase>`: GPG key passphrase to test decryption.
 * `--json`: Outputs raw diagnostics status as JSON for script parsing.
 
+#### `preview`
+Generates and serves a local landing page template preview using customizable dummy mock data or a live production index:
+```bash
+# Serve preview locally on port 8080 (default)
+aetherpak preview
+
+# Serve preview on port 9000 with a custom template
+aetherpak preview --port 9000 --template templates/custom.html
+
+# Generate static preview pages without serving (useful for CI/CD test site generation)
+aetherpak preview --serve=false --apps=single --gpg=false
+```
+Options:
+* `--template, -t <path>`: Local path to custom HTML repository index template (overrides configuration template).
+* `--default-template`: Force using the default embedded landing page template, ignoring configuration/env settings.
+* `--live`: Fetch live production index data instead of generating dummy data.
+* `--live-url <url>`: Live Pages URL to download the index from (implicitly enables `--live`).
+* `--gpg`: Enable GPG signing simulation for dummy data (defaults to `true`).
+* `--apps <single|multiple>`: Simulate single or multiple applications in dummy data (defaults to `multiple`).
+* `--site-dir <path>`: Destination directory for preview assets (defaults to `_preview`).
+* `--serve`: Start a local HTTP server to preview the site (defaults to `true`).
+* `--port <port>`: Port for local HTTP server (defaults to `8080`).
+
 ---
 
 ## Development

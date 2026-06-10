@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
@@ -50,6 +51,8 @@ var (
 	relFlatpakRemotes       []string
 	relFlatpakDeps          []string
 )
+
+var releaseRepoMutex sync.Mutex
 
 var releaseCmd = &cobra.Command{
 	Use:   "release",
@@ -130,7 +133,7 @@ var releaseCmd = &cobra.Command{
 			logger.Info("Phase 2: Processing %d matrix rows concurrently (workers=%d)...", len(res.Matrix), relWorkers)
 
 			// Spin up concurrent worker pool using errgroup
-			g, _ := errgroup.WithContext(context.Background())
+			g, ctx := errgroup.WithContext(context.Background())
 			rowChan := make(chan plan.MatrixRow, len(res.Matrix))
 
 			// Seed matrix rows into worker queue
@@ -142,166 +145,179 @@ var releaseCmd = &cobra.Command{
 			// Spin up worker goroutines
 			for i := 0; i < relWorkers; i++ {
 				g.Go(func() error {
-					for row := range rowChan {
-						// 1. Build or Import
-						if row.Source == "manifest" {
-							var appCCacheDir = relCCacheDir
-							var appStateDir = relStateDir
-							var appRunLinter = row.RunLinter
-							var appLinterStrict = true
-							var appLinterIgnoreRules []string
-							var appLinterExceptions []string
-							var appLinterExceptionsFile = ""
-							var appBuilderArgs []string
-							var appRemotes map[string]config.RemoteConfig
-							var appFlatpaks []config.FlatpakDep
-
-							var matchedApp *config.App
-							for idx := range cfg.Apps {
-								if cfg.Apps[idx].ID == row.AppID {
-									matchedApp = &cfg.Apps[idx]
-									break
-								}
+					for {
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case row, ok := <-rowChan:
+							if !ok {
+								return nil
 							}
+							// 1. Build or Import
+							if row.Source == "manifest" {
+								var appCCacheDir = relCCacheDir
+								var appStateDir = relStateDir
+								var appRunLinter = row.RunLinter
+								var appLinterStrict = true
+								var appLinterIgnoreRules []string
+								var appLinterExceptions []string
+								var appLinterExceptionsFile = ""
+								var appBuilderArgs []string
+								var appRemotes map[string]config.RemoteConfig
+								var appFlatpaks []config.FlatpakDep
 
-							if matchedApp != nil {
-								appCCacheDir = matchedApp.CCacheDir
-								appStateDir = matchedApp.StateDir
-								appRunLinter = matchedApp.RunLinter
-								appBuilderArgs = matchedApp.BuilderArgs
-								appRemotes = matchedApp.Remotes
-								appFlatpaks = matchedApp.Flatpaks
-								if matchedApp.Linter != nil {
-									if matchedApp.Linter.Strict != nil {
-										appLinterStrict = *matchedApp.Linter.Strict
+								var matchedApp *config.App
+								for idx := range cfg.Apps {
+									if cfg.Apps[idx].ID == row.AppID {
+										matchedApp = &cfg.Apps[idx]
+										break
 									}
-									appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
-									appLinterExceptions = matchedApp.Linter.Exceptions
-									appLinterExceptionsFile = matchedApp.Linter.ExceptionsFile
 								}
-								if matchedApp.CCache != nil && !*matchedApp.CCache {
-									appCCacheDir = ""
-								}
-							} else {
-								if cfg.Defaults != nil {
-									appCCacheDir = cfg.Defaults.CCacheDir
-									if appCCacheDir == "" {
-										appCCacheDir = ".ccache"
+
+								if matchedApp != nil {
+									appCCacheDir = matchedApp.CCacheDir
+									appStateDir = matchedApp.StateDir
+									appRunLinter = matchedApp.RunLinter
+									appBuilderArgs = matchedApp.BuilderArgs
+									appRemotes = matchedApp.Remotes
+									appFlatpaks = matchedApp.Flatpaks
+									if matchedApp.Linter != nil {
+										if matchedApp.Linter.Strict != nil {
+											appLinterStrict = *matchedApp.Linter.Strict
+										}
+										appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
+										appLinterExceptions = matchedApp.Linter.Exceptions
+										appLinterExceptionsFile = matchedApp.Linter.ExceptionsFile
 									}
-									appStateDir = cfg.Defaults.StateDir
-									if appStateDir == "" {
-										appStateDir = ".state"
-									}
-									appRunLinter = cfg.Defaults.RunLinter
-									appBuilderArgs = cfg.Defaults.BuilderArgs
-									appRemotes = cfg.Defaults.Remotes
-									appFlatpaks = cfg.Defaults.Flatpaks
-									if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
+									if matchedApp.CCache != nil && !*matchedApp.CCache {
 										appCCacheDir = ""
 									}
-								}
-								if cfg.Linter != nil {
-									if cfg.Linter.Strict != nil {
-										appLinterStrict = *cfg.Linter.Strict
+								} else {
+									if cfg.Defaults != nil {
+										appCCacheDir = cfg.Defaults.CCacheDir
+										if appCCacheDir == "" {
+											appCCacheDir = ".ccache"
+										}
+										appStateDir = cfg.Defaults.StateDir
+										if appStateDir == "" {
+											appStateDir = ".state"
+										}
+										appRunLinter = cfg.Defaults.RunLinter
+										appBuilderArgs = cfg.Defaults.BuilderArgs
+										appRemotes = cfg.Defaults.Remotes
+										appFlatpaks = cfg.Defaults.Flatpaks
+										if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
+											appCCacheDir = ""
+										}
 									}
-									appLinterIgnoreRules = cfg.Linter.IgnoreRules
-									appLinterExceptions = cfg.Linter.Exceptions
-									appLinterExceptionsFile = cfg.Linter.ExceptionsFile
+									if cfg.Linter != nil {
+										if cfg.Linter.Strict != nil {
+											appLinterStrict = *cfg.Linter.Strict
+										}
+										appLinterIgnoreRules = cfg.Linter.IgnoreRules
+										appLinterExceptions = cfg.Linter.Exceptions
+										appLinterExceptionsFile = cfg.Linter.ExceptionsFile
+									}
+								}
+
+								if ccacheDirChanged {
+									appCCacheDir = relCCacheDir
+								}
+								if stateDirChanged {
+									appStateDir = relStateDir
+								}
+								if runLinterChanged {
+									appRunLinter = relRunLinter
+								}
+								if builderArgChanged {
+									appBuilderArgs = relBuilderArgs
+								}
+								if cmd.Flags().Changed("flatpak-remote") {
+									parsed, err := parseFlatpakRemotes(relFlatpakRemotes)
+									if err != nil {
+										return NewCmdError(2, err)
+									}
+									appRemotes = parsed
+								}
+								if cmd.Flags().Changed("flatpak-dep") {
+									parsed, err := parseFlatpakDeps(relFlatpakDeps)
+									if err != nil {
+										return NewCmdError(2, err)
+									}
+									appFlatpaks = parsed
+								}
+
+								appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
+									linterExceptionsFileChanged,
+									linterExceptionChanged,
+									appLinterExceptions,
+									appLinterExceptionsFile,
+									relLinterExceptions,
+									relLinterExceptionsFile,
+								)
+
+								bOpts := builder.BuildOptions{
+									AppID:                row.AppID,
+									Manifest:             row.Manifest,
+									Arch:                 row.Arch,
+									Branch:               row.Branch,
+									CCacheDir:            appCCacheDir,
+									StateDir:             appStateDir,
+									RepoPath:             repoPath,
+									RunLinter:            appRunLinter,
+									LinterStrict:         appLinterStrict,
+									LinterIgnoreRules:    appLinterIgnoreRules,
+									LinterExceptions:     appLinterExceptions,
+									LinterExceptionsFile: appLinterExceptionsFile,
+									BuilderArgs:          appBuilderArgs,
+									Remotes:              appRemotes,
+									Flatpaks:             appFlatpaks,
+								}
+								releaseRepoMutex.Lock()
+								buildErr := builder.Build(bOpts)
+								releaseRepoMutex.Unlock()
+								if buildErr != nil {
+									return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, buildErr)
+								}
+							} else {
+								iOpts := importer.ImportOptions{
+									AppID:        row.AppID,
+									Arch:         row.Arch,
+									Branch:       row.Branch,
+									BundleURL:    row.BundleURL,
+									BundleSHA256: row.BundleSHA256,
+									RepoPath:     repoPath,
+								}
+								releaseRepoMutex.Lock()
+								importErr := importer.Import(iOpts)
+								releaseRepoMutex.Unlock()
+								if importErr != nil {
+									return fmt.Errorf("import failed for %s (%s): %w", row.AppID, row.Arch, importErr)
 								}
 							}
 
-							if ccacheDirChanged {
-								appCCacheDir = relCCacheDir
+							// 2. Push to Registry
+							pOpts := oci.PushOptions{
+								AppID:         row.AppID,
+								Arch:          row.Arch,
+								Branch:        row.Branch,
+								Registry:      cfg.Registry,
+								OCIRepository: cfg.OCIRepository,
+								RepoPath:      repoPath,
+								RecordsDir:    recordsDir,
+								GPGKeys:       keys,
+								GPGPassphrase: passphrase,
+								Insecure:      relInsecure,
+								OCIUsername:   viper.GetString("oci_username"),
+								OCIPassword:   viper.GetString("oci_password"),
+								NoSign:        noSign,
+								AllowUnsigned: allowUnsigned,
 							}
-							if stateDirChanged {
-								appStateDir = relStateDir
+							if _, err := oci.Push(pOpts); err != nil {
+								return fmt.Errorf("push-oci failed for %s (%s): %w", row.AppID, row.Arch, err)
 							}
-							if runLinterChanged {
-								appRunLinter = relRunLinter
-							}
-							if builderArgChanged {
-								appBuilderArgs = relBuilderArgs
-							}
-							if cmd.Flags().Changed("flatpak-remote") {
-								parsed, err := parseFlatpakRemotes(relFlatpakRemotes)
-								if err != nil {
-									return NewCmdError(2, err)
-								}
-								appRemotes = parsed
-							}
-							if cmd.Flags().Changed("flatpak-dep") {
-								parsed, err := parseFlatpakDeps(relFlatpakDeps)
-								if err != nil {
-									return NewCmdError(2, err)
-								}
-								appFlatpaks = parsed
-							}
-
-							appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
-								linterExceptionsFileChanged,
-								linterExceptionChanged,
-								appLinterExceptions,
-								appLinterExceptionsFile,
-								relLinterExceptions,
-								relLinterExceptionsFile,
-							)
-
-							bOpts := builder.BuildOptions{
-								AppID:                row.AppID,
-								Manifest:             row.Manifest,
-								Arch:                 row.Arch,
-								Branch:               row.Branch,
-								CCacheDir:            appCCacheDir,
-								StateDir:             appStateDir,
-								RepoPath:             repoPath,
-								RunLinter:            appRunLinter,
-								LinterStrict:         appLinterStrict,
-								LinterIgnoreRules:    appLinterIgnoreRules,
-								LinterExceptions:     appLinterExceptions,
-								LinterExceptionsFile: appLinterExceptionsFile,
-								BuilderArgs:          appBuilderArgs,
-								Remotes:              appRemotes,
-								Flatpaks:             appFlatpaks,
-							}
-							if err := builder.Build(bOpts); err != nil {
-								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, err)
-							}
-						} else {
-							iOpts := importer.ImportOptions{
-								AppID:        row.AppID,
-								Arch:         row.Arch,
-								Branch:       row.Branch,
-								BundleURL:    row.BundleURL,
-								BundleSHA256: row.BundleSHA256,
-								RepoPath:     repoPath,
-							}
-							if err := importer.Import(iOpts); err != nil {
-								return fmt.Errorf("import failed for %s (%s): %w", row.AppID, row.Arch, err)
-							}
-						}
-
-						// 2. Push to Registry
-						pOpts := oci.PushOptions{
-							AppID:         row.AppID,
-							Arch:          row.Arch,
-							Branch:        row.Branch,
-							Registry:      cfg.Registry,
-							OCIRepository: cfg.OCIRepository,
-							RepoPath:      repoPath,
-							RecordsDir:    recordsDir,
-							GPGKeys:       keys,
-							GPGPassphrase: passphrase,
-							Insecure:      relInsecure,
-							OCIUsername:   viper.GetString("oci_username"),
-							OCIPassword:   viper.GetString("oci_password"),
-							NoSign:        noSign,
-							AllowUnsigned: allowUnsigned,
-						}
-						if _, err := oci.Push(pOpts); err != nil {
-							return fmt.Errorf("push-oci failed for %s (%s): %w", row.AppID, row.Arch, err)
 						}
 					}
-					return nil
 				})
 			}
 

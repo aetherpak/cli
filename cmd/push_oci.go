@@ -53,6 +53,17 @@ var pushOCICmd = &cobra.Command{
 			return NewCmdError(2, err)
 		}
 
+		var pushForceBranch string
+		if pushAppID != "" {
+			cleanID, br := parseAppIDRef(pushAppID)
+			pushAppID = cleanID
+			pushForceBranch = br
+		}
+
+		if pushBranch == "" {
+			pushBranch = pushForceBranch
+		}
+
 		repoPath := pushRepoPath
 		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
 			repoPath = filepath.Join(cfg.OutputDir, "repo")

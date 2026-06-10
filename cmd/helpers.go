@@ -109,3 +109,12 @@ func SplitAndCleanSlice(slice []string) []string {
 	}
 	return cleaned
 }
+
+// parseAppIDRef parses an app-id reference of the format "app-id//branch".
+// It returns the clean app ID and optionally the branch name if present.
+func parseAppIDRef(ref string) (string, string) {
+	if parts := strings.SplitN(ref, "//", 2); len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return ref, ""
+}

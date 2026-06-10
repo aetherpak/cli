@@ -43,6 +43,17 @@ var importCmd = &cobra.Command{
 			return NewCmdError(2, err)
 		}
 
+		var importForceBranch string
+		if importAppID != "" {
+			cleanID, br := parseAppIDRef(importAppID)
+			importAppID = cleanID
+			importForceBranch = br
+		}
+
+		if importBranch == "" {
+			importBranch = importForceBranch
+		}
+
 		repoPath := importRepoPath
 		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
 			repoPath = filepath.Join(cfg.OutputDir, "repo")

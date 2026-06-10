@@ -65,6 +65,17 @@ var publishCmd = &cobra.Command{
 			return NewCmdError(2, err)
 		}
 
+		var pubForceBranch string
+		if pubAppID != "" {
+			cleanID, br := parseAppIDRef(pubAppID)
+			pubAppID = cleanID
+			pubForceBranch = br
+		}
+
+		if pubBranch == "" {
+			pubBranch = pubForceBranch
+		}
+
 		if pubRegistry == "" {
 			pubRegistry = cfg.Registry
 		}

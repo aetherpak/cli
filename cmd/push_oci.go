@@ -30,6 +30,7 @@ var (
 	pushOutputFile    string
 	pushNoSign        bool
 	pushAllowUnsigned bool
+	pushDryRun        bool
 )
 
 var pushOCICmd = &cobra.Command{
@@ -255,6 +256,7 @@ var pushOCICmd = &cobra.Command{
 				NoSign:        noSign,
 				AllowUnsigned: allowUnsigned,
 				RefType:       target.RefType,
+				DryRun:        pushDryRun,
 			}
 
 			res, err := oci.Push(opts)
@@ -302,4 +304,5 @@ func init() {
 	pushOCICmd.Flags().StringVar(&pushOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	pushOCICmd.Flags().BoolVar(&pushNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	pushOCICmd.Flags().BoolVar(&pushAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+	pushOCICmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "simulate pushing OCI image without writing to remote registry or records")
 }

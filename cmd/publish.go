@@ -45,6 +45,7 @@ var (
 	pubConfirm              bool
 	pubLinterExceptionsFile string
 	pubLinterExceptions     []string
+	pubDryRun               bool
 )
 
 var publishCmd = &cobra.Command{
@@ -561,6 +562,7 @@ func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir st
 		OCIPassword:   viper.GetString("oci_password"),
 		NoSign:        pubNoSign,
 		AllowUnsigned: pubAllowUnsigned,
+		DryRun:        pubDryRun,
 	}
 
 	res, err := oci.Push(pushOpts)
@@ -609,6 +611,7 @@ func init() {
 	publishCmd.Flags().StringVar(&pubOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
 	publishCmd.Flags().BoolVar(&pubNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	publishCmd.Flags().BoolVar(&pubAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+	publishCmd.Flags().BoolVar(&pubDryRun, "dry-run", false, "simulate publishing without writing to remote registry or records")
 	publishCmd.Flags().StringVar(&pubManifest, "manifest", "", "path to a local Flatpak manifest file (bypasses config)")
 	publishCmd.Flags().StringSliceVar(&pubBundles, "bundle", nil, "Flatpak bundle URL(s) or path(s) to import and publish")
 	publishCmd.Flags().StringSliceVar(&pubBundleURLs, "bundle-url", nil, "Flatpak bundle URL(s) to import and publish")

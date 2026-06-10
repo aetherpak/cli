@@ -320,3 +320,48 @@ func TestPushRuntimeRefType(t *testing.T) {
 		t.Errorf("expected record to contain runtime/ ref, got: %s", string(data))
 	}
 }
+
+func TestPushDryRun(t *testing.T) {
+	recordsDir := t.TempDir()
+	mockExec := setupMockPushExecutor()
+
+	opts := PushOptions{
+		AppID:         "org.example.App",
+		Arch:          "x86_64",
+		Branch:        "stable",
+		Registry:      "localhost:9999", // non-existent registry: would fail if connected
+		OCIRepository: "org.example.app",
+		RepoPath:      "repo",
+		RecordsDir:    recordsDir,
+		Insecure:      true,
+		Executor:      mockExec,
+		AllowUnsigned: true,
+		DryRun:        true,
+	}
+
+	res, err := Push(opts)
+	if err != nil {
+		t.Fatalf("expected dry-run push to succeed, got %v", err)
+	}
+
+	if res.CellDir != "" {
+		t.Errorf("expected empty CellDir for dry-run push, got %q", res.CellDir)
+	}
+
+	// Verify that flatpak build-bundle still runs to validate layout compilation
+	var bundleRan bool
+	for _, cmd := range mockExec.(*executil.MockExecutor).Commands {
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-bundle" {
+			bundleRan = true
+		}
+	}
+	if !bundleRan {
+		t.Errorf("expected flatpak build-bundle to have run in dry-run mode")
+	}
+
+	// Verify no records files were written
+	files, _ := os.ReadDir(recordsDir)
+	if len(files) > 0 {
+		t.Errorf("expected no files in records directory for dry-run push, got %d files", len(files))
+	}
+}

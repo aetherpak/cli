@@ -40,6 +40,7 @@ type PushOptions struct {
 	NoSign        bool
 	AllowUnsigned bool
 	RefType       string // "app" or "runtime"; defaults to "app"
+	DryRun        bool
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -240,6 +241,15 @@ func Push(opts PushOptions) (PushResult, error) {
 	} else {
 		// Fallback to local Docker credentials config
 		authOpt = remote.WithAuthFromKeychain(authn.DefaultKeychain)
+	}
+
+	if opts.DryRun {
+		logger.Info("[DRY RUN] Simulating push of OCI index to remote registry: %s", targetRef.Name())
+		logger.Info("[DRY RUN] Simulating write of execution record to records directory: %s", opts.RecordsDir)
+		if len(signatures) > 0 {
+			logger.Info("[DRY RUN] Simulating write of %d GPG signature(s) to cell directory", len(signatures))
+		}
+		return PushResult{Digest: digest.String(), Tag: tag, CellDir: ""}, nil
 	}
 
 	logger.Info("Pushing OCI index to remote registry: %s", targetRef.Name())

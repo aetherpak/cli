@@ -950,7 +950,7 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 			}
 
 			parts := strings.Split(refVal, "/")
-			if len(parts) < 4 || parts[0] != "app" {
+			if len(parts) < 4 || (parts[0] != "app" && parts[0] != "runtime") {
 				continue
 			}
 

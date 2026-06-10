@@ -25,6 +25,10 @@ inputs:
     description: "Optional suffix to append to final tags (e.g. '-amd64' or '-arm64')"
     required: false
     default: ""
+  version:
+    description: "Version string to inject into the CLI binary"
+    required: false
+    default: "dev"
 
 runs:
   using: "composite"
@@ -81,6 +85,8 @@ runs:
         image: ghcr.io/aetherpak/cli
         tags: ${{ steps.prep.outputs.cli-tags }}
         extra-args: --target cli
+        build-args: |
+          VERSION=${{ inputs.version }}
         oci: true
 
     - name: Build Builder CLI image
@@ -95,6 +101,8 @@ runs:
         image: ghcr.io/aetherpak/cli
         tags: ${{ steps.prep.outputs.builder-tags }}
         extra-args: --target cli-builder
+        build-args: |
+          VERSION=${{ inputs.version }}
         oci: true
 
     - name: Run E2E Smoke Test

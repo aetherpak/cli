@@ -46,11 +46,11 @@ container: | container/cli container/builder ## Build both CLI and Builder conta
 
 container/cli: ## Build local single-architecture CLI image
 	@[ -n "$(CONTAINER_TOOL)" ] || { printf "Error: Neither podman nor docker found in PATH\n"; exit 1; }
-	$(CONTAINER_TOOL) build --target cli -t $(IMAGE_NAME):$(TAG) -f Containerfile .
+	$(CONTAINER_TOOL) build --target cli --build-arg VERSION=$(VERSION) -t $(IMAGE_NAME):$(TAG) -f Containerfile .
 
 container/builder: ## Build local single-architecture builder image
 	@[ -n "$(CONTAINER_TOOL)" ] || { printf "Error: Neither podman nor docker found in PATH\n"; exit 1; }
-	$(CONTAINER_TOOL) build --target cli-builder -t $(IMAGE_NAME):$(TAG)-builder -f Containerfile .
+	$(CONTAINER_TOOL) build --target cli-builder --build-arg VERSION=$(VERSION) -t $(IMAGE_NAME):$(TAG)-builder -f Containerfile .
 
 ##@ Release
 

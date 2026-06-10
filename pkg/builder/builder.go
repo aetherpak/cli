@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -737,6 +738,9 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 	stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: dest, Prefix: stdoutPrefix})
 	stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: dest, Prefix: stderrPrefix})
 
+	var stderrBuf bytes.Buffer
+	stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: &stderrBuf, Prefix: ""})
+
 	if logger.HasLogFile() {
 		stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak |"})
 		stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak |"})
@@ -757,6 +761,9 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
+		if strings.Contains(strings.ToLower(stderrBuf.String()), "already installed") {
+			return nil
+		}
 		return err
 	}
 	return nil

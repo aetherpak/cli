@@ -148,9 +148,39 @@ func TestE2ELogFile(t *testing.T) {
 	t.Run("Builder output should be written to the log file on build failure", func(t *testing.T) {
 		logPath := filepath.Join(tempDir, "builder-failure.log")
 
-		// Run build command on nonexistent manifest
+		// Create a mock bin directory to provide mock flatpak and flatpak-builder executables
+		mockBinDir := filepath.Join(tempDir, "mockbin")
+		if err := os.MkdirAll(mockBinDir, 0755); err != nil {
+			t.Fatalf("failed to create mock bin dir: %v", err)
+		}
+
+		mockBuilderPath := filepath.Join(mockBinDir, "flatpak-builder")
+		mockBuilderScript := `#!/bin/sh
+echo "mock flatpak-builder stdout output line"
+echo "mock flatpak-builder stderr output line" >&2
+exit 1
+`
+		if err := os.WriteFile(mockBuilderPath, []byte(mockBuilderScript), 0755); err != nil {
+			t.Fatalf("failed to write mock flatpak-builder: %v", err)
+		}
+
+		mockFlatpakPath := filepath.Join(mockBinDir, "flatpak")
+		mockFlatpakScript := `#!/bin/sh
+# Mock flatpak command output
+echo "mock flatpak output"
+exit 0
+`
+		if err := os.WriteFile(mockFlatpakPath, []byte(mockFlatpakScript), 0755); err != nil {
+			t.Fatalf("failed to write mock flatpak: %v", err)
+		}
+
+		// Run build command on nonexistent manifest with modified PATH
 		cmd := exec.Command(absBinaryPath, "build", "--manifest=nonexistent.json", "--log-file="+logPath)
 		cmd.Dir = tempDir
+
+		pathEnv := os.Getenv("PATH")
+		cmd.Env = append(os.Environ(), "PATH="+mockBinDir+string(filepath.ListSeparator)+pathEnv)
+
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -163,11 +193,11 @@ func TestE2ELogFile(t *testing.T) {
 			t.Fatalf("failed to read log file: %v", err)
 		}
 		content := string(data)
-		if !strings.Contains(content, "flatpak-builder |") {
-			t.Errorf("expected log file to contain flatpak-builder output prefix, got: %q", content)
+		if !strings.Contains(content, "flatpak-builder | mock flatpak-builder stdout output line") {
+			t.Errorf("expected log file to contain flatpak-builder stdout, got: %q", content)
 		}
-		if !strings.Contains(content, "Can't load 'nonexistent.json'") && !strings.Contains(content, "Failed to open file") {
-			t.Errorf("expected log file to contain flatpak-builder error details, got: %q", content)
+		if !strings.Contains(content, "flatpak-builder | mock flatpak-builder stderr output line") {
+			t.Errorf("expected log file to contain flatpak-builder stderr, got: %q", content)
 		}
 	})
 }

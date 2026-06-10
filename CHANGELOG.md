@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/aetherpak/cli/compare/v0.23.2...v0.24.0) (2026-06-10)
+
+
+### Features
+
+* support bundled flatpaks (debug and extensions) across pipeline ([8467b34](https://github.com/aetherpak/cli/commit/8467b34d516c9fbd2c1a1cc1174762e5699df825))
+
+
+### Bug Fixes
+
+* **builder:** handle and ignore already installed error gracefully in runFlatpakCommand ([1fed748](https://github.com/aetherpak/cli/commit/1fed74842fd1a2f1c5fe82c5263f4fa04f53e164))
+
 ## [0.23.2](https://github.com/aetherpak/cli/compare/v0.23.1...v0.23.2) (2026-06-10)
 
 

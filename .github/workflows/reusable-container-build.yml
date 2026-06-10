@@ -46,12 +46,23 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
 
-      - name: Resolve SHA Tag
+      - name: Resolve SHA Tag and Version
         id: resolve
         shell: bash
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          # Resolve version string
+          VERSION="${{ inputs.version }}"
+          if [ "$VERSION" = "dev" ] || [ -z "$VERSION" ]; then
+            if [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+              VERSION="${{ github.ref_name }}"
+            else
+              VERSION="git+$SHORT_SHA"
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Enable Unprivileged User Namespaces (Ubuntu 24.04+)
         shell: bash
@@ -70,7 +81,7 @@ jobs:
           suffix: ${{ matrix.suffix }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
-          version: ${{ inputs.version }}
+          version: ${{ steps.resolve.outputs.version }}
 
 
   merge-manifests:

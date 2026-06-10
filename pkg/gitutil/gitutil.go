@@ -162,7 +162,14 @@ func (g *ExecGit) submoduleGitDir(path string) (string, error) {
 	if gitDir == "" {
 		gitDir = ".git"
 	}
-	return filepath.Join(gitDir, "modules", path), nil
+	if !filepath.IsAbs(gitDir) {
+		topDir, err := g.Toplevel()
+		if err != nil {
+			return "", err
+		}
+		gitDir = filepath.Join(topDir, gitDir)
+	}
+	return filepath.Clean(filepath.Join(gitDir, "modules", path)), nil
 }
 
 // Ensure ExecGit satisfies Git.

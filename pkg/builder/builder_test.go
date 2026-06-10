@@ -600,6 +600,10 @@ func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 		t.Errorf("expected key %q in parsed exceptions", opts.AppID)
 	}
 
+	if _, existsWildcard := parsed["*"]; existsWildcard {
+		t.Error("expected no wildcard '*' key in parsed exceptions when AppID is specified")
+	}
+
 	contains := func(slice []string, val string) bool {
 		for _, item := range slice {
 			if item == val {

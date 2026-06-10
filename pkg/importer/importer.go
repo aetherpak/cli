@@ -197,18 +197,24 @@ func Fetch(url string, progress ProgressFunc) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create temporary file: %w", err)
 	}
-	defer tmpFile.Close()
+	var success bool
+	defer func() {
+		if !success {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+		} else {
+			tmpFile.Close()
+		}
+	}()
 
 	logger.Info("Downloading from: %s", url)
 	client := &http.Client{Timeout: 30 * time.Minute}
 	resp, err := client.Get(url)
 	if err != nil {
-		os.Remove(tmpFile.Name())
 		return "", "", fmt.Errorf("failed to download: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		os.Remove(tmpFile.Name())
 		return "", "", fmt.Errorf("failed to download, status: %s", resp.Status)
 	}
 
@@ -219,19 +225,18 @@ func Fetch(url string, progress ProgressFunc) (string, string, error) {
 	limitReader := io.LimitReader(resp.Body, maxBundleSize)
 	n, err := io.Copy(writer, limitReader)
 	if err != nil {
-		os.Remove(tmpFile.Name())
 		return "", "", fmt.Errorf("failed to write download: %w", err)
 	}
 	if n >= maxBundleSize {
 		var oneByte [1]byte
 		if _, readErr := resp.Body.Read(oneByte[:]); readErr != io.EOF {
-			os.Remove(tmpFile.Name())
 			return "", "", fmt.Errorf("download exceeded maximum size limit of %d bytes", maxBundleSize)
 		}
 	}
 
 	checksum := fmt.Sprintf("%x", hasher.Sum(nil))
 	logger.Debug("Calculated SHA-256: %s", checksum)
+	success = true
 	return tmpFile.Name(), checksum, nil
 }
 

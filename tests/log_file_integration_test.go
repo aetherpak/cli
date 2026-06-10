@@ -144,4 +144,30 @@ func TestE2ELogFile(t *testing.T) {
 			t.Errorf("expected preserved logs to contain error details, got: %q", content)
 		}
 	})
+
+	t.Run("Builder output should be written to the log file on build failure", func(t *testing.T) {
+		logPath := filepath.Join(tempDir, "builder-failure.log")
+
+		// Run build command on nonexistent manifest
+		cmd := exec.Command(absBinaryPath, "build", "--manifest=nonexistent.json", "--log-file="+logPath)
+		cmd.Dir = tempDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		_ = cmd.Run() // Expect failure
+
+		// Verify log file exists and contains builder's output
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			t.Fatalf("failed to read log file: %v", err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "flatpak-builder |") {
+			t.Errorf("expected log file to contain flatpak-builder output prefix, got: %q", content)
+		}
+		if !strings.Contains(content, "Can't load 'nonexistent.json'") && !strings.Contains(content, "Failed to open file") {
+			t.Errorf("expected log file to contain flatpak-builder error details, got: %q", content)
+		}
+	})
 }

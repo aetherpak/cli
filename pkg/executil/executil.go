@@ -138,9 +138,15 @@ func (c *osCommand) SetStderr(w io.Writer) {
 	c.cmd.Stderr = w
 }
 
-// StreamWithPrefix reads from r line-by-line and writes each line with a prefix to w.
-// It uses bufio.Reader.ReadBytes('\n') to handle lines of arbitrary length efficiently without GC thrashing.
-func StreamWithPrefix(r io.Reader, w io.Writer, prefix string) {
+// StreamTarget specifies a destination writer and the prefix to prepend to each line.
+type StreamTarget struct {
+	Writer io.Writer
+	Prefix string
+}
+
+// StreamToTargets reads from r line-by-line and writes each line to each target,
+// prepending the target's prefix.
+func StreamToTargets(r io.Reader, targets ...StreamTarget) {
 	reader := bufio.NewReader(r)
 	var partial []byte
 	for {
@@ -150,19 +156,45 @@ func StreamWithPrefix(r io.Reader, w io.Writer, prefix string) {
 			if chunk[len(chunk)-1] == '\n' {
 				line := bytes.TrimSuffix(partial, []byte("\n"))
 				line = bytes.TrimSuffix(line, []byte("\r"))
-				if prefix == "" {
-					fmt.Fprintf(w, "%s\n", line)
-				} else {
-					fmt.Fprintf(w, "%s %s\n", prefix, line)
+				for _, target := range targets {
+					if target.Writer == nil {
+						continue
+					}
+					var formatted []byte
+					if target.Prefix == "" {
+						formatted = make([]byte, len(line)+1)
+						copy(formatted, line)
+						formatted[len(line)] = '\n'
+					} else {
+						formatted = make([]byte, 0, len(target.Prefix)+1+len(line)+1)
+						formatted = append(formatted, target.Prefix...)
+						formatted = append(formatted, ' ')
+						formatted = append(formatted, line...)
+						formatted = append(formatted, '\n')
+					}
+					_, _ = target.Writer.Write(formatted)
 				}
 				partial = partial[:0]
 			} else if len(partial) >= 64*1024 {
 				// Flush partial buffer if it grows too large to prevent unbounded memory growth
 				line := bytes.TrimSuffix(partial, []byte("\r"))
-				if prefix == "" {
-					fmt.Fprintf(w, "%s\n", line)
-				} else {
-					fmt.Fprintf(w, "%s %s\n", prefix, line)
+				for _, target := range targets {
+					if target.Writer == nil {
+						continue
+					}
+					var formatted []byte
+					if target.Prefix == "" {
+						formatted = make([]byte, len(line)+1)
+						copy(formatted, line)
+						formatted[len(line)] = '\n'
+					} else {
+						formatted = make([]byte, 0, len(target.Prefix)+1+len(line)+1)
+						formatted = append(formatted, target.Prefix...)
+						formatted = append(formatted, ' ')
+						formatted = append(formatted, line...)
+						formatted = append(formatted, '\n')
+					}
+					_, _ = target.Writer.Write(formatted)
 				}
 				partial = partial[:0]
 			}
@@ -174,12 +206,31 @@ func StreamWithPrefix(r io.Reader, w io.Writer, prefix string) {
 		// Flush any final partial line on EOF/other error.
 		if len(partial) > 0 {
 			line := bytes.TrimSuffix(partial, []byte("\r"))
-			if prefix == "" {
-				fmt.Fprintf(w, "%s\n", line)
-			} else {
-				fmt.Fprintf(w, "%s %s\n", prefix, line)
+			for _, target := range targets {
+				if target.Writer == nil {
+					continue
+				}
+				var formatted []byte
+				if target.Prefix == "" {
+					formatted = make([]byte, len(line)+1)
+					copy(formatted, line)
+					formatted[len(line)] = '\n'
+				} else {
+					formatted = make([]byte, 0, len(target.Prefix)+1+len(line)+1)
+					formatted = append(formatted, target.Prefix...)
+					formatted = append(formatted, ' ')
+					formatted = append(formatted, line...)
+					formatted = append(formatted, '\n')
+				}
+				_, _ = target.Writer.Write(formatted)
 			}
 		}
 		break
 	}
+}
+
+// StreamWithPrefix reads from r line-by-line and writes each line with a prefix to w.
+// It uses bufio.Reader.ReadBytes('\n') to handle lines of arbitrary length efficiently without GC thrashing.
+func StreamWithPrefix(r io.Reader, w io.Writer, prefix string) {
+	StreamToTargets(r, StreamTarget{Writer: w, Prefix: prefix})
 }

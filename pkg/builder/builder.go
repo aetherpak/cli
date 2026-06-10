@@ -414,17 +414,28 @@ func Build(opts BuildOptions) error {
 
 	var dest io.Writer = os.Stdout
 
+	var stdoutTargets []executil.StreamTarget
+	var stderrTargets []executil.StreamTarget
+
+	stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: dest, Prefix: stdoutPrefix})
+	stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: dest, Prefix: stderrPrefix})
+
+	if logger.HasLogFile() {
+		stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak-builder |"})
+		stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak-builder |"})
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, dest, stdoutPrefix)
+		executil.StreamToTargets(stdoutPipe, stdoutTargets...)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, dest, stderrPrefix)
+		executil.StreamToTargets(stderrPipe, stderrTargets...)
 	}()
 
 	wg.Wait()
@@ -594,17 +605,23 @@ func runLinter(executor executil.Executor, args []string, prefix string) error {
 
 	var dest io.Writer = os.Stdout
 
+	var targets []executil.StreamTarget
+	targets = append(targets, executil.StreamTarget{Writer: dest, Prefix: prefix})
+	if logger.HasLogFile() {
+		targets = append(targets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak-builder-lint |"})
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, dest, prefix)
+		executil.StreamToTargets(stdoutPipe, targets...)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, dest, prefix)
+		executil.StreamToTargets(stderrPipe, targets...)
 	}()
 
 	wg.Wait()
@@ -663,17 +680,28 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 
 	var dest io.Writer = os.Stdout
 
+	var stdoutTargets []executil.StreamTarget
+	var stderrTargets []executil.StreamTarget
+
+	stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: dest, Prefix: stdoutPrefix})
+	stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: dest, Prefix: stderrPrefix})
+
+	if logger.HasLogFile() {
+		stdoutTargets = append(stdoutTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak |"})
+		stderrTargets = append(stderrTargets, executil.StreamTarget{Writer: logger.LogFileWriter(), Prefix: "flatpak |"})
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		defer stdoutPipe.Close()
-		executil.StreamWithPrefix(stdoutPipe, dest, stdoutPrefix)
+		executil.StreamToTargets(stdoutPipe, stdoutTargets...)
 	}()
 	go func() {
 		defer wg.Done()
 		defer stderrPipe.Close()
-		executil.StreamWithPrefix(stderrPipe, dest, stderrPrefix)
+		executil.StreamToTargets(stderrPipe, stderrTargets...)
 	}()
 
 	wg.Wait()

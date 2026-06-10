@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.28.0](https://github.com/aetherpak/cli/compare/v0.27.0...v0.28.0) (2026-06-10)
+
+
+### Features
+
+* add clean command to clear builder caches and temporary files ([1f955e7](https://github.com/aetherpak/cli/commit/1f955e7831b95894cd9979cc7d5c1348337723ec))
+* support dry-run mode for release, push-oci, and publish commands ([cc7daeb](https://github.com/aetherpak/cli/commit/cc7daeb26b283268e0f74fb311e2b8d80b18cb43))
+* trigger actions bump-cli workflow on release ([0438b1e](https://github.com/aetherpak/cli/commit/0438b1eb4c3a323cc7d11fdc0de099f614f0e945))
+
+
+### Bug Fixes
+
+* adder EOF handling, status dependencies check, linter stripping, and inherited flag bindings ([440ff9b](https://github.com/aetherpak/cli/commit/440ff9b1cfd3582dbb63a6e6c91f50ff3da69c9f))
+* **cmd/release:** serialize repository writes and implement worker cancellation ([7e64856](https://github.com/aetherpak/cli/commit/7e648564b0cbebcb4cb03165f469ebd2ceb71abf))
+* **executil:** clean up and reap transient dbus-daemon session ([8119706](https://github.com/aetherpak/cli/commit/8119706a1888d503003bc72f12ffbacf068b1ee8))
+* mask secrets, warning on auth error, custom sig dir, scope builder exceptions ([4fca04a](https://github.com/aetherpak/cli/commit/4fca04a7fad792662e962cbeba6fb7ea2020d3e6))
+* resolve remaining audit findings ([e3e2feb](https://github.com/aetherpak/cli/commit/e3e2febeac42a9f90c36e38ddaa72ea699341715))
+
 ## [0.27.0](https://github.com/aetherpak/cli/compare/v0.26.1...v0.27.0) (2026-06-10)
 
 

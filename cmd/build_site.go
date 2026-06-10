@@ -118,9 +118,6 @@ var buildSiteCmd = &cobra.Command{
 		if viper.IsSet("oci_repository") && cfg != nil {
 			activeOCIRepo = cfg.OCIRepository
 		}
-		if activeOCIRepo == "" {
-			activeOCIRepo = scm.OCIRepository()
-		}
 
 		opts := site.SiteOptions{
 			PagesURL:            sitePagesURL,

@@ -46,10 +46,13 @@ jobs:
         include:
           - ref: ${{ needs.resolve.outputs.latest_tag }}
             tags: latest ${{ needs.resolve.outputs.latest_tag }}
+            version: ${{ needs.resolve.outputs.latest_tag }}
           - ref: main
             tags: main
+            version: dev
     uses: ./.github/workflows/reusable-container-build.yml
     with:
       ref: ${{ matrix.ref }}
       image-tags: ${{ matrix.tags }}
       push: true
+      version: ${{ matrix.version }}

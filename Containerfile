@@ -3,6 +3,8 @@ ARG BUILDER_IMAGE=ghcr.io/aetherpak/flatpak-builder:latest
 
 FROM docker.io/library/golang:1.26-alpine AS cli-binary-builder
 
+ARG VERSION=dev
+
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -11,7 +13,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o /bin/aetherpak main.go
+    CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/aetherpak/aetherpak/cmd.Version=${VERSION}" -o /bin/aetherpak main.go
 
 
 FROM ${BASE_IMAGE} AS cli

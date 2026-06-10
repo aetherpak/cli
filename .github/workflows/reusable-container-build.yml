@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: true
+      version:
+        description: "Version to bake into the CLI binary"
+        required: false
+        type: string
+        default: "dev"
 
 jobs:
   build-arch:
@@ -65,6 +70,7 @@ jobs:
           suffix: ${{ matrix.suffix }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
+          version: ${{ inputs.version }}
 
 
   merge-manifests:

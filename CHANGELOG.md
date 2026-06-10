@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/aetherpak/cli/compare/v0.23.1...v0.23.2) (2026-06-10)
+
+
+### Bug Fixes
+
+* capture flatpak-builder output in log files ([c73f85e](https://github.com/aetherpak/cli/commit/c73f85ea70ca660c3448d6f16bbabae1961d137c))
+
 ## [0.23.1](https://github.com/aetherpak/cli/compare/v0.23.0...v0.23.1) (2026-06-09)
 
 

@@ -21,16 +21,18 @@ type FlatpakManifest struct {
 	RuntimeVersion string
 	SDK            string
 	Branch         string
+	ExtensionIDs   []string
 }
 
 // flatpakManifestRaw represents the raw JSON/YAML structure of a Flatpak manifest.
 type flatpakManifestRaw struct {
-	ID             string `json:"id" yaml:"id"`
-	AppID          string `json:"app-id" yaml:"app-id"`
-	Runtime        string `json:"runtime" yaml:"runtime"`
-	RuntimeVersion string `json:"runtime-version" yaml:"runtime-version"`
-	SDK            string `json:"sdk" yaml:"sdk"`
-	Branch         string `json:"branch" yaml:"branch"`
+	ID             string                 `json:"id" yaml:"id"`
+	AppID          string                 `json:"app-id" yaml:"app-id"`
+	Runtime        string                 `json:"runtime" yaml:"runtime"`
+	RuntimeVersion string                 `json:"runtime-version" yaml:"runtime-version"`
+	SDK            string                 `json:"sdk" yaml:"sdk"`
+	Branch         string                 `json:"branch" yaml:"branch"`
+	AddExtensions  map[string]interface{} `json:"add-extensions" yaml:"add-extensions"`
 }
 
 // ParseManifest parses a Flatpak manifest file (JSON or YAML) and extracts key metadata.
@@ -56,13 +58,45 @@ func ParseManifest(path string) (*FlatpakManifest, error) {
 		return nil, fmt.Errorf("manifest is missing 'id' or 'app-id'")
 	}
 
+	var extensionIDs []string
+	for extID := range m.AddExtensions {
+		extensionIDs = append(extensionIDs, strings.TrimSpace(extID))
+	}
+	sort.Strings(extensionIDs)
+
 	return &FlatpakManifest{
 		ID:             id,
 		Runtime:        strings.TrimSpace(m.Runtime),
 		RuntimeVersion: strings.TrimSpace(m.RuntimeVersion),
 		SDK:            strings.TrimSpace(m.SDK),
 		Branch:         strings.TrimSpace(m.Branch),
+		ExtensionIDs:   extensionIDs,
 	}, nil
+}
+
+// IsRefRelated checks if refAppID is related to the mainAppID (either identical,
+// matching mainAppID plus a standard automatic suffix like .Debug/.Locale/.Sources,
+// or matching one of the extension IDs or their standard suffixes).
+func IsRefRelated(refAppID, mainAppID string, extensionIDs []string) bool {
+	if refAppID == mainAppID {
+		return true
+	}
+	if suffix := strings.TrimPrefix(refAppID, mainAppID); suffix != refAppID {
+		if suffix == ".Debug" || suffix == ".Locale" || suffix == ".Sources" {
+			return true
+		}
+	}
+	for _, extID := range extensionIDs {
+		if refAppID == extID {
+			return true
+		}
+		if suffix := strings.TrimPrefix(refAppID, extID); suffix != refAppID {
+			if suffix == ".Debug" || suffix == ".Locale" || suffix == ".Sources" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // manifestExts are the file extensions a Flatpak manifest may use.

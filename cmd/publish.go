@@ -155,7 +155,29 @@ var publishCmd = &cobra.Command{
 				}
 
 				// Push to registry
-				return pushAndEmit(resolvedAppID, resolvedArch, resolvedBranch, pubRegistry, pubOCIRepo, repoPath, recordsDir)
+				refs, err := repoinfo.ResolveAll(repoPath)
+				if err != nil {
+					return NewCmdErrorf(1, "failed to resolve refs for publishing: %w", err)
+				}
+
+				var extensionIDs []string
+				if m, err := manifest.ParseManifest(pubManifest); err == nil {
+					extensionIDs = m.ExtensionIDs
+				}
+
+				var pushedAny bool
+				for _, ref := range refs {
+					if manifest.IsRefRelated(ref.AppID, resolvedAppID, extensionIDs) {
+						if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir); err != nil {
+							return err
+						}
+						pushedAny = true
+					}
+				}
+				if !pushedAny {
+					return NewCmdErrorf(1, "no related refs found to push")
+				}
+				return nil
 			} else {
 				// Expand globs for local bundle paths
 				var resolvedPaths []string
@@ -467,8 +489,33 @@ var publishCmd = &cobra.Command{
 				}
 			}
 
-			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
-				return err
+			if targetApp.Manifest != "" {
+				refs, err := repoinfo.ResolveAll(repoPath)
+				if err != nil {
+					return NewCmdErrorf(1, "failed to resolve refs for publishing: %w", err)
+				}
+
+				var extensionIDs []string
+				if m, err := manifest.ParseManifest(targetApp.Manifest); err == nil {
+					extensionIDs = m.ExtensionIDs
+				}
+
+				var pushedAny bool
+				for _, ref := range refs {
+					if manifest.IsRefRelated(ref.AppID, targetApp.ID, extensionIDs) {
+						if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
+							return err
+						}
+						pushedAny = true
+					}
+				}
+				if !pushedAny {
+					return NewCmdErrorf(1, "no related refs found to push")
+				}
+			} else {
+				if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir); err != nil {
+					return err
+				}
 			}
 		}
 

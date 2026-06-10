@@ -62,6 +62,13 @@ var buildCmd = &cobra.Command{
 			repoPath = "repo"
 		}
 
+		var buildForceBranch string
+		if buildAppID != "" {
+			cleanID, br := parseAppIDRef(buildAppID)
+			buildAppID = cleanID
+			buildForceBranch = br
+		}
+
 		manifestSet := cmd.Flags().Changed("manifest")
 
 		type buildJob struct {
@@ -133,6 +140,9 @@ var buildCmd = &cobra.Command{
 
 		for _, job := range jobs {
 			jobBranch := buildBranch
+			if jobBranch == "" {
+				jobBranch = buildForceBranch
+			}
 			if jobBranch == "" {
 				jobBranch = job.branch
 			}

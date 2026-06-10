@@ -115,3 +115,24 @@ func TestSplitAndCleanSlice(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAppIDRef(t *testing.T) {
+	tests := []struct {
+		input      string
+		expectedID string
+		expectedBr string
+	}{
+		{"org.gnome.Sudoku", "org.gnome.Sudoku", ""},
+		{"org.gnome.Sudoku//beta", "org.gnome.Sudoku", "beta"},
+		{"org.gnome.Sudoku//", "org.gnome.Sudoku", ""},
+		{"//beta", "", "beta"},
+		{"", "", ""},
+	}
+
+	for _, tt := range tests {
+		id, br := parseAppIDRef(tt.input)
+		if id != tt.expectedID || br != tt.expectedBr {
+			t.Errorf("parseAppIDRef(%q) = (%q, %q); expected (%q, %q)", tt.input, id, br, tt.expectedID, tt.expectedBr)
+		}
+	}
+}

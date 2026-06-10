@@ -15,15 +15,16 @@ import (
 )
 
 var (
-	baseSHA           string
-	forceFlag         string
-	workflowPath      string
-	outputFormat      string
-	planOutputFile    string
-	planManifest      string
-	planArches        []string
-	planBranch        string
-	planDisableLinter bool
+	baseSHA            string
+	forceFlag          string
+	workflowPath       string
+	outputFormat       string
+	planOutputFile     string
+	planManifest       string
+	planArches         []string
+	planBranch         string
+	planOverrideBranch string
+	planDisableLinter  bool
 )
 
 var planCmd = &cobra.Command{
@@ -95,9 +96,43 @@ var planCmd = &cobra.Command{
 			localForce = forceFlag
 		}
 
+		var forceBranch string
+		if planManifest == "" && localForce != "" && localForce != "all" {
+			cleanForce, br := parseAppIDRef(localForce)
+			localForce = cleanForce
+			forceBranch = br
+		}
+
 		res, err := plan.ComputePlan(cfg, configPath, baseSHA, localForce, workflowPath)
 		if err != nil {
 			return NewCmdErrorf(1, "Plan computation error: %w", err)
+		}
+
+		if planOverrideBranch != "" || forceBranch != "" {
+			for i := range res.Matrix {
+				if planOverrideBranch != "" {
+					res.Matrix[i].Branch = planOverrideBranch
+				}
+				if forceBranch != "" && res.Matrix[i].AppID == localForce {
+					res.Matrix[i].Branch = forceBranch
+				}
+			}
+			for i := range res.MatrixManifest {
+				if planOverrideBranch != "" {
+					res.MatrixManifest[i].Branch = planOverrideBranch
+				}
+				if forceBranch != "" && res.MatrixManifest[i].AppID == localForce {
+					res.MatrixManifest[i].Branch = forceBranch
+				}
+			}
+			for i := range res.MatrixBundle {
+				if planOverrideBranch != "" {
+					res.MatrixBundle[i].Branch = planOverrideBranch
+				}
+				if forceBranch != "" && res.MatrixBundle[i].AppID == localForce {
+					res.MatrixBundle[i].Branch = forceBranch
+				}
+			}
 		}
 
 		// Filter computed matrix if flags are explicitly provided
@@ -239,5 +274,6 @@ func init() {
 	planCmd.Flags().StringVar(&planManifest, "manifest", "", "path to a single flatpak manifest file (bypasses config file)")
 	planCmd.Flags().StringSliceVar(&planArches, "arch", nil, "architectures to limit target build matrix to (e.g. x86_64, aarch64)")
 	planCmd.Flags().StringVar(&planBranch, "branch", "", "branch/channel to use (defaults to stable)")
+	planCmd.Flags().StringVar(&planOverrideBranch, "override-branch", "", "override branch/channel for all planned apps")
 	planCmd.Flags().BoolVar(&planDisableLinter, "disable-linter", false, "disable linting for all planned apps in the matrix")
 }

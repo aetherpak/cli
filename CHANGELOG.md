@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.27.0](https://github.com/aetherpak/cli/compare/v0.26.1...v0.27.0) (2026-06-10)
+
+
+### Features
+
+* add landing page template preview command ([8162d6d](https://github.com/aetherpak/cli/commit/8162d6d99bd35e2ff43d5511e759f2fd837de48a))
+* include both app and runtime types in template Apps context ([7c1565e](https://github.com/aetherpak/cli/commit/7c1565e59e5f0131bafc61547c8f56cba8c4cfc5))
+* replace --serve=false with --no-serve flag ([bd8b2d3](https://github.com/aetherpak/cli/commit/bd8b2d3bbd8399a836631b21523e0d82defb71e4))
+
+
+### Bug Fixes
+
+* inject correct version into container builds ([0ea138e](https://github.com/aetherpak/cli/commit/0ea138e643325cfde0557cfce6e58f2760831282))
+* use git+&lt;sha&gt; as version default when building in CI or main ([46d6416](https://github.com/aetherpak/cli/commit/46d6416b62a52daa29eb8a1c25bd7aa42713aea2))
+
 ## [0.26.1](https://github.com/aetherpak/cli/compare/v0.26.0...v0.26.1) (2026-06-10)
 
 

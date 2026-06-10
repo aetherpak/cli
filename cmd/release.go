@@ -347,11 +347,21 @@ var releaseCmd = &cobra.Command{
 			repoHomepage = cfg.RepoHomepage
 		}
 
+		var activeAppIDs []string
+		if cfg != nil {
+			for _, app := range cfg.Apps {
+				if app.ID != "" {
+					activeAppIDs = append(activeAppIDs, app.ID)
+				}
+			}
+		}
+
 		sOpts := site.SiteOptions{
 			PagesURL:      pagesURL,
 			RecordsDir:    recordsDir,
 			SiteDir:       siteDir,
 			Reconcile:     relReconcile,
+			ActiveAppIDs:  activeAppIDs,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
 			RemoteName:    remoteName,

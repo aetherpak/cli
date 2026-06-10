@@ -35,6 +35,7 @@ type SiteOptions struct {
 	RecordsDir    string
 	SiteDir       string
 	Reconcile     bool
+	ActiveAppIDs  []string // List of active/configured application IDs. If non-empty, unconfigured apps are pruned during reconcile.
 	GPGKeys       []string // GPG private key blocks or file paths for public key export
 	GPGPassphrase []byte
 	SigDir        string // relative signature dir (defaults to "sigs")
@@ -223,6 +224,26 @@ func BuildSite(opts SiteOptions) error {
 			var reconciledImages []IndexImage
 
 			for _, img := range pkg.Images {
+				// Filter by active apps if configured
+				if len(opts.ActiveAppIDs) > 0 {
+					refVal := img.Labels["org.flatpak.ref"]
+					parts := strings.Split(refVal, "/")
+					if len(parts) >= 2 {
+						appID := parts[1]
+						isActive := false
+						for _, activeID := range opts.ActiveAppIDs {
+							if activeID == appID {
+								isActive = true
+								break
+							}
+						}
+						if !isActive {
+							logger.Info("Pruning inactive/unconfigured OCI app image from index: %s (app-id: %s, digest: %s)", pkg.Name, appID, img.Digest)
+							continue
+						}
+					}
+				}
+
 				exists, err := checkDigestExists(index.Registry, pkg.Name, img.Digest, opts.Insecure)
 				if err != nil {
 					logger.Debug("Error checking digest existence: %v", err)

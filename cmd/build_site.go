@@ -107,11 +107,21 @@ var buildSiteCmd = &cobra.Command{
 		noSign := siteNoSign
 		allowUnsigned := siteAllowUnsigned
 
+		var activeAppIDs []string
+		if cfg != nil {
+			for _, app := range cfg.Apps {
+				if app.ID != "" {
+					activeAppIDs = append(activeAppIDs, app.ID)
+				}
+			}
+		}
+
 		opts := site.SiteOptions{
 			PagesURL:      sitePagesURL,
 			RecordsDir:    recordsDir,
 			SiteDir:       siteDirVal,
 			Reconcile:     siteReconcile,
+			ActiveAppIDs:  activeAppIDs,
 			GPGKeys:       keys,
 			GPGPassphrase: passphrase,
 			RemoteName:    siteRemoteName,

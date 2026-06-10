@@ -830,3 +830,77 @@ func TestWriteFlatpakRepoAndRefWithLookaside(t *testing.T) {
 		t.Errorf("expected flatpakref to contain SignatureLookaside, got:\n%s", refContent)
 	}
 }
+
+func TestBuildSiteReconcileActiveApps(t *testing.T) {
+	// Setup a mock HTTP registry that returns 200 OK for everything (both apps exist in registry)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records:
+	// App 1 (configured as active)
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	// App 2 (NOT configured as active, but exists in registry)
+	rec2 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app2",
+		Registry: server.URL,
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		ActiveAppIDs:  []string{"org.example.app1"}, // Only App 1 is active!
+		Insecure:      true,
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with reconcile=true and ActiveAppIDs: %v", err)
+	}
+
+	// Verify that index/static file was written and only contains app1, NOT app2!
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org.example.app1") {
+		t.Error("expected index to contain app1")
+	}
+	if strings.Contains(content, "org.example.app2") {
+		t.Error("expected index to NOT contain app2 since it is not in ActiveAppIDs")
+	}
+}

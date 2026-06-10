@@ -3,6 +3,7 @@ package ciout
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,38 @@ func TestEmitKeyValidation(t *testing.T) {
 				os.Remove(outPath)
 			}
 		})
+	}
+}
+
+func TestEmitUnderscoreDuplication(t *testing.T) {
+	tempDir := t.TempDir()
+	outPath := filepath.Join(tempDir, "ci_output")
+
+	pairs := []KV{
+		{Key: "app-id", Value: "org.example.App"},
+		{Key: "branch_name", Value: "stable"},
+	}
+
+	err := Emit(outPath, pairs)
+	if err != nil {
+		t.Fatalf("Emit() unexpected error: %v", err)
+	}
+
+	contentBytes, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	content := string(contentBytes)
+
+	expectedLines := []string{
+		"app-id=org.example.App",
+		"app_id=org.example.App",
+		"branch_name=stable",
+	}
+
+	for _, line := range expectedLines {
+		if !strings.Contains(content, line) {
+			t.Errorf("expected output to contain %q, but got:\n%s", line, content)
+		}
 	}
 }

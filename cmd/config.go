@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/aetherpak/aetherpak/pkg/configdiff"
+	"github.com/aetherpak/aetherpak/pkg/configedit"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -129,28 +134,38 @@ var configSetCmd = &cobra.Command{
 		}
 
 		data, err := os.ReadFile(configPath)
-		m := make(map[string]interface{})
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return fmt.Errorf("failed to read config file: %w", err)
-			}
-		} else {
-			if err := yaml.Unmarshal(data, &m); err != nil {
-				return fmt.Errorf("failed to parse config file: %w", err)
-			}
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to read config file: %w", err)
 		}
 
-		if err := setNestedKey(m, key, parsedValue); err != nil {
-			return err
-		}
-
-		out, err := yaml.Marshal(m)
+		out, err := configedit.SetValue(data, key, parsedValue)
 		if err != nil {
-			return fmt.Errorf("failed to marshal config to YAML: %w", err)
+			return fmt.Errorf("failed to set config key: %w", err)
 		}
 
 		if err := os.WriteFile(configPath, out, 0644); err != nil {
 			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		dec := yaml.NewDecoder(bytes.NewReader(out))
+		dec.KnownFields(true)
+		var tempCfg config.Config
+		if err := dec.Decode(&tempCfg); err != nil {
+			if len(data) > 0 {
+				if writeErr := os.WriteFile(configPath, data, 0644); writeErr != nil {
+					logger.Warn("Failed to rollback configuration write: %v", writeErr)
+				}
+			} else {
+				_ = os.Remove(configPath)
+			}
+			return fmt.Errorf("invalid config value or typo'd key path %q: %w", key, err)
+		}
+
+		if diff := configdiff.Unified(data, out, filepath.Base(configPath), logger.IsPlain()); diff != "" {
+			fmt.Println("Configuration updated successfully:")
+			fmt.Print(diff)
+		} else {
+			fmt.Println("No configuration changes detected.")
 		}
 
 		return nil

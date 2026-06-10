@@ -360,3 +360,45 @@ func TestRunDeclineEOF(t *testing.T) {
 		t.Errorf("expected non-interactive env error, got: %v", err)
 	}
 }
+
+func TestRunManifestWritesConfigWithWorkDir(t *testing.T) {
+	tempDir := t.TempDir()
+	workDir := filepath.Join(tempDir, "work")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatalf("failed to create workDir: %v", err)
+	}
+
+	manifestPath := filepath.Join(workDir, "apps", "org.example.App.yaml")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0755); err != nil {
+		t.Fatalf("failed to create apps dir: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, []byte("app-id: org.example.App\nruntime: org.freedesktop.Platform\n"), 0644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	// WorkDir is set, config path is relative to WorkDir, manifest path is relative to WorkDir
+	err := Run(Options{
+		WorkDir:      workDir,
+		ConfigPath:   "aetherpak.yaml", // Relative
+		Source:       SourceManifest,
+		ManifestPath: "apps/org.example.App.yaml", // Relative
+		Confirm:      true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	cfgPath := filepath.Join(workDir, "aetherpak.yaml")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	s := string(data)
+	if !strings.Contains(s, "org.example.App") {
+		t.Errorf("config missing app:\n%s", s)
+	}
+	// Manifest must be stored relative to the config file's directory: apps/org.example.App.yaml
+	if !strings.Contains(s, "manifest: apps/org.example.App.yaml") {
+		t.Errorf("expected relativized manifest path 'apps/org.example.App.yaml', got:\n%s", s)
+	}
+}

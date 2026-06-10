@@ -28,6 +28,10 @@ func Emit(path string, pairs []KV) error {
 			return fmt.Errorf("ciout: value for %q contains a newline", p.Key)
 		}
 		fmt.Fprintf(&b, "%s=%s\n", p.Key, p.Value)
+		if strings.Contains(p.Key, "-") {
+			altKey := strings.ReplaceAll(p.Key, "-", "_")
+			fmt.Fprintf(&b, "%s=%s\n", altKey, p.Value)
+		}
 	}
 	if path == "" || path == "-" {
 		_, err := os.Stdout.WriteString(b.String())

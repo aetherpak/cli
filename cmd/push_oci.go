@@ -172,7 +172,7 @@ var pushOCICmd = &cobra.Command{
 					appBranch = targetApp.Branch
 				}
 				if appBranch == "" {
-					if ch := resolveChannelFromEnv(); ch != "" {
+					if ch := resolveChannelFromEnv(cfg); ch != "" {
 						appBranch = ch
 					} else {
 						appBranch = "stable"

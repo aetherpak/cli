@@ -156,16 +156,23 @@ func BuildSite(opts SiteOptions) error {
 		url := strings.TrimSuffix(opts.PagesURL, "/") + "/index/static"
 		logger.Info("Fetching active production index from Pages: %s", url)
 
-		resp, err := http.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
+		resp, err := client.Get(url)
+		if err == nil {
 			defer resp.Body.Close()
-			var fetched FlatpakIndex
-			if err := json.NewDecoder(resp.Body).Decode(&fetched); err == nil {
-				index = fetched
-				logger.Info("Successfully seeded index from active Pages site.")
+			if resp.StatusCode == http.StatusOK {
+				var fetched FlatpakIndex
+				if err := json.NewDecoder(resp.Body).Decode(&fetched); err == nil {
+					index = fetched
+					logger.Info("Successfully seeded index from active Pages site.")
+				}
+			} else {
+				logger.Debug("No active static index fetched or status is not OK (status: %d).", resp.StatusCode)
 			}
 		} else {
-			logger.Debug("No active static index fetched or status is not OK.")
+			logger.Debug("Error fetching active production index: %v", err)
 		}
 	}
 

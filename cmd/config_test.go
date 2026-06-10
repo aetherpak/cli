@@ -170,3 +170,60 @@ func TestConfigSet(t *testing.T) {
 		t.Errorf("expected defaults.ccache_dir to be 1234 (int), got %v (type %T)", defaults["ccache_dir"], defaults["ccache_dir"])
 	}
 }
+
+func TestConfigSetPreservesCommentsAndValidates(t *testing.T) {
+	// 1. Setup config with comments
+	existing := []byte(`# Top level comment
+registry: old.registry.io # inline registry
+# Branding comment
+branding:
+  logo_url: https://old.logo.png # logo inline
+`)
+	err := os.WriteFile("aetherpak.yaml", existing, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	viper.Reset()
+	defer viper.Reset()
+	initConfig()
+
+	// 2. Set registry (should preserve comments)
+	err = configSetCmd.RunE(configSetCmd, []string{"registry", "new.registry.io"})
+	if err != nil {
+		t.Fatalf("failed to set registry: %v", err)
+	}
+
+	contentBytes, err := os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	content := string(contentBytes)
+
+	if !strings.Contains(content, "# Top level comment") {
+		t.Error("expected top level comment to be preserved")
+	}
+	if !strings.Contains(content, "# inline registry") {
+		t.Error("expected inline registry comment to be preserved")
+	}
+	if !strings.Contains(content, "registry: new.registry.io") {
+		t.Errorf("expected registry to be updated, got:\n%s", content)
+	}
+
+	// 3. Try setting an invalid key (should fail validation and rollback)
+	err = configSetCmd.RunE(configSetCmd, []string{"typo_key_name", "value"})
+	if err == nil {
+		t.Error("expected error setting invalid/typo key, got nil")
+	}
+
+	// Verify rollback occurred (invalid key not present in config file)
+	contentBytes2, err := os.ReadFile("aetherpak.yaml")
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	content2 := string(contentBytes2)
+	if strings.Contains(content2, "typo_key_name") {
+		t.Error("expected invalid/typo key to be rolled back and not present in file")
+	}
+}

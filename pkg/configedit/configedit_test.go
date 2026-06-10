@@ -109,3 +109,43 @@ func TestHasApp(t *testing.T) {
 		t.Error("HasApp = true for absent id")
 	}
 }
+
+func TestSetValue(t *testing.T) {
+	existing := "# Config registry\nregistry: old.registry.io # inline comment\n# Config output\noutput_dir: build/out\n"
+
+	// 1. Update existing key (registry)
+	out1, err := SetValue([]byte(existing), "registry", "new.registry.io")
+	if err != nil {
+		t.Fatalf("SetValue update registry failed: %v", err)
+	}
+	s1 := string(out1)
+	if !strings.Contains(s1, "registry: new.registry.io # inline comment") {
+		t.Errorf("expected updated registry with comment, got:\n%s", s1)
+	}
+	if !strings.Contains(s1, "# Config registry") {
+		t.Errorf("expected preserved head comment, got:\n%s", s1)
+	}
+
+	// 2. Insert new key
+	out2, err := SetValue([]byte(existing), "no_sign", true)
+	if err != nil {
+		t.Fatalf("SetValue insert no_sign failed: %v", err)
+	}
+	s2 := string(out2)
+	if !strings.Contains(s2, "no_sign: true") {
+		t.Errorf("expected inserted no_sign: true, got:\n%s", s2)
+	}
+	if !strings.Contains(s2, "registry: old.registry.io") || !strings.Contains(s2, "output_dir: build/out") {
+		t.Errorf("expected preserved original keys, got:\n%s", s2)
+	}
+
+	// 3. Nested key setting
+	out3, err := SetValue([]byte(existing), "nested.key.val", "nested-str")
+	if err != nil {
+		t.Fatalf("SetValue nested set failed: %v", err)
+	}
+	s3 := string(out3)
+	if !strings.Contains(s3, "nested:") || !strings.Contains(s3, "key:") || !strings.Contains(s3, "val: nested-str") {
+		t.Errorf("expected nested structure, got:\n%s", s3)
+	}
+}

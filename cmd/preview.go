@@ -13,7 +13,7 @@ var (
 	previewGPG             bool
 	previewApps            string
 	previewSiteDir         string
-	previewServe           bool
+	previewNoServe         bool
 	previewPort            int
 	previewRemoteName      string
 	previewRepoTitle       string
@@ -73,7 +73,7 @@ To generate files without starting the server, use: --serve=false`,
 			return NewCmdError(1, err)
 		}
 
-		if previewServe {
+		if !previewNoServe {
 			if err := site.StartPreviewServer(previewSiteDir, previewPort); err != nil {
 				return NewCmdError(1, err)
 			}
@@ -92,7 +92,7 @@ func init() {
 	previewCmd.Flags().BoolVar(&previewGPG, "gpg", true, "simulate GPG signing for dummy data")
 	previewCmd.Flags().StringVar(&previewApps, "apps", "multiple", "simulate 'single' or 'multiple' applications in dummy data")
 	previewCmd.Flags().StringVar(&previewSiteDir, "site-dir", "_preview", "destination directory for preview assets")
-	previewCmd.Flags().BoolVar(&previewServe, "serve", true, "start a local HTTP server to preview the site")
+	previewCmd.Flags().BoolVar(&previewNoServe, "no-serve", false, "do not start a local HTTP server to preview the site")
 	previewCmd.Flags().IntVar(&previewPort, "port", 8080, "port for local HTTP server")
 	previewCmd.Flags().StringVar(&previewRemoteName, "remote-name", "", "flatpak remote name for generated references")
 	previewCmd.Flags().StringVar(&previewRepoTitle, "repo-title", "", "title for the generated .flatpakrepo file")

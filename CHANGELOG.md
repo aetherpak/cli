@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/aetherpak/cli/compare/v0.26.0...v0.26.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **cmd:** disable active OCIRepository fallback in site reconciliation ([89d807e](https://github.com/aetherpak/cli/commit/89d807e78380aad9fb3bb90043399d08537f92a0))
+
 ## [0.26.0](https://github.com/aetherpak/cli/compare/v0.25.0...v0.26.0) (2026-06-10)
 
 

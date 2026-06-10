@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/aetherpak/cli/compare/v0.24.0...v0.25.0) (2026-06-10)
+
+
+### Features
+
+* **site:** restrict reconcile index pruning to active app IDs ([73977f3](https://github.com/aetherpak/cli/commit/73977f3ed3e2aba05af41b87cbcc66986d9d1693))
+* support plan branch overrides and app-id//branch refs ([8e4badd](https://github.com/aetherpak/cli/commit/8e4baddcd547b7ce28084c92d785f2ce463f661a))
+
 ## [0.24.0](https://github.com/aetherpak/cli/compare/v0.23.2...v0.24.0) (2026-06-10)
 
 

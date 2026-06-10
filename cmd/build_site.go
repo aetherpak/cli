@@ -104,9 +104,6 @@ var buildSiteCmd = &cobra.Command{
 			siteIndexTemplate = brandTemplate
 		}
 
-		noSign := siteNoSign
-		allowUnsigned := siteAllowUnsigned
-
 		var activeAppIDs []string
 		if cfg != nil {
 			for _, app := range cfg.Apps {
@@ -116,27 +113,39 @@ var buildSiteCmd = &cobra.Command{
 			}
 		}
 
+		var activeOCIRepo string
+		if cfg != nil {
+			activeOCIRepo = cfg.OCIRepository
+		}
+		if activeOCIRepo == "" {
+			activeOCIRepo = scm.OCIRepository()
+		}
+		if activeOCIRepo == "" && cfg != nil {
+			activeOCIRepo = cfg.RemoteName
+		}
+
 		opts := site.SiteOptions{
-			PagesURL:      sitePagesURL,
-			RecordsDir:    recordsDir,
-			SiteDir:       siteDirVal,
-			Reconcile:     siteReconcile,
-			ActiveAppIDs:  activeAppIDs,
-			GPGKeys:       keys,
-			GPGPassphrase: passphrase,
-			RemoteName:    siteRemoteName,
-			RuntimeRepo:   siteRuntimeRepo,
-			RepoTitle:     siteRepoTitle,
-			RepoHomepage:  siteRepoHP,
-			LandingPage:   siteLandingPage,
-			Insecure:      siteInsecure,
-			LogoURL:       brandLogo,
-			FaviconURL:    brandFavicon,
-			AccentColor:   brandAccent,
-			FooterText:    brandFooter,
-			IndexTemplate: siteIndexTemplate,
-			NoSign:        noSign,
-			AllowUnsigned: allowUnsigned,
+			PagesURL:            sitePagesURL,
+			RecordsDir:          recordsDir,
+			SiteDir:             siteDirVal,
+			Reconcile:           siteReconcile,
+			ActiveAppIDs:        activeAppIDs,
+			ActiveOCIRepository: activeOCIRepo,
+			GPGKeys:             keys,
+			GPGPassphrase:       passphrase,
+			RemoteName:          siteRemoteName,
+			RuntimeRepo:         siteRuntimeRepo,
+			RepoTitle:           siteRepoTitle,
+			RepoHomepage:        siteRepoHP,
+			LandingPage:         siteLandingPage,
+			Insecure:            siteInsecure,
+			LogoURL:             brandLogo,
+			FaviconURL:          brandFavicon,
+			AccentColor:         brandAccent,
+			FooterText:          brandFooter,
+			IndexTemplate:       siteIndexTemplate,
+			NoSign:              siteNoSign,
+			AllowUnsigned:       siteAllowUnsigned,
 		}
 
 		if err := site.BuildSite(opts); err != nil {

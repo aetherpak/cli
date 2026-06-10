@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.26.0](https://github.com/aetherpak/cli/compare/v0.25.0...v0.26.0) (2026-06-10)
+
+
+### Features
+
+* **site:** restrict reconcile index pruning to active app IDs and active OCI repositories ([aca5221](https://github.com/aetherpak/cli/commit/aca52216602cbad48f74fae800d735bbb1a4fa54))
+
+
+### Bug Fixes
+
+* **site:** refine ActiveOCIRepository fallback logic and prevent local accidental pruning ([b760cbf](https://github.com/aetherpak/cli/commit/b760cbf6acb9a4bf44162588b4b42fe4d45d04d8))
+
 ## [0.25.0](https://github.com/aetherpak/cli/compare/v0.24.0...v0.25.0) (2026-06-10)
 
 

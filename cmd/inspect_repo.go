@@ -15,7 +15,7 @@ var inspectRepoCmd = &cobra.Command{
 	Use:   "inspect-repo",
 	Short: "Resolve app-id/arch/branch/ref-type from an existing OSTree repo",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		info, err := repoinfo.Resolve(inspectRepoPath)
+		info, err := repoinfo.Resolve(nil, inspectRepoPath)
 		if err != nil {
 			return NewCmdError(1, err)
 		}

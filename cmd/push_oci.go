@@ -88,7 +88,7 @@ var pushOCICmd = &cobra.Command{
 		var targets []pushTarget
 
 		// 1. Try to auto-detect from the repository refs first (if repoPath exists and has refs)
-		if repoRefs, err := repoinfo.ResolveAll(repoPath); err == nil && len(repoRefs) > 0 {
+		if repoRefs, err := repoinfo.ResolveAll(nil, repoPath); err == nil && len(repoRefs) > 0 {
 			// Find manifest path for pushAppID if any
 			var manifestPath string
 			if pushAppID != "" {

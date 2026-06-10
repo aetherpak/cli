@@ -3,13 +3,11 @@ package repoinfo
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-)
 
-// For testing
-var execCommand = exec.Command
+	"github.com/aetherpak/aetherpak/pkg/executil"
+)
 
 // validRefTypes lists the OSTree ref type prefixes that are recognized.
 var validRefTypes = []string{"app", "runtime"}
@@ -44,7 +42,10 @@ func parseRef(ref string) (refType, id, arch, branch string, err error) {
 // Resolve returns the coordinates of the first app/* or runtime/* ref in the repo.
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the ref, and falls back to invoking the "ostree" host binary if needed.
-func Resolve(repoPath string) (Info, error) {
+func Resolve(executor executil.Executor, repoPath string) (Info, error) {
+	if executor == nil {
+		executor = executil.NewOSExecutor()
+	}
 	_ = RestoreEmptyDirs(repoPath)
 	headsDir := filepath.Join(repoPath, "refs", "heads")
 	var foundRef string
@@ -77,11 +78,14 @@ func Resolve(repoPath string) (Info, error) {
 	}
 
 	// Fallback: execute ostree host binary
-	out, err := execCommand("ostree", "refs", "--repo="+repoPath).Output()
-	if err != nil {
+	cmd := executor.Command("ostree", "refs", "--repo="+repoPath)
+	var stdout strings.Builder
+	cmd.SetStdout(&stdout)
+	if err := cmd.Run(); err != nil {
 		return Info{}, fmt.Errorf("repoinfo: ostree refs: %w", err)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	out := stdout.String()
+	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		for _, prefix := range validRefTypes {
 			if strings.HasPrefix(trimmed, prefix+"/") {
@@ -99,7 +103,10 @@ func Resolve(repoPath string) (Info, error) {
 // ResolveAll returns the coordinates of all app/* and runtime/* refs in the repo.
 // It first attempts a pure Go directory traversal over <repoPath>/refs/heads to find
 // the refs, and falls back to invoking the "ostree" host binary if needed.
-func ResolveAll(repoPath string) ([]Info, error) {
+func ResolveAll(executor executil.Executor, repoPath string) ([]Info, error) {
+	if executor == nil {
+		executor = executil.NewOSExecutor()
+	}
 	_ = RestoreEmptyDirs(repoPath)
 	headsDir := filepath.Join(repoPath, "refs", "heads")
 	var foundRefs []string
@@ -137,11 +144,14 @@ func ResolveAll(repoPath string) ([]Info, error) {
 	}
 
 	// Fallback: execute ostree host binary
-	out, err := execCommand("ostree", "refs", "--repo="+repoPath).Output()
-	if err != nil {
+	cmd := executor.Command("ostree", "refs", "--repo="+repoPath)
+	var stdout strings.Builder
+	cmd.SetStdout(&stdout)
+	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("repoinfo: ostree refs: %w", err)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	out := stdout.String()
+	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		for _, prefix := range validRefTypes {
 			if strings.HasPrefix(trimmed, prefix+"/") {

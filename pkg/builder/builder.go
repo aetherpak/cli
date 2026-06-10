@@ -466,7 +466,7 @@ func Build(opts BuildOptions) error {
 		}
 	}
 	if mainAppID == "" {
-		if info, err := repoinfo.Resolve(repoPath); err == nil {
+		if info, err := repoinfo.Resolve(opts.Executor, repoPath); err == nil {
 			mainAppID = info.AppID
 		}
 	}
@@ -481,7 +481,7 @@ func Build(opts BuildOptions) error {
 	}
 
 	if opts.Install {
-		refs, err := repoinfo.ResolveAll(repoPath)
+		refs, err := repoinfo.ResolveAll(opts.Executor, repoPath)
 		if err != nil {
 			// Fallback: assume only the main app ref
 			refs = []repoinfo.Info{{
@@ -515,7 +515,7 @@ func Build(opts BuildOptions) error {
 	}
 
 	if opts.Bundle {
-		refs, err := repoinfo.ResolveAll(repoPath)
+		refs, err := repoinfo.ResolveAll(opts.Executor, repoPath)
 		if err != nil {
 			// Fallback: assume only the main app ref
 			refs = []repoinfo.Info{{

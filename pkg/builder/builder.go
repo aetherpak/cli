@@ -17,7 +17,6 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-isatty"
 )
 
 // BuildOptions contains options for executing flatpak-builder.
@@ -414,15 +413,6 @@ func Build(opts BuildOptions) error {
 	}
 
 	var dest io.Writer = os.Stdout
-	var lb *executil.LogBox
-	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 12).
-			SetTitle(" flatpak-builder logs ").
-			SetPrefixText("flatpak-builder").
-			SetPrefixColor("99")
-		lb.Start()
-		dest = lb
-	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -438,9 +428,6 @@ func Build(opts BuildOptions) error {
 	}()
 
 	wg.Wait()
-	if lb != nil {
-		lb.Close()
-	}
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("flatpak-builder failed: %w", err)
 	}
@@ -606,15 +593,6 @@ func runLinter(executor executil.Executor, args []string, prefix string) error {
 	}
 
 	var dest io.Writer = os.Stdout
-	var lb *executil.LogBox
-	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 8).
-			SetTitle(" flatpak-builder-lint logs ").
-			SetPrefixText("flatpak-builder-lint").
-			SetPrefixColor("13")
-		lb.Start()
-		dest = lb
-	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -630,9 +608,6 @@ func runLinter(executor executil.Executor, args []string, prefix string) error {
 	}()
 
 	wg.Wait()
-	if lb != nil {
-		lb.Close()
-	}
 	if err := cmd.Wait(); err != nil {
 		return err
 	}
@@ -687,15 +662,6 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 	}
 
 	var dest io.Writer = os.Stdout
-	var lb *executil.LogBox
-	if !logger.IsPlain() && isatty.IsTerminal(os.Stdout.Fd()) {
-		lb = executil.NewLogBox(os.Stdout, 8).
-			SetTitle(" flatpak logs ").
-			SetPrefixText("flatpak").
-			SetPrefixColor("39")
-		lb.Start()
-		dest = lb
-	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -711,9 +677,6 @@ func runFlatpakCommand(executor executil.Executor, args []string) error {
 	}()
 
 	wg.Wait()
-	if lb != nil {
-		lb.Close()
-	}
 	if err := cmd.Wait(); err != nil {
 		return err
 	}

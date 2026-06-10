@@ -461,7 +461,7 @@ aetherpak preview
 aetherpak preview --port 9000 --template templates/custom.html
 
 # Generate static preview pages without serving (useful for CI/CD test site generation)
-aetherpak preview --serve=false --apps=single --gpg=false
+aetherpak preview --no-serve --apps=single --gpg=false
 ```
 Options:
 * `--template, -t <path>`: Local path to custom HTML repository index template (overrides configuration template).
@@ -471,7 +471,7 @@ Options:
 * `--gpg`: Enable GPG signing simulation for dummy data (defaults to `true`).
 * `--apps <single|multiple>`: Simulate single or multiple applications in dummy data (defaults to `multiple`).
 * `--site-dir <path>`: Destination directory for preview assets (defaults to `_preview`).
-* `--serve`: Start a local HTTP server to preview the site (defaults to `true`).
+* `--no-serve`: Do not start a local HTTP server to preview the site (defaults to `false`).
 * `--port <port>`: Port for local HTTP server (defaults to `8080`).
 
 ---

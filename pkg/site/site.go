@@ -53,6 +53,7 @@ type SiteOptions struct {
 	IndexTemplate       string
 	NoSign              bool
 	AllowUnsigned       bool
+	DryRun              bool
 }
 
 // FlatpakIndex represents the JSON model of the Flatpak index/static.
@@ -124,19 +125,23 @@ func BuildSite(opts SiteOptions) error {
 			return fmt.Errorf("failed to export armored public keyring: %w", err)
 		}
 
-		sigDir := filepath.Join(opts.SiteDir, sigDirName)
-		if err := os.MkdirAll(sigDir, 0755); err != nil {
-			return fmt.Errorf("failed to create sigs directory: %w", err)
+		var b64Key string
+		if opts.DryRun {
+			logger.Info("[DRY RUN] Simulating GPG public key export: skipping write to key.asc")
+		} else {
+			sigDir := filepath.Join(opts.SiteDir, sigDirName)
+			if err := os.MkdirAll(sigDir, 0755); err != nil {
+				return fmt.Errorf("failed to create sigs directory: %w", err)
+			}
+			keyPath := filepath.Join(sigDir, "key.asc")
+			if err := os.WriteFile(keyPath, []byte(armoredKey), 0644); err != nil {
+				return fmt.Errorf("failed to write key.asc: %w", err)
+			}
+			logger.Info("Exported armored GPG public keyring to: %s", keyPath)
 		}
-
-		keyPath := filepath.Join(sigDir, "key.asc")
-		if err := os.WriteFile(keyPath, []byte(armoredKey), 0644); err != nil {
-			return fmt.Errorf("failed to write key.asc: %w", err)
-		}
-		logger.Info("Exported armored GPG public keyring to: %s", keyPath)
 
 		// Export base64 binary keyring
-		b64Key, err := signer.ExportBase64PublicKeyRing()
+		b64Key, err = signer.ExportBase64PublicKeyRing()
 		if err != nil {
 			return fmt.Errorf("failed to export base64 public keyring: %w", err)
 		}
@@ -225,8 +230,12 @@ func BuildSite(opts SiteOptions) error {
 			// If active OCI repository is specified, prune packages from different repositories
 			if opts.ActiveOCIRepository != "" {
 				if !strings.EqualFold(pkg.Name, opts.ActiveOCIRepository) {
-					logger.Info("Pruning inactive OCI repository package from index: %s (active: %s)", pkg.Name, opts.ActiveOCIRepository)
-					continue
+					if opts.DryRun {
+						logger.Info("[DRY RUN] Would prune inactive OCI repository package from index: %s (active: %s)", pkg.Name, opts.ActiveOCIRepository)
+					} else {
+						logger.Info("Pruning inactive OCI repository package from index: %s (active: %s)", pkg.Name, opts.ActiveOCIRepository)
+						continue
+					}
 				}
 			}
 
@@ -247,8 +256,12 @@ func BuildSite(opts SiteOptions) error {
 							}
 						}
 						if !isActive {
-							logger.Info("Pruning inactive/unconfigured OCI app image from index: %s (app-id: %s, digest: %s)", pkg.Name, appID, img.Digest)
-							continue
+							if opts.DryRun {
+								logger.Info("[DRY RUN] Would prune inactive/unconfigured OCI app image from index: %s (app-id: %s, digest: %s)", pkg.Name, appID, img.Digest)
+							} else {
+								logger.Info("Pruning inactive/unconfigured OCI app image from index: %s (app-id: %s, digest: %s)", pkg.Name, appID, img.Digest)
+								continue
+							}
 						}
 					}
 				}
@@ -266,7 +279,12 @@ func BuildSite(opts SiteOptions) error {
 				if exists {
 					reconciledImages = append(reconciledImages, img)
 				} else {
-					logger.Info("Pruning missing OCI image from index: %s (digest: %s)", pkg.Name, img.Digest)
+					if opts.DryRun {
+						logger.Info("[DRY RUN] Would prune missing OCI image from index: %s (digest: %s)", pkg.Name, img.Digest)
+						reconciledImages = append(reconciledImages, img)
+					} else {
+						logger.Info("Pruning missing OCI image from index: %s (digest: %s)", pkg.Name, img.Digest)
+					}
 				}
 			}
 
@@ -284,6 +302,11 @@ func BuildSite(opts SiteOptions) error {
 	}
 
 	// 6. Generate deployment directories and output files
+	if opts.DryRun {
+		logger.Info("[DRY RUN] Simulating site file generation: skipping write to %s", opts.SiteDir)
+		return nil
+	}
+
 	if err := writeIndexFile(opts.SiteDir, index); err != nil {
 		return err
 	}

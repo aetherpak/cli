@@ -39,6 +39,7 @@ var (
 	relIndexTemplate string
 	relNoSign        bool
 	relAllowUnsigned bool
+	relDryRun        bool
 
 	relRemoteName           string
 	relRuntimeRepo          string
@@ -218,6 +219,7 @@ func runRelease(cmd *cobra.Command, args []string) error {
 							NoSign:        noSign,
 							AllowUnsigned: allowUnsigned,
 							Executor:      executor,
+							DryRun:        relDryRun,
 						}
 						if _, err := oci.Push(pOpts); err != nil {
 							return fmt.Errorf("push failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -297,6 +299,7 @@ func runRelease(cmd *cobra.Command, args []string) error {
 		IndexTemplate:       relIndexTemplate,
 		NoSign:              noSign,
 		AllowUnsigned:       allowUnsigned,
+		DryRun:              relDryRun,
 	}
 
 	if err := site.BuildSite(sOpts); err != nil {
@@ -334,6 +337,7 @@ func init() {
 	releaseCmd.Flags().StringVar(&relIndexTemplate, "index-template", "", "path to custom HTML repository index template")
 	releaseCmd.Flags().BoolVar(&relNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	releaseCmd.Flags().BoolVar(&relAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+	releaseCmd.Flags().BoolVar(&relDryRun, "dry-run", false, "simulate release process without writing to remote registry, records, or site directories")
 
 	releaseCmd.Flags().StringVar(&relRemoteName, "remote-name", "", "flatpak remote name for generated references")
 	releaseCmd.Flags().StringVar(&relRuntimeRepo, "runtime-repo", "", "URL for the runtime repository (.flatpakrepo)")

@@ -1230,3 +1230,44 @@ func TestWriteFlatpakRepoCustomSigDir(t *testing.T) {
 		t.Errorf("expected flatpakrepo to contain %q, got:\n%s", expectedLookaside, repoContent)
 	}
 }
+
+func TestBuildSiteDryRun(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock record
+	rec := record.Record{
+		AppID:    "org.example.app",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "http://localhost:5000",
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels := map[string]string{
+		"org.flatpak.ref": "app/org.example.app/x86_64/stable",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+		t.Fatalf("failed to write record: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		Insecure:      true,
+		AllowUnsigned: true,
+		DryRun:        true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("expected dry-run BuildSite to succeed, got %v", err)
+	}
+
+	// Verify that siteDir is either empty or does not exist
+	files, err := os.ReadDir(siteDir)
+	if err == nil && len(files) > 0 {
+		t.Errorf("expected no files to be written to site directory in dry-run mode, got %d files", len(files))
+	}
+}

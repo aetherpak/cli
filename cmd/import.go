@@ -224,7 +224,7 @@ var importCmd = &cobra.Command{
 
 		var resolvedApps []repoinfo.Info
 		if useTempRepo {
-			infos, err := repoinfo.ResolveAll(tempRepoDir)
+			infos, err := repoinfo.ResolveAll(nil, tempRepoDir)
 			if err != nil {
 				return NewCmdErrorf(1, "failed to resolve imported bundle refs: %w", err)
 			}

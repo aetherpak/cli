@@ -1,11 +1,11 @@
 package repoinfo
 
 import (
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/aetherpak/aetherpak/pkg/executil"
 )
 
 func TestParseRef(t *testing.T) {
@@ -51,7 +51,7 @@ func TestResolve(t *testing.T) {
 		t.Fatalf("failed to write mock ref file: %v", err)
 	}
 
-	info, err := Resolve(tmp)
+	info, err := Resolve(nil, tmp)
 	if err != nil {
 		t.Fatalf("Resolve failed: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestResolveRuntime(t *testing.T) {
 		t.Fatalf("failed to write mock ref file: %v", err)
 	}
 
-	info, err := Resolve(tmp)
+	info, err := Resolve(nil, tmp)
 	if err != nil {
 		t.Fatalf("Resolve failed: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestResolveAll(t *testing.T) {
 		t.Fatalf("failed to write mock ref file 2: %v", err)
 	}
 
-	infos, err := ResolveAll(tmp)
+	infos, err := ResolveAll(nil, tmp)
 	if err != nil {
 		t.Fatalf("ResolveAll failed: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestResolveAllMixed(t *testing.T) {
 		t.Fatalf("failed to write mock runtime ref: %v", err)
 	}
 
-	infos, err := ResolveAll(tmp)
+	infos, err := ResolveAll(nil, tmp)
 	if err != nil {
 		t.Fatalf("ResolveAll failed: %v", err)
 	}
@@ -167,20 +167,13 @@ func TestResolveAllMixed(t *testing.T) {
 }
 
 func TestResolveOstreeFallback(t *testing.T) {
-	// Override execCommand to run this test binary itself with a helper process indicator.
-	execCommand = func(command string, args ...string) *exec.Cmd {
-		cs := []string{"-test.run=TestHelperProcess", "--", command}
-		cs = append(cs, args...)
-		cmd := exec.Command(os.Args[0], cs...)
-		cmd.Env = []string{"GO_WANT_HELPER_PROCESS=1"}
-		return cmd
-	}
-	defer func() { execCommand = exec.Command }()
+	mockExec := executil.NewMockExecutor()
+	mockExec.OutMap["ostree"] = []byte("app/org.example.MockFromOstree/x86_64/stable\nruntime/org.gnome.Platform/x86_64/45\n")
 
 	tmp := t.TempDir() // empty directory, Walk won't find any ref
 
 	// 1. Test Resolve fallback
-	info, err := Resolve(tmp)
+	info, err := Resolve(mockExec, tmp)
 	if err != nil {
 		t.Fatalf("Resolve fallback failed: %v", err)
 	}
@@ -189,7 +182,7 @@ func TestResolveOstreeFallback(t *testing.T) {
 	}
 
 	// 2. Test ResolveAll fallback
-	infos, err := ResolveAll(tmp)
+	infos, err := ResolveAll(mockExec, tmp)
 	if err != nil {
 		t.Fatalf("ResolveAll fallback failed: %v", err)
 	}
@@ -209,16 +202,6 @@ func TestResolveOstreeFallback(t *testing.T) {
 	if !foundApp || !foundRuntime {
 		t.Fatalf("unexpected ResolveAll fallback result: %+v", infos)
 	}
-}
-
-func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
-		return
-	}
-	// Print mock output of "ostree refs" and exit
-	fmt.Println("app/org.example.MockFromOstree/x86_64/stable")
-	fmt.Println("runtime/org.gnome.Platform/x86_64/45")
-	os.Exit(0)
 }
 
 func TestRestoreEmptyDirs(t *testing.T) {

@@ -4,6 +4,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/spf13/cobra"
 )
 
 func TestResolveLinterExceptions(t *testing.T) {
@@ -134,5 +137,74 @@ func TestParseAppIDRef(t *testing.T) {
 		if id != tt.expectedID || br != tt.expectedBr {
 			t.Errorf("parseAppIDRef(%q) = (%q, %q); expected (%q, %q)", tt.input, id, br, tt.expectedID, tt.expectedBr)
 		}
+	}
+}
+
+func TestResolveBuildOptions(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.Flags().String("ccache-dir", "", "")
+	cmd.Flags().String("state-dir", "", "")
+	cmd.Flags().Bool("run-linter", false, "")
+	cmd.Flags().Bool("no-sign", false, "")
+	cmd.Flags().Bool("no-install-deps", false, "")
+	cmd.Flags().Bool("no-flathub", false, "")
+	cmd.Flags().StringSlice("builder-arg", nil, "")
+	cmd.Flags().StringArray("flatpak-remote", nil, "")
+	cmd.Flags().StringArray("flatpak-dep", nil, "")
+	cmd.Flags().String("linter-exceptions-file", "", "")
+	cmd.Flags().StringSlice("linter-exception", nil, "")
+	cmd.Flags().Bool("install", false, "")
+	cmd.Flags().Bool("bundle", false, "")
+
+	cfg := &config.Config{
+		NoSign: false,
+		Defaults: &config.DefaultsConfig{
+			CCacheDir:   ".ccache-cfg",
+			StateDir:    ".state-cfg",
+			RunLinter:   true,
+			BuilderArgs: []string{"--foo"},
+		},
+	}
+
+	appCfg := &config.App{
+		ID:          "org.example.App",
+		CCacheDir:   ".ccache-app",
+		StateDir:    ".state-app",
+		RunLinter:   false,
+		BuilderArgs: []string{"--bar"},
+	}
+
+	// 1. App configuration precedence
+	opts, err := resolveBuildOptions(cmd, cfg, appCfg, "org.example.App", "manifest.json", "x86_64", "stable", "repo")
+	if err != nil {
+		t.Fatalf("resolveBuildOptions failed: %v", err)
+	}
+	if opts.CCacheDir != ".ccache-app" || opts.StateDir != ".state-app" || opts.RunLinter != false || !reflect.DeepEqual(opts.BuilderArgs, []string{"--bar"}) {
+		t.Errorf("unexpected build options from app configuration: %+v", opts)
+	}
+
+	// 2. Global defaults fallback
+	opts, err = resolveBuildOptions(cmd, cfg, nil, "org.example.App", "manifest.json", "x86_64", "stable", "repo")
+	if err != nil {
+		t.Fatalf("resolveBuildOptions failed: %v", err)
+	}
+	if opts.CCacheDir != ".ccache-cfg" || opts.StateDir != ".state-cfg" || opts.RunLinter != true || !reflect.DeepEqual(opts.BuilderArgs, []string{"--foo"}) {
+		t.Errorf("unexpected build options from global defaults: %+v", opts)
+	}
+
+	// 3. CLI flag overrides
+	_ = cmd.Flags().Set("ccache-dir", ".ccache-override")
+	_ = cmd.Flags().Set("state-dir", ".state-override")
+	_ = cmd.Flags().Set("run-linter", "false")
+	_ = cmd.Flags().Set("no-sign", "true")
+	_ = cmd.Flags().Set("install", "true")
+	_ = cmd.Flags().Set("bundle", "true")
+
+	opts, err = resolveBuildOptions(cmd, cfg, nil, "org.example.App", "manifest.json", "x86_64", "stable", "repo")
+	if err != nil {
+		t.Fatalf("resolveBuildOptions failed: %v", err)
+	}
+	if opts.CCacheDir != ".ccache-override" || opts.StateDir != ".state-override" || opts.RunLinter != false || opts.NoSign != true || opts.Install != true || opts.Bundle != true {
+		t.Errorf("unexpected build options with CLI flag overrides: %+v", opts)
 	}
 }

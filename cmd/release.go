@@ -10,6 +10,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
+	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/importer"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
@@ -58,363 +59,259 @@ var releaseCmd = &cobra.Command{
 	Use:   "release",
 	Short: "Runs plan, concurrent publish, and site index compilation",
 	Long:  `Fully orchestrates the AetherPak lifecycle: plans matrix deltas, builds/imports changed packages concurrently, pushes OCI layers, and rebuilds Pages static site references.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := LoadConfig()
-		if err != nil {
-			return NewCmdErrorf(2, "Configuration error: %w", err)
-		}
+	RunE:  runRelease,
+}
 
-		logger.Info("Phase 1: Planning release changes...")
-		repoPath := relRepoPath
-		if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
-			repoPath = filepath.Join(cfg.OutputDir, "repo")
-		} else if repoPath == "" {
-			repoPath = "repo"
-		}
+func runRelease(cmd *cobra.Command, args []string) error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return NewCmdErrorf(2, "Configuration error: %w", err)
+	}
 
-		recordsDir := relRecordsDir
-		if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
-			recordsDir = filepath.Join(cfg.OutputDir, "records")
-		} else if recordsDir == "" {
-			recordsDir = "records"
-		}
+	logger.Info("Phase 1: Planning release changes...")
+	repoPath := relRepoPath
+	if !cmd.Flags().Changed("repo-path") && cfg.OutputDir != "" {
+		repoPath = filepath.Join(cfg.OutputDir, "repo")
+	} else if repoPath == "" {
+		repoPath = "repo"
+	}
 
-		siteDir := relSiteDir
-		if !cmd.Flags().Changed("site-dir") && cfg.OutputDir != "" {
-			siteDir = filepath.Join(cfg.OutputDir, "_site")
-		} else if siteDir == "" {
-			siteDir = "_site"
-		}
+	recordsDir := relRecordsDir
+	if !cmd.Flags().Changed("records-dir") && cfg.OutputDir != "" {
+		recordsDir = filepath.Join(cfg.OutputDir, "records")
+	} else if recordsDir == "" {
+		recordsDir = "records"
+	}
 
-		configPath := viper.ConfigFileUsed()
-		if configPath == "" {
-			if vCfgFile := viper.GetString("config"); vCfgFile != "" {
-				configPath = vCfgFile
-			} else {
-				configPath = "aetherpak.yaml"
-				if _, err := os.Stat("aetherpak.yml"); err == nil {
-					configPath = "aetherpak.yml"
-				}
-			}
-		}
+	siteDir := relSiteDir
+	if !cmd.Flags().Changed("site-dir") && cfg.OutputDir != "" {
+		siteDir = filepath.Join(cfg.OutputDir, "_site")
+	} else if siteDir == "" {
+		siteDir = "_site"
+	}
 
-		res, err := plan.ComputePlan(cfg, configPath, relBaseSHA, relForce, relWorkflowPath)
-		if err != nil {
-			return NewCmdErrorf(1, "Release planning failed: %w", err)
-		}
-
-		keys := relGPGKeys
-
-		var passphrase []byte
-		if relGPGPassphrase != "" {
-			passphrase = []byte(relGPGPassphrase)
-		}
-		defer func() {
-			if len(passphrase) > 0 {
-				for i := range passphrase {
-					passphrase[i] = 0
-				}
-			}
-		}()
-
-		noSign := relNoSign
-		allowUnsigned := relAllowUnsigned
-
-		ccacheDirChanged := cmd.Flags().Changed("ccache-dir")
-		stateDirChanged := cmd.Flags().Changed("state-dir")
-		runLinterChanged := cmd.Flags().Changed("run-linter")
-		builderArgChanged := cmd.Flags().Changed("builder-arg")
-		linterExceptionsFileChanged := cmd.Flags().Changed("linter-exceptions-file")
-		linterExceptionChanged := cmd.Flags().Changed("linter-exception")
-
-		if len(res.Matrix) == 0 {
-			logger.Info("No application changes detected. Proceeding to site index update.")
+	configPath := viper.ConfigFileUsed()
+	if configPath == "" {
+		if vCfgFile := viper.GetString("config"); vCfgFile != "" {
+			configPath = vCfgFile
 		} else {
-			logger.Info("Phase 2: Processing %d matrix rows concurrently (workers=%d)...", len(res.Matrix), relWorkers)
-
-			// Spin up concurrent worker pool using errgroup
-			g, ctx := errgroup.WithContext(context.Background())
-			rowChan := make(chan plan.MatrixRow, len(res.Matrix))
-
-			// Seed matrix rows into worker queue
-			for _, row := range res.Matrix {
-				rowChan <- row
+			configPath = "aetherpak.yaml"
+			if _, err := os.Stat("aetherpak.yml"); err == nil {
+				configPath = "aetherpak.yml"
 			}
-			close(rowChan)
+		}
+	}
 
-			// Spin up worker goroutines
-			for i := 0; i < relWorkers; i++ {
-				g.Go(func() error {
-					for {
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case row, ok := <-rowChan:
-							if !ok {
-								return nil
-							}
-							// 1. Build or Import
-							if row.Source == "manifest" {
-								var appCCacheDir = relCCacheDir
-								var appStateDir = relStateDir
-								var appRunLinter = row.RunLinter
-								var appLinterStrict = true
-								var appLinterIgnoreRules []string
-								var appLinterExceptions []string
-								var appLinterExceptionsFile = ""
-								var appBuilderArgs []string
-								var appRemotes map[string]config.RemoteConfig
-								var appFlatpaks []config.FlatpakDep
+	res, err := plan.ComputePlan(cfg, configPath, relBaseSHA, relForce, relWorkflowPath)
+	if err != nil {
+		return NewCmdErrorf(1, "Release planning failed: %w", err)
+	}
 
-								var matchedApp *config.App
-								for idx := range cfg.Apps {
-									if cfg.Apps[idx].ID == row.AppID {
-										matchedApp = &cfg.Apps[idx]
-										break
-									}
-								}
+	keys := relGPGKeys
 
-								if matchedApp != nil {
-									appCCacheDir = matchedApp.CCacheDir
-									appStateDir = matchedApp.StateDir
-									appRunLinter = matchedApp.RunLinter
-									appBuilderArgs = matchedApp.BuilderArgs
-									appRemotes = matchedApp.Remotes
-									appFlatpaks = matchedApp.Flatpaks
-									if matchedApp.Linter != nil {
-										if matchedApp.Linter.Strict != nil {
-											appLinterStrict = *matchedApp.Linter.Strict
-										}
-										appLinterIgnoreRules = matchedApp.Linter.IgnoreRules
-										appLinterExceptions = matchedApp.Linter.Exceptions
-										appLinterExceptionsFile = matchedApp.Linter.ExceptionsFile
-									}
-									if matchedApp.CCache != nil && !*matchedApp.CCache {
-										appCCacheDir = ""
-									}
-								} else {
-									if cfg.Defaults != nil {
-										appCCacheDir = cfg.Defaults.CCacheDir
-										if appCCacheDir == "" {
-											appCCacheDir = ".ccache"
-										}
-										appStateDir = cfg.Defaults.StateDir
-										if appStateDir == "" {
-											appStateDir = ".state"
-										}
-										appRunLinter = cfg.Defaults.RunLinter
-										appBuilderArgs = cfg.Defaults.BuilderArgs
-										appRemotes = cfg.Defaults.Remotes
-										appFlatpaks = cfg.Defaults.Flatpaks
-										if cfg.Defaults.CCache != nil && !*cfg.Defaults.CCache {
-											appCCacheDir = ""
-										}
-									}
-									if cfg.Linter != nil {
-										if cfg.Linter.Strict != nil {
-											appLinterStrict = *cfg.Linter.Strict
-										}
-										appLinterIgnoreRules = cfg.Linter.IgnoreRules
-										appLinterExceptions = cfg.Linter.Exceptions
-										appLinterExceptionsFile = cfg.Linter.ExceptionsFile
-									}
-								}
+	var passphrase []byte
+	if relGPGPassphrase != "" {
+		passphrase = []byte(relGPGPassphrase)
+	}
+	defer func() {
+		if len(passphrase) > 0 {
+			for i := range passphrase {
+				passphrase[i] = 0
+			}
+		}
+	}()
 
-								if ccacheDirChanged {
-									appCCacheDir = relCCacheDir
-								}
-								if stateDirChanged {
-									appStateDir = relStateDir
-								}
-								if runLinterChanged {
-									appRunLinter = relRunLinter
-								}
-								if builderArgChanged {
-									appBuilderArgs = relBuilderArgs
-								}
-								if cmd.Flags().Changed("flatpak-remote") {
-									parsed, err := parseFlatpakRemotes(relFlatpakRemotes)
-									if err != nil {
-										return NewCmdError(2, err)
-									}
-									appRemotes = parsed
-								}
-								if cmd.Flags().Changed("flatpak-dep") {
-									parsed, err := parseFlatpakDeps(relFlatpakDeps)
-									if err != nil {
-										return NewCmdError(2, err)
-									}
-									appFlatpaks = parsed
-								}
+	noSign := relNoSign
+	allowUnsigned := relAllowUnsigned
 
-								appLinterExceptions, appLinterExceptionsFile = resolveLinterExceptions(
-									linterExceptionsFileChanged,
-									linterExceptionChanged,
-									appLinterExceptions,
-									appLinterExceptionsFile,
-									relLinterExceptions,
-									relLinterExceptionsFile,
-								)
+	executor := executil.NewOSExecutor()
 
-								bOpts := builder.BuildOptions{
-									AppID:                row.AppID,
-									Manifest:             row.Manifest,
-									Arch:                 row.Arch,
-									Branch:               row.Branch,
-									CCacheDir:            appCCacheDir,
-									StateDir:             appStateDir,
-									RepoPath:             repoPath,
-									RunLinter:            appRunLinter,
-									LinterStrict:         appLinterStrict,
-									LinterIgnoreRules:    appLinterIgnoreRules,
-									LinterExceptions:     appLinterExceptions,
-									LinterExceptionsFile: appLinterExceptionsFile,
-									BuilderArgs:          appBuilderArgs,
-									Remotes:              appRemotes,
-									Flatpaks:             appFlatpaks,
-								}
-								releaseRepoMutex.Lock()
-								buildErr := builder.Build(bOpts)
-								releaseRepoMutex.Unlock()
-								if buildErr != nil {
-									return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, buildErr)
-								}
-							} else {
-								iOpts := importer.ImportOptions{
-									AppID:        row.AppID,
-									Arch:         row.Arch,
-									Branch:       row.Branch,
-									BundleURL:    row.BundleURL,
-									BundleSHA256: row.BundleSHA256,
-									RepoPath:     repoPath,
-								}
-								releaseRepoMutex.Lock()
-								importErr := importer.Import(iOpts)
-								releaseRepoMutex.Unlock()
-								if importErr != nil {
-									return fmt.Errorf("import failed for %s (%s): %w", row.AppID, row.Arch, importErr)
+	if len(res.Matrix) == 0 {
+		logger.Info("No application changes detected. Proceeding to site index update.")
+	} else {
+		logger.Info("Phase 2: Processing %d matrix rows concurrently (workers=%d)...", len(res.Matrix), relWorkers)
+
+		// Spin up concurrent worker pool using errgroup
+		g, ctx := errgroup.WithContext(context.Background())
+		rowChan := make(chan plan.MatrixRow, len(res.Matrix))
+
+		// Seed matrix rows into worker queue
+		for _, row := range res.Matrix {
+			rowChan <- row
+		}
+		close(rowChan)
+
+		// Spin up worker goroutines
+		for i := 0; i < relWorkers; i++ {
+			g.Go(func() error {
+				for {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case row, ok := <-rowChan:
+						if !ok {
+							return nil
+						}
+						// 1. Build or Import
+						if row.Source == "manifest" {
+							var matchedApp *config.App
+							for idx := range cfg.Apps {
+								if cfg.Apps[idx].ID == row.AppID {
+									matchedApp = &cfg.Apps[idx]
+									break
 								}
 							}
 
-							// 2. Push to Registry
-							pOpts := oci.PushOptions{
-								AppID:         row.AppID,
-								Arch:          row.Arch,
-								Branch:        row.Branch,
-								Registry:      cfg.Registry,
-								OCIRepository: cfg.OCIRepository,
-								RepoPath:      repoPath,
-								RecordsDir:    recordsDir,
-								GPGKeys:       keys,
-								GPGPassphrase: passphrase,
-								Insecure:      relInsecure,
-								OCIUsername:   viper.GetString("oci_username"),
-								OCIPassword:   viper.GetString("oci_password"),
-								NoSign:        noSign,
-								AllowUnsigned: allowUnsigned,
+							bOpts, err := resolveBuildOptions(
+								cmd,
+								cfg,
+								matchedApp,
+								row.AppID,
+								row.Manifest,
+								row.Arch,
+								row.Branch,
+								repoPath,
+							)
+							if err != nil {
+								return fmt.Errorf("build options resolution failed for %s: %w", row.AppID, err)
 							}
-							if _, err := oci.Push(pOpts); err != nil {
-								return fmt.Errorf("push-oci failed for %s (%s): %w", row.AppID, row.Arch, err)
+							bOpts.Executor = executor
+
+							releaseRepoMutex.Lock()
+							buildErr := builder.Build(bOpts)
+							releaseRepoMutex.Unlock()
+							if buildErr != nil {
+								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, buildErr)
+							}
+						} else {
+							iOpts := importer.ImportOptions{
+								AppID:        row.AppID,
+								Arch:         row.Arch,
+								Branch:       row.Branch,
+								BundleURL:    row.BundleURL,
+								BundleSHA256: row.BundleSHA256,
+								RepoPath:     repoPath,
+								Executor:     executor,
+							}
+							releaseRepoMutex.Lock()
+							importErr := importer.Import(iOpts)
+							releaseRepoMutex.Unlock()
+							if importErr != nil {
+								return fmt.Errorf("import failed for %s (%s): %w", row.AppID, row.Arch, importErr)
 							}
 						}
+
+						// 2. Push to Registry
+						pOpts := oci.PushOptions{
+							AppID:         row.AppID,
+							Arch:          row.Arch,
+							Branch:        row.Branch,
+							Registry:      cfg.Registry,
+							OCIRepository: cfg.OCIRepository,
+							RepoPath:      repoPath,
+							RecordsDir:    recordsDir,
+							GPGKeys:       keys,
+							GPGPassphrase: passphrase,
+							Insecure:      relInsecure,
+							OCIUsername:   viper.GetString("oci_username"),
+							OCIPassword:   viper.GetString("oci_password"),
+							NoSign:        noSign,
+							AllowUnsigned: allowUnsigned,
+							Executor:      executor,
+						}
+						if _, err := oci.Push(pOpts); err != nil {
+							return fmt.Errorf("push failed for %s (%s): %w", row.AppID, row.Arch, err)
+						}
 					}
-				})
-			}
-
-			if err := g.Wait(); err != nil {
-				return NewCmdErrorf(1, "Concurrency execution failed: %w", err)
-			}
-			logger.Info("All application publications finished successfully.")
-		}
-
-		logger.Info("Phase 3: Aggregating flatpak index references...")
-		var brandLogo, brandFavicon, brandAccent, brandFooter, brandTemplate string
-		if cfg != nil && cfg.Branding != nil {
-			brandLogo = cfg.Branding.LogoURL
-			brandFavicon = cfg.Branding.FaviconURL
-			brandAccent = cfg.Branding.AccentColor
-			brandFooter = cfg.Branding.FooterText
-			brandTemplate = cfg.Branding.IndexTemplate
-		}
-
-		if relIndexTemplate == "" {
-			relIndexTemplate = brandTemplate
-		}
-
-		pagesURL := viper.GetString("pages_url")
-		if pagesURL == "" && cfg != nil {
-			pagesURL = cfg.PagesURL
-		}
-
-		remoteName := relRemoteName
-		if remoteName == "" {
-			remoteName = cfg.RemoteName
-		}
-		runtimeRepo := relRuntimeRepo
-		if runtimeRepo == "" {
-			runtimeRepo = cfg.RuntimeRepo
-		}
-		repoTitle := relRepoTitle
-		if repoTitle == "" {
-			repoTitle = cfg.RepoTitle
-		}
-		repoHomepage := relRepoHomepage
-		if repoHomepage == "" {
-			repoHomepage = cfg.RepoHomepage
-		}
-
-		var activeAppIDs []string
-		if cfg != nil {
-			for _, app := range cfg.Apps {
-				if app.ID != "" {
-					activeAppIDs = append(activeAppIDs, app.ID)
 				}
-			}
+			})
 		}
 
-		var activeOCIRepo string
-		if viper.IsSet("oci_repository") && cfg != nil {
-			activeOCIRepo = cfg.OCIRepository
+		if err := g.Wait(); err != nil {
+			return NewCmdError(1, err)
 		}
+	}
 
-		sOpts := site.SiteOptions{
-			PagesURL:            pagesURL,
-			RecordsDir:          recordsDir,
-			SiteDir:             siteDir,
-			Reconcile:           relReconcile,
-			ActiveAppIDs:        activeAppIDs,
-			ActiveOCIRepository: activeOCIRepo,
-			GPGKeys:             keys,
-			GPGPassphrase:       passphrase,
-			RemoteName:          remoteName,
-			RuntimeRepo:         runtimeRepo,
-			RepoTitle:           repoTitle,
-			RepoHomepage:        repoHomepage,
-			LandingPage:         relLandingPage,
-			Insecure:            relInsecure,
-			LogoURL:             brandLogo,
-			FaviconURL:          brandFavicon,
-			AccentColor:         brandAccent,
-			FooterText:          brandFooter,
-			IndexTemplate:       relIndexTemplate,
-			NoSign:              noSign,
-			AllowUnsigned:       allowUnsigned,
-		}
+	logger.Info("Phase 3: Compiling Pages static site index...")
+	pagesURL := cfg.PagesURL
+	if pagesURL == "" {
+		pagesURL = os.Getenv("AETHERPAK_PAGES_URL")
+	}
+	remoteName := relRemoteName
+	if remoteName == "" {
+		remoteName = cfg.RemoteName
+	}
+	if remoteName == "" {
+		remoteName = "aetherpak"
+	}
+	runtimeRepo := relRuntimeRepo
+	if runtimeRepo == "" {
+		runtimeRepo = cfg.RuntimeRepo
+	}
+	repoTitle := relRepoTitle
+	if repoTitle == "" {
+		repoTitle = cfg.RepoTitle
+	}
+	repoHomepage := relRepoHomepage
+	if repoHomepage == "" {
+		repoHomepage = cfg.RepoHomepage
+	}
 
-		if err := site.BuildSite(sOpts); err != nil {
-			return NewCmdErrorf(1, "Site index compilation failed: %w", err)
-		}
+	var activeAppIDs []string
+	for idx := range cfg.Apps {
+		activeAppIDs = append(activeAppIDs, cfg.Apps[idx].ID)
+	}
 
-		if err := ciout.Emit(relOutputFile, []ciout.KV{
-			{Key: "site-dir", Value: siteDir},
-			{Key: "records-dir", Value: recordsDir},
-		}); err != nil {
-			return NewCmdErrorf(1, "Output emission failed: %w", err)
-		}
+	var activeOCIRepo string
+	if viper.IsSet("oci_repository") && cfg != nil {
+		activeOCIRepo = cfg.OCIRepository
+	}
 
-		logger.Info("AetherPak Release completed successfully!")
-		return nil
-	},
+	var brandLogo, brandFavicon, brandAccent, brandFooter string
+	if cfg.Branding != nil {
+		brandLogo = cfg.Branding.LogoURL
+		brandFavicon = cfg.Branding.FaviconURL
+		brandAccent = cfg.Branding.AccentColor
+		brandFooter = cfg.Branding.FooterText
+	}
+
+	sOpts := site.SiteOptions{
+		PagesURL:            pagesURL,
+		RecordsDir:          recordsDir,
+		SiteDir:             siteDir,
+		Reconcile:           relReconcile,
+		ActiveAppIDs:        activeAppIDs,
+		ActiveOCIRepository: activeOCIRepo,
+		GPGKeys:             keys,
+		GPGPassphrase:       passphrase,
+		RemoteName:          remoteName,
+		RuntimeRepo:         runtimeRepo,
+		RepoTitle:           repoTitle,
+		RepoHomepage:        repoHomepage,
+		LandingPage:         relLandingPage,
+		Insecure:            relInsecure,
+		LogoURL:             brandLogo,
+		FaviconURL:          brandFavicon,
+		AccentColor:         brandAccent,
+		FooterText:          brandFooter,
+		IndexTemplate:       relIndexTemplate,
+		NoSign:              noSign,
+		AllowUnsigned:       allowUnsigned,
+	}
+
+	if err := site.BuildSite(sOpts); err != nil {
+		return NewCmdErrorf(1, "Site index compilation failed: %w", err)
+	}
+
+	if err := ciout.Emit(relOutputFile, []ciout.KV{
+		{Key: "site-dir", Value: siteDir},
+		{Key: "records-dir", Value: recordsDir},
+	}); err != nil {
+		return NewCmdErrorf(1, "Output emission failed: %w", err)
+	}
+
+	logger.Info("AetherPak Release completed successfully!")
+	return nil
 }
 
 func init() {

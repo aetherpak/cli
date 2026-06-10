@@ -1,7 +1,6 @@
 package executil
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 )
@@ -17,41 +16,93 @@ type MockCommand struct {
 	OutData []byte
 	ErrData []byte
 	RunFunc func() error
+
+	// Internals to support async streaming
+	stdoutPipeReader *io.PipeReader
+	stdoutPipeWriter *io.PipeWriter
+	stderrPipeReader *io.PipeReader
+	stderrPipeWriter *io.PipeWriter
+
+	doneChan chan struct{}
 }
 
 // Run simulates executing the command.
 func (m *MockCommand) Run() error {
-	if m.RunFunc != nil {
-		return m.RunFunc()
+	if err := m.Start(); err != nil {
+		return err
 	}
-	if m.Stdout != nil && len(m.OutData) > 0 {
-		_, _ = m.Stdout.Write(m.OutData)
-	}
-	if m.Stderr != nil && len(m.ErrData) > 0 {
-		_, _ = m.Stderr.Write(m.ErrData)
-	}
-	return m.RunErr
+	return m.Wait()
 }
 
 // Start simulates starting the command asynchronously.
 func (m *MockCommand) Start() error {
-	m.RunErr = m.Run()
+	m.doneChan = make(chan struct{})
+
+	go func() {
+		defer close(m.doneChan)
+
+		var runErr error
+		if m.RunFunc != nil {
+			runErr = m.RunFunc()
+		} else {
+			runErr = m.RunErr
+		}
+
+		if m.stdoutPipeWriter != nil && len(m.OutData) > 0 {
+			_, _ = m.stdoutPipeWriter.Write(m.OutData)
+		}
+		if m.stderrPipeWriter != nil && len(m.ErrData) > 0 {
+			_, _ = m.stderrPipeWriter.Write(m.ErrData)
+		}
+
+		if m.Stdout != nil && len(m.OutData) > 0 {
+			_, _ = m.Stdout.Write(m.OutData)
+		}
+		if m.Stderr != nil && len(m.ErrData) > 0 {
+			_, _ = m.Stderr.Write(m.ErrData)
+		}
+
+		if m.stdoutPipeWriter != nil {
+			_ = m.stdoutPipeWriter.CloseWithError(runErr)
+		}
+		if m.stderrPipeWriter != nil {
+			_ = m.stderrPipeWriter.CloseWithError(runErr)
+		}
+
+		m.RunErr = runErr
+	}()
+
 	return nil
 }
 
 // Wait simulates waiting for the command to finish.
 func (m *MockCommand) Wait() error {
+	if m.doneChan != nil {
+		<-m.doneChan
+	}
 	return m.RunErr
 }
 
 // StdoutPipe returns a pipe mock containing the predefined stdout data.
 func (m *MockCommand) StdoutPipe() (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(m.OutData)), nil
+	if m.stdoutPipeReader != nil {
+		return nil, fmt.Errorf("StdoutPipe already called")
+	}
+	r, w := io.Pipe()
+	m.stdoutPipeReader = r
+	m.stdoutPipeWriter = w
+	return r, nil
 }
 
 // StderrPipe returns a pipe mock containing the predefined stderr data.
 func (m *MockCommand) StderrPipe() (io.ReadCloser, error) {
-	return io.NopCloser(bytes.NewReader(m.ErrData)), nil
+	if m.stderrPipeReader != nil {
+		return nil, fmt.Errorf("StderrPipe already called")
+	}
+	r, w := io.Pipe()
+	m.stderrPipeReader = r
+	m.stderrPipeWriter = w
+	return r, nil
 }
 
 // SetEnv sets command environment variables.

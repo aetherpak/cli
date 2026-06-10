@@ -13,6 +13,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/aetherpak/aetherpak/pkg/plan"
+	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/aetherpak/aetherpak/pkg/site"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -356,27 +357,39 @@ var releaseCmd = &cobra.Command{
 			}
 		}
 
+		var activeOCIRepo string
+		if cfg != nil {
+			activeOCIRepo = cfg.OCIRepository
+		}
+		if activeOCIRepo == "" {
+			activeOCIRepo = scm.OCIRepository()
+		}
+		if activeOCIRepo == "" && cfg != nil {
+			activeOCIRepo = cfg.RemoteName
+		}
+
 		sOpts := site.SiteOptions{
-			PagesURL:      pagesURL,
-			RecordsDir:    recordsDir,
-			SiteDir:       siteDir,
-			Reconcile:     relReconcile,
-			ActiveAppIDs:  activeAppIDs,
-			GPGKeys:       keys,
-			GPGPassphrase: passphrase,
-			RemoteName:    remoteName,
-			RuntimeRepo:   runtimeRepo,
-			RepoTitle:     repoTitle,
-			RepoHomepage:  repoHomepage,
-			LandingPage:   relLandingPage,
-			Insecure:      relInsecure,
-			LogoURL:       brandLogo,
-			FaviconURL:    brandFavicon,
-			AccentColor:   brandAccent,
-			FooterText:    brandFooter,
-			IndexTemplate: relIndexTemplate,
-			NoSign:        noSign,
-			AllowUnsigned: allowUnsigned,
+			PagesURL:            pagesURL,
+			RecordsDir:          recordsDir,
+			SiteDir:             siteDir,
+			Reconcile:           relReconcile,
+			ActiveAppIDs:        activeAppIDs,
+			ActiveOCIRepository: activeOCIRepo,
+			GPGKeys:             keys,
+			GPGPassphrase:       passphrase,
+			RemoteName:          remoteName,
+			RuntimeRepo:         runtimeRepo,
+			RepoTitle:           repoTitle,
+			RepoHomepage:        repoHomepage,
+			LandingPage:         relLandingPage,
+			Insecure:            relInsecure,
+			LogoURL:             brandLogo,
+			FaviconURL:          brandFavicon,
+			AccentColor:         brandAccent,
+			FooterText:          brandFooter,
+			IndexTemplate:       relIndexTemplate,
+			NoSign:              noSign,
+			AllowUnsigned:       allowUnsigned,
 		}
 
 		if err := site.BuildSite(sOpts); err != nil {

@@ -904,3 +904,78 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 		t.Error("expected index to NOT contain app2 since it is not in ActiveAppIDs")
 	}
 }
+
+func TestBuildSiteReconcileActiveOCIRepository(t *testing.T) {
+	// Setup a mock HTTP registry that returns 200 OK for everything (both apps exist in registry)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records:
+	// App 1 in Active OCI Repository (example/app1)
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	// App 2 in OLD OCI Repository (example/app1-old)
+	rec2 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1-old",
+		Registry: server.URL,
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:          recordsDir,
+		SiteDir:             siteDir,
+		Reconcile:           true,
+		ActiveAppIDs:        []string{"org.example.app1", "org.example.app2"},
+		ActiveOCIRepository: "example/app1", // Only example/app1 is active!
+		Insecure:            true,
+		AllowUnsigned:       true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with reconcile=true and ActiveOCIRepository: %v", err)
+	}
+
+	// Verify that index/static file was written and only contains app1 under example/app1, NOT under example/app1-old!
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "example/app1") {
+		t.Error("expected index to contain example/app1")
+	}
+	if strings.Contains(content, "example/app1-old") {
+		t.Error("expected index to NOT contain example/app1-old since it is not in ActiveOCIRepository")
+	}
+}

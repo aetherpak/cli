@@ -31,27 +31,28 @@ var indexHTMLTemplate string
 
 // SiteOptions configures the static index builder and page reconciler.
 type SiteOptions struct {
-	PagesURL      string
-	RecordsDir    string
-	SiteDir       string
-	Reconcile     bool
-	ActiveAppIDs  []string // List of active/configured application IDs. If non-empty, unconfigured apps are pruned during reconcile.
-	GPGKeys       []string // GPG private key blocks or file paths for public key export
-	GPGPassphrase []byte
-	SigDir        string // relative signature dir (defaults to "sigs")
-	RemoteName    string
-	RuntimeRepo   string
-	RepoTitle     string
-	RepoHomepage  string
-	LandingPage   bool
-	Insecure      bool // allow HTTP registry when reconciling
-	LogoURL       string
-	FaviconURL    string
-	AccentColor   string
-	FooterText    string
-	IndexTemplate string
-	NoSign        bool
-	AllowUnsigned bool
+	PagesURL            string
+	RecordsDir          string
+	SiteDir             string
+	Reconcile           bool
+	ActiveAppIDs        []string // List of active/configured application IDs. If non-empty, unconfigured apps are pruned during reconcile.
+	ActiveOCIRepository string   // The active OCI repository path. If non-empty, packages with different OCI repository paths are pruned during reconcile.
+	GPGKeys             []string // GPG private key blocks or file paths for public key export
+	GPGPassphrase       []byte
+	SigDir              string // relative signature dir (defaults to "sigs")
+	RemoteName          string
+	RuntimeRepo         string
+	RepoTitle           string
+	RepoHomepage        string
+	LandingPage         bool
+	Insecure            bool // allow HTTP registry when reconciling
+	LogoURL             string
+	FaviconURL          string
+	AccentColor         string
+	FooterText          string
+	IndexTemplate       string
+	NoSign              bool
+	AllowUnsigned       bool
 }
 
 // FlatpakIndex represents the JSON model of the Flatpak index/static.
@@ -221,6 +222,14 @@ func BuildSite(opts SiteOptions) error {
 		var reconciledResults []IndexResultPackage
 
 		for _, pkg := range index.Results {
+			// If active OCI repository is specified, prune packages from different repositories
+			if opts.ActiveOCIRepository != "" {
+				if !strings.EqualFold(pkg.Name, opts.ActiveOCIRepository) {
+					logger.Info("Pruning inactive OCI repository package from index: %s (active: %s)", pkg.Name, opts.ActiveOCIRepository)
+					continue
+				}
+			}
+
 			var reconciledImages []IndexImage
 
 			for _, img := range pkg.Images {

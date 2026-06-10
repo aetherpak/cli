@@ -358,14 +358,11 @@ var releaseCmd = &cobra.Command{
 		}
 
 		var activeOCIRepo string
-		if cfg != nil {
+		if viper.IsSet("oci_repository") && cfg != nil {
 			activeOCIRepo = cfg.OCIRepository
 		}
 		if activeOCIRepo == "" {
 			activeOCIRepo = scm.OCIRepository()
-		}
-		if activeOCIRepo == "" && cfg != nil {
-			activeOCIRepo = cfg.RemoteName
 		}
 
 		sOpts := site.SiteOptions{

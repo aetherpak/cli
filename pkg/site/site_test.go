@@ -250,6 +250,25 @@ func TestBuildSiteStructuredTemplate(t *testing.T) {
 		t.Fatalf("failed to write record 2: %v", err)
 	}
 
+	// Set up runtime record
+	recRuntime := record.Record{
+		AppID:    "org.freedesktop.Sdk.Extension.xrt",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/sdk-ext",
+		Registry: "ghcr.io",
+		Digest:   "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+		Ref:      "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable",
+	}
+	labelsRuntime := map[string]string{
+		"org.flatpak.ref":                   "runtime/org.freedesktop.Sdk.Extension.xrt/x86_64/stable",
+		"org.flatpak.metadata":              "[Extension]\nname=org.freedesktop.Sdk.Extension.xrt",
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>XRT Extension</name><summary>This is XRT extension</summary></component>`,
+	}
+	if _, err := record.WriteRecord(recordsDir, recRuntime, labelsRuntime); err != nil {
+		t.Fatalf("failed to write runtime record: %v", err)
+	}
+
 	// Set up mock record with edge cases (malformed timestamp, missing sizes, XML XSS injection)
 	rec3 := record.Record{
 		AppID:    "org.example.app2",
@@ -314,6 +333,11 @@ App: {{.Name}} ({{.ID}}) - {{.Summary}} - {{.Icon}}
 	expectedAppLine := "App: Example App One (org.example.app1) - This is example app one - https://example.com/icon.png"
 	if !strings.Contains(output, expectedAppLine) {
 		t.Errorf("expected output to contain %q", expectedAppLine)
+	}
+
+	expectedRuntimeLine := "App: XRT Extension (org.freedesktop.Sdk.Extension.xrt) - This is XRT extension - "
+	if !strings.Contains(output, expectedRuntimeLine) {
+		t.Errorf("expected output to contain %q", expectedRuntimeLine)
 	}
 
 	expectedBranchLine := "- Branch: stable"

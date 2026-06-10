@@ -9,6 +9,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/aetherpak/aetherpak/pkg/site"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -114,14 +115,11 @@ var buildSiteCmd = &cobra.Command{
 		}
 
 		var activeOCIRepo string
-		if cfg != nil {
+		if viper.IsSet("oci_repository") && cfg != nil {
 			activeOCIRepo = cfg.OCIRepository
 		}
 		if activeOCIRepo == "" {
 			activeOCIRepo = scm.OCIRepository()
-		}
-		if activeOCIRepo == "" && cfg != nil {
-			activeOCIRepo = cfg.RemoteName
 		}
 
 		opts := site.SiteOptions{

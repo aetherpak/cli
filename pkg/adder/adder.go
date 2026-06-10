@@ -137,7 +137,11 @@ func Run(opts Options) error {
 	if !opts.Confirm {
 		diff := configdiff.Unified(existing, updated, filepath.Base(opts.ConfigPath), opts.Plain)
 		fmt.Fprint(opts.Out, diff) // diff already ends with a newline
-		if !confirm(opts.In, opts.Out) {
+		confirmed, err := confirm(opts.In, opts.Out)
+		if err != nil {
+			return fmt.Errorf("non-interactive environment detected: %w (use --confirm or -y)", err)
+		}
+		if !confirmed {
 			logger.Info("Aborted; no changes written.")
 			return nil // cleanup runs via defer
 		}
@@ -357,12 +361,15 @@ func repoName(url string) string {
 }
 
 // confirm reads a yes/no answer; default is no.
-func confirm(in io.Reader, out io.Writer) bool {
+func confirm(in io.Reader, out io.Writer) (bool, error) {
 	fmt.Fprint(out, "Apply these changes? [y/N]: ")
 	scanner := bufio.NewScanner(in)
 	if !scanner.Scan() {
-		return false
+		if err := scanner.Err(); err != nil {
+			return false, err
+		}
+		return false, io.EOF
 	}
 	ans := strings.ToLower(strings.TrimSpace(scanner.Text()))
-	return ans == "y" || ans == "yes"
+	return ans == "y" || ans == "yes", nil
 }

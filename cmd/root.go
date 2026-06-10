@@ -260,7 +260,14 @@ func IsFlagExplicitlySet(cmd *cobra.Command, name string) bool {
 // if they were not explicitly set on the command line.
 func bindFlags(cmd *cobra.Command) {
 	cliChangedFlags[cmd] = make(map[string]bool)
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+	visited := make(map[string]bool)
+
+	bind := func(f *pflag.Flag) {
+		if visited[f.Name] {
+			return
+		}
+		visited[f.Name] = true
+
 		if f.Changed {
 			cliChangedFlags[cmd][f.Name] = true
 		} else {
@@ -282,10 +289,13 @@ func bindFlags(cmd *cobra.Command) {
 						valStr = fmt.Sprintf("%v", v)
 					}
 					if f.Value.String() != valStr {
-						_ = cmd.Flags().Set(f.Name, valStr)
+						_ = f.Value.Set(valStr)
 					}
 				}
 			}
 		}
-	})
+	}
+
+	cmd.Flags().VisitAll(bind)
+	cmd.InheritedFlags().VisitAll(bind)
 }

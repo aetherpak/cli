@@ -339,3 +339,24 @@ func TestRunDuplicateIDNonInteractive(t *testing.T) {
 		t.Fatal("expected duplicate-id error in non-interactive mode")
 	}
 }
+
+func TestRunDeclineEOF(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeManifest(t, dir)
+	cfgPath := filepath.Join(dir, "aetherpak.yaml")
+
+	err := Run(Options{
+		ConfigPath:   cfgPath,
+		Source:       SourceManifest,
+		ManifestPath: manifestPath,
+		Confirm:      false,
+		In:           strings.NewReader(""), // EOF immediately
+		Out:          &strings.Builder{},
+	})
+	if err == nil {
+		t.Fatal("expected error on stdin EOF when Confirm is false, got nil")
+	}
+	if !strings.Contains(err.Error(), "non-interactive environment detected") {
+		t.Errorf("expected non-interactive env error, got: %v", err)
+	}
+}

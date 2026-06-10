@@ -8,7 +8,7 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 
 ##@ Build & Quality
 
-VERSION ?= dev
+VERSION ?= git+$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 
 build: ## Build the aetherpak CLI binary into bin/
 	@mkdir -p bin

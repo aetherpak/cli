@@ -477,6 +477,35 @@ Options:
 * `--no-serve`: Do not start a local HTTP server to preview the site (defaults to `false`).
 * `--port <port>`: Port for local HTTP server (defaults to `8080`).
 
+#### `clean`
+Clears builder compiler caches, state directories, template preview files, production site outputs, build-site records, and local OSTree repositories.
+Requires confirmation unless `--yes`, `-y`, or `--confirm` is specified.
+```bash
+# Clean all temporary files (prompts for confirmation if interactive)
+aetherpak clean
+
+# Clean all temporary files without prompt (useful for CI)
+aetherpak clean --yes
+
+# Clean only compiler caches (ccache) and state directories
+aetherpak clean --ccache --state --yes
+```
+Options:
+* `--yes, -y`: Skip confirmation prompt.
+* `--confirm`: Skip confirmation prompt (deprecated alias for `--yes`).
+* `--ccache`: Clean only builder compiler caches (`.ccache`).
+* `--state`: Clean only builder state directories (`.state`).
+* `--preview`: Clean only template preview directories (`_preview`).
+* `--site`: Clean only production site build outputs (`_site`).
+* `--records`: Clean only build-site input/output records (`records`).
+* `--repo`: Clean only local OSTree repositories (`repo`).
+* `--ccache-dir <path>`: Custom ccache directory path (defaults to `.ccache`).
+* `--state-dir <path>`: Custom builder state directory path (defaults to `.state`).
+* `--preview-dir <path>`: Custom preview site directory path (defaults to `_preview`).
+* `--site-dir <path>`: Custom production site directory path (defaults to `_site`).
+* `--records-dir <path>`: Custom records directory path (defaults to `records`).
+* `--repo-path <path>`: Custom OSTree repository path (defaults to `repo`).
+
 ---
 
 ## Development

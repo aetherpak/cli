@@ -60,6 +60,7 @@ Porcelain commands orchestrate multiple plumbing modules to provide a seamless u
 * **`aetherpak publish`**: Aggregates records, reconciles remote OCI images, signs assets, and generates static pages.
 * **`aetherpak release`**: A comprehensive, single-app workflow that runs build, push-oci, and publish steps in sequence.
 * **`aetherpak preview`**: Generates and serves a local landing page template preview using customizable mock/dummy data or a live production index, simulating GPG status, single/multiple apps, and template rendering.
+* **`aetherpak clean`**: Clears builder compiler caches, state directories, template preview files, production site outputs, build-site records, and local OSTree repositories. Requires user confirmation when run interactively.
 
 ### Plumbing (Low-Level Utilities)
 Plumbing commands are designed to be run programmatically (e.g., inside CI matrix runners or custom scripts) and perform single, deterministic tasks.

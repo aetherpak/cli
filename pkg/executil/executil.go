@@ -9,7 +9,18 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 )
+
+var startDbusSessionFunc = startDbusSession
+
+var terminateProcess = func(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(syscall.SIGTERM)
+}
 
 // Command defines the interface for command execution wrappers.
 type Command interface {
@@ -95,7 +106,7 @@ func (c *osCommand) Start() error {
 			}
 		}
 		if !hasDbus && os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" {
-			if address, pid, err := startDbusSession(exec.LookPath); err == nil {
+			if address, pid, err := startDbusSessionFunc(exec.LookPath); err == nil {
 				c.dbusPID = pid
 				if c.cmd.Env == nil {
 					c.cmd.Env = append(os.Environ(), "DBUS_SESSION_BUS_ADDRESS="+address)
@@ -105,17 +116,37 @@ func (c *osCommand) Start() error {
 			}
 		}
 	}
-	return c.cmd.Start()
+	err := c.cmd.Start()
+	if err != nil && c.dbusPID > 0 {
+		_ = terminateProcess(c.dbusPID)
+		go reapProcess(c.dbusPID)
+		c.dbusPID = 0
+	}
+	return err
 }
 
 func (c *osCommand) Wait() error {
 	err := c.cmd.Wait()
 	if c.dbusPID > 0 {
-		if proc, err := os.FindProcess(c.dbusPID); err == nil {
-			_ = proc.Signal(syscall.SIGTERM)
-		}
+		_ = terminateProcess(c.dbusPID)
+		go reapProcess(c.dbusPID)
+		c.dbusPID = 0
 	}
 	return err
+}
+
+func reapProcess(pid int) {
+	for i := 0; i < 50; i++ {
+		var wstatus syscall.WaitStatus
+		wpid, err := syscall.Wait4(pid, &wstatus, syscall.WNOHANG, nil)
+		if err != nil {
+			break
+		}
+		if wpid == pid {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func (c *osCommand) StdoutPipe() (io.ReadCloser, error) {

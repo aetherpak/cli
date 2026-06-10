@@ -332,6 +332,7 @@ Options:
 * `--gpg-key <path>`: Local path to GPG private key used to sign image manifests.
 * `--no-sign`: Disable GPG signing entirely (bypasses GPG signature step).
 * `--allow-unsigned`: Allow pushing unsigned images if signing keys are missing.
+* `--dry-run`: Simulate pushing OCI image without writing to remote registry or records.
 
 #### `build-site`
 Downloads old static index, merges recent cell records, and regenerates index listings:
@@ -426,6 +427,7 @@ Options:
 * `--allow-unsigned`: Allow publishing unsigned images if GPG keys are missing.
 * `--linter-exceptions-file <path>`: Local path to linter exceptions file (JSON).
 * `--linter-exception <rule>`: Repeatable flag to specify linter exceptions to ignore.
+* `--dry-run`: Simulate publishing without writing to remote registry or records.
 
 #### `release`
 Coordinates the entire lifecycle: runs matrix planner, compiles/imports changed records concurrently, pushes artifacts, and builds site index layouts:
@@ -440,6 +442,7 @@ Options:
 * `--linter-exception <rule>`: Repeatable flag to specify linter exceptions to ignore.
 * `--flatpak-remote <name>=<url>`: Repeatable flag to register Flatpak remotes before compiling.
 * `--flatpak-dep <remote>:<ref>`: Repeatable flag to install Flatpak dependencies before compiling.
+* `--dry-run`: Simulate release process without writing to remote registry, records, or site directories.
 
 #### `status`
 Validates that required system dependencies are available, checks configuration files, and decrypts/verifies GPG keys:

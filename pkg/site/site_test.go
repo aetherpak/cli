@@ -1145,3 +1145,88 @@ func TestBuildSiteReconcileEmptyActiveAppIDs(t *testing.T) {
 		t.Error("expected index to contain org.example.app2 since ActiveAppIDs was empty")
 	}
 }
+
+func TestBuildSiteReconcileAuthError(t *testing.T) {
+	// Setup a mock HTTP registry that returns 401 Unauthorized
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock record
+	rec := record.Record{
+		AppID:    "org.example.app",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+		t.Fatalf("failed to write record: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		Insecure:      true,
+		AllowUnsigned: true,
+	}
+
+	// BuildSite should succeed (it logs warning for 401/403 but does not prune the index entry)
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed on auth error: %v", err)
+	}
+
+	// Verify that index/static contains org.example.app (it was NOT pruned!)
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org.example.app") {
+		t.Error("expected index to contain app since it should not be pruned on auth error")
+	}
+}
+
+func TestWriteFlatpakRepoCustomSigDir(t *testing.T) {
+	tempDir := t.TempDir()
+	opts := SiteOptions{
+		PagesURL:   "https://pages.example.com",
+		RemoteName: "myremote",
+		RepoTitle:  "My Repo",
+		SigDir:     "custom-signatures",
+	}
+
+	err := writeFlatpakRepoFile(tempDir, "ghcr.io", "some-gpg-key-base64", opts)
+	if err != nil {
+		t.Fatalf("writeFlatpakRepoFile failed: %v", err)
+	}
+
+	repoFilePath := filepath.Join(tempDir, "myremote.flatpakrepo")
+	repoBytes, err := os.ReadFile(repoFilePath)
+	if err != nil {
+		t.Fatalf("failed to read generated flatpakrepo file: %v", err)
+	}
+	repoContent := string(repoBytes)
+
+	// Verify that SignatureLookaside uses custom-signatures
+	expectedLookaside := "SignatureLookaside=https://pages.example.com/custom-signatures"
+	if !strings.Contains(repoContent, expectedLookaside) {
+		t.Errorf("expected flatpakrepo to contain %q, got:\n%s", expectedLookaside, repoContent)
+	}
+}

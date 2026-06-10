@@ -115,3 +115,81 @@ defaults:
 		t.Errorf("expected output to contain 'registry:', got %q", output)
 	}
 }
+
+func TestConfigShowSecretsMasking(t *testing.T) {
+	// Create empty config file
+	err := os.WriteFile("aetherpak.yaml", []byte("{}"), 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	// Set GPG and OCI secrets in environment
+	os.Setenv("AETHERPAK_GPG_KEY", "super-secret-gpg-key-payload")
+	os.Setenv("AETHERPAK_GPG_KEY_PASSPHRASE", "my-gpg-passphrase")
+	os.Setenv("OCI_PASSWORD", "my-oci-password")
+	defer func() {
+		os.Unsetenv("AETHERPAK_GPG_KEY")
+		os.Unsetenv("AETHERPAK_GPG_KEY_PASSPHRASE")
+		os.Unsetenv("OCI_PASSWORD")
+	}()
+
+	viper.Reset()
+	initConfig()
+
+	logger.Init(false, false, true) // force plain mode
+	buf := new(bytes.Buffer)
+	configShowCmd.SetOut(buf)
+
+	// Create dummy command to test flag masking
+	dummyCmd := configShowCmd
+	dummyCmd.Flags().String("gpg-key-passphrase", "", "")
+	dummyCmd.Flags().String("gpg-key", "", "")
+	_ = dummyCmd.Flags().Set("gpg-key-passphrase", "flag-gpg-passphrase")
+	_ = dummyCmd.Flags().Set("gpg-key", "flag-gpg-key")
+
+	defer func() {
+		// Clean up dynamically added flags so they don't leak to other tests
+		// Reset flagset by creating a new one if necessary, or just ignore since we rebuild cmd
+	}()
+
+	err = configShowCmd.RunE(dummyCmd, []string{})
+	if err != nil {
+		t.Fatalf("failed to run config show: %v", err)
+	}
+	output := buf.String()
+
+	// Assertions for unmasked values (should NOT be in output)
+	if strings.Contains(output, "super-secret-gpg-key-payload") {
+		t.Error("AETHERPAK_GPG_KEY value was leaked in cleartext!")
+	}
+	if strings.Contains(output, "my-gpg-passphrase") {
+		t.Error("AETHERPAK_GPG_KEY_PASSPHRASE value was leaked in cleartext!")
+	}
+	if strings.Contains(output, "my-oci-password") {
+		t.Error("OCI_PASSWORD value was leaked in cleartext!")
+	}
+	if strings.Contains(output, "flag-gpg-passphrase") {
+		t.Error("gpg-key-passphrase flag value was leaked in cleartext!")
+	}
+	if strings.Contains(output, "flag-gpg-key") {
+		t.Error("gpg-key flag value was leaked in cleartext!")
+	}
+
+	// Assertions for masked values (should be in output)
+	if !strings.Contains(output, "AETHERPAK_GPG_KEY=********") {
+		t.Error("expected AETHERPAK_GPG_KEY to be masked in environment overrides listing")
+	}
+	if !strings.Contains(output, "AETHERPAK_GPG_KEY_PASSPHRASE=********") {
+		t.Error("expected AETHERPAK_GPG_KEY_PASSPHRASE to be masked in environment overrides listing")
+	}
+	if !strings.Contains(output, "OCI_PASSWORD=********") {
+		t.Error("expected OCI_PASSWORD to be masked in environment overrides listing")
+	}
+	if !strings.Contains(output, "--gpg-key-passphrase=********") {
+		t.Error("expected --gpg-key-passphrase flag override to be masked")
+	}
+	if !strings.Contains(output, "--gpg-key=********") {
+		t.Error("expected --gpg-key flag override to be masked")
+	}
+}

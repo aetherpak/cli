@@ -255,7 +255,11 @@ func BuildSite(opts SiteOptions) error {
 
 				exists, err := checkDigestExists(index.Registry, pkg.Name, img.Digest, opts.Insecure)
 				if err != nil {
-					logger.Debug("Error checking digest existence: %v", err)
+					if strings.Contains(err.Error(), "registry authentication failure") {
+						logger.Warn("WARNING: %v. Site reconciliation cannot verify image existence and will not prune this entry.", err)
+					} else {
+						logger.Debug("Error checking digest existence: %v", err)
+					}
 					exists = true // Keep on error
 				}
 
@@ -386,6 +390,9 @@ func checkDigestExists(registry, repository, digest string, insecure bool) (bool
 				// Definitive 404 Not Found only!
 				return false, nil
 			}
+			if tErr.StatusCode == http.StatusUnauthorized || tErr.StatusCode == http.StatusForbidden {
+				return true, fmt.Errorf("registry authentication failure (status %d): %w", tErr.StatusCode, err)
+			}
 		}
 		logger.Debug("Registry HEAD error for %s (treating as exists): %v", digestRef.Name(), err)
 		return true, nil
@@ -514,7 +521,11 @@ Comment=Flatpak repository powered by AetherPak (Pages index + OCI registry blob
 	if gpgKeyBase64 != "" {
 		content += fmt.Sprintf("GPGKey=%s\n", sanitizeINIValue(gpgKeyBase64))
 		if opts.PagesURL != "" {
-			sigLookasideURL := strings.TrimSuffix(opts.PagesURL, "/") + "/sigs"
+			sigDirName := opts.SigDir
+			if sigDirName == "" {
+				sigDirName = "sigs"
+			}
+			sigLookasideURL := strings.TrimSuffix(opts.PagesURL, "/") + "/" + sigDirName
 			content += fmt.Sprintf("SignatureLookaside=%s\n", sanitizeINIValue(sigLookasideURL))
 		}
 	}

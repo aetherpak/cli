@@ -2,6 +2,8 @@ package gitutil
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
@@ -103,6 +105,41 @@ func TestDiffNameOnlySplitsLines(t *testing.T) {
 	want := []string{"a.yaml", "b/c.json"}
 	if !equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSubmoduleRemoveRelativeCommonDir(t *testing.T) {
+	mock := executil.NewMockExecutor()
+	topDir := t.TempDir()
+
+	mock.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "git" {
+			for _, arg := range cmd.Args {
+				if arg == "--git-common-dir" {
+					cmd.OutData = []byte(".git\n")
+					return
+				}
+				if arg == "--show-toplevel" {
+					cmd.OutData = []byte(topDir + "\n")
+					return
+				}
+			}
+		}
+	}
+
+	submoduleDir := filepath.Join(topDir, ".git", "modules", "sources/org.example.App")
+	if err := os.MkdirAll(submoduleDir, 0755); err != nil {
+		t.Fatalf("failed to create mock submodule dir: %v", err)
+	}
+
+	g := NewWithExecutor(mock)
+	if err := g.SubmoduleRemove("sources/org.example.App"); err != nil {
+		t.Fatalf("SubmoduleRemove failed: %v", err)
+	}
+
+	// Verify that the submodule dir was actually deleted (meaning path resolved correctly)
+	if _, err := os.Stat(submoduleDir); !os.IsNotExist(err) {
+		t.Errorf("expected submodule directory %q to be deleted, but it still exists", submoduleDir)
 	}
 }
 

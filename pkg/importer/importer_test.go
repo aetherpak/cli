@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/aetherpak/aetherpak/pkg/executil"
+	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 )
 
@@ -356,6 +358,36 @@ func TestRebindRefsRuntime(t *testing.T) {
 					t.Errorf("expected rebind to use runtime/ ref, got args: %s", argsJoined)
 				}
 			}
+		}
+	}
+}
+
+func TestFetchCleansUpOnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	tempDir := logger.TempDir()
+	if tempDir == "" {
+		tempDir = os.TempDir()
+	}
+
+	_, _, err := Fetch(srv.URL, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	// Read the temp directory to ensure no orphaned "aetherpak-fetch-*.flatpak" file exists
+	files, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("failed to read temp dir: %v", err)
+	}
+
+	for _, f := range files {
+		if strings.HasPrefix(f.Name(), "aetherpak-fetch-") && strings.HasSuffix(f.Name(), ".flatpak") {
+			t.Errorf("found orphaned temp file in temp directory: %s", f.Name())
+			_ = os.Remove(filepath.Join(tempDir, f.Name()))
 		}
 	}
 }

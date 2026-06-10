@@ -282,9 +282,6 @@ func Build(opts BuildOptions) error {
 		exceptions := map[string][]string{
 			appKey: ignoreRules,
 		}
-		if appKey != "*" {
-			exceptions["*"] = ignoreRules
-		}
 
 		jsonData, err := json.Marshal(exceptions)
 		if err != nil {

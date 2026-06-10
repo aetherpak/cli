@@ -212,7 +212,7 @@ var configShowCmd = &cobra.Command{
 			key := parts[0]
 			val := parts[1]
 			if strings.HasPrefix(key, "AETHERPAK_") || key == "OCI_USERNAME" || key == "OCI_PASSWORD" {
-				if key == "OCI_PASSWORD" || key == "AETHERPAK_OCI_PASSWORD" {
+				if key == "OCI_PASSWORD" || key == "AETHERPAK_OCI_PASSWORD" || key == "AETHERPAK_GPG_KEY" || key == "AETHERPAK_GPG_KEY_PASSPHRASE" {
 					val = "********"
 				}
 				envOverrides = append(envOverrides, fmt.Sprintf("%s=%s", key, val))
@@ -223,7 +223,11 @@ var configShowCmd = &cobra.Command{
 		var flagOverrides []string
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			if f.Changed {
-				flagOverrides = append(flagOverrides, fmt.Sprintf("--%s=%s", f.Name, f.Value.String()))
+				val := f.Value.String()
+				if f.Name == "gpg-key-passphrase" || f.Name == "gpg-key" {
+					val = "********"
+				}
+				flagOverrides = append(flagOverrides, fmt.Sprintf("--%s=%s", f.Name, val))
 			}
 		})
 

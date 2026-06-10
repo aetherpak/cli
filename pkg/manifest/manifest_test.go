@@ -124,3 +124,65 @@ func TestDetectInDirAmbiguous(t *testing.T) {
 		t.Fatal("expected error for ambiguous candidates")
 	}
 }
+
+func TestParseManifestWithExtensions(t *testing.T) {
+	dir := t.TempDir()
+	yamlContent := `
+app-id: org.example.App
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+add-extensions:
+  org.example.App.backends:
+    directory: extensions/backends
+  org.example.App.backends.Plugin1:
+    directory: extensions/backends/plugin1
+`
+	p := writeFile(t, dir, "org.example.App.yaml", yamlContent)
+	m, err := ParseManifest(p)
+	if err != nil {
+		t.Fatalf("ParseManifest failed: %v", err)
+	}
+
+	if len(m.ExtensionIDs) != 2 {
+		t.Errorf("expected 2 extension IDs, got %d: %v", len(m.ExtensionIDs), m.ExtensionIDs)
+	}
+	expected := []string{"org.example.App.backends", "org.example.App.backends.Plugin1"}
+	for i, exp := range expected {
+		if i < len(m.ExtensionIDs) && m.ExtensionIDs[i] != exp {
+			t.Errorf("extension ID at %d = %q, want %q", i, m.ExtensionIDs[i], exp)
+		}
+	}
+}
+
+func TestIsRefRelated(t *testing.T) {
+	mainApp := "org.example.App"
+	extensions := []string{
+		"org.example.App.backends",
+		"org.example.App.backends.Plugin1",
+		"org.example.App.Plugin2",
+	}
+
+	cases := []struct {
+		refAppID string
+		want     bool
+	}{
+		{"org.example.App", true},
+		{"org.example.App.Debug", true},
+		{"org.example.App.Locale", true},
+		{"org.example.App.backends", true},
+		{"org.example.App.backends.Plugin1", true},
+		{"org.example.App.backends.Plugin1.Debug", true},
+		{"org.example.App.Plugin2", true},
+		{"org.example.App.Plugin2.Locale", true},
+		{"org.example.App.unrelated", false},
+		{"org.other.App", false},
+	}
+
+	for _, tc := range cases {
+		got := IsRefRelated(tc.refAppID, mainApp, extensions)
+		if got != tc.want {
+			t.Errorf("IsRefRelated(%q) = %t, want %t", tc.refAppID, got, tc.want)
+		}
+	}
+}

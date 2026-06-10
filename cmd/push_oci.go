@@ -8,6 +8,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/aetherpak/aetherpak/pkg/scm"
@@ -77,9 +78,30 @@ var pushOCICmd = &cobra.Command{
 
 		// 1. Try to auto-detect from the repository refs first (if repoPath exists and has refs)
 		if repoRefs, err := repoinfo.ResolveAll(repoPath); err == nil && len(repoRefs) > 0 {
+			// Find manifest path for pushAppID if any
+			var manifestPath string
+			if pushAppID != "" {
+				for i := range cfg.Apps {
+					if cfg.Apps[i].ID == pushAppID {
+						manifestPath = cfg.Apps[i].Manifest
+						break
+					}
+				}
+			}
+
+			// Resolve extension IDs
+			var extensionIDs []string
+			if manifestPath != "" {
+				if m, err := manifest.ParseManifest(manifestPath); err == nil {
+					extensionIDs = m.ExtensionIDs
+				}
+			}
+
 			for _, refInfo := range repoRefs {
-				if pushAppID != "" && refInfo.AppID != pushAppID {
-					continue
+				if pushAppID != "" {
+					if !manifest.IsRefRelated(refInfo.AppID, pushAppID, extensionIDs) {
+						continue
+					}
 				}
 				if cmd.Flags().Changed("arch") && refInfo.Arch != pushArch {
 					continue

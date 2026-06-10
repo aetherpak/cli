@@ -366,22 +366,46 @@ func TestBuildPassesInstallFlag(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 
-	var args []string
+	var hasInstallCmd bool
+	var installArgs []string
 	for _, cmd := range mockExec.Commands {
-		if cmd.Name == "flatpak-builder" {
-			args = cmd.Args
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "install" {
+			hasInstallCmd = true
+			installArgs = cmd.Args
 		}
 	}
-	mhas := func(want string) bool {
-		for _, a := range args {
-			if a == want {
-				return true
-			}
-		}
-		return false
+
+	if !hasInstallCmd {
+		t.Fatal("expected flatpak install command to have run")
 	}
-	if !mhas("--install") {
-		t.Errorf("expected --install flag, but got args: %v", args)
+
+	target := "--user"
+	if os.Getuid() == 0 {
+		target = "--system"
+	}
+
+	absRepoPath, err := filepath.Abs("repo")
+	if err != nil {
+		absRepoPath = "repo"
+	}
+
+	expectedArgs := []string{
+		"install",
+		target,
+		"-y",
+		"--or-update",
+		absRepoPath,
+		"org.example.App",
+	}
+
+	if len(installArgs) != len(expectedArgs) {
+		t.Fatalf("unexpected number of arguments: got %d, expected %d. Args: %v", len(installArgs), len(expectedArgs), installArgs)
+	}
+
+	for i, arg := range expectedArgs {
+		if installArgs[i] != arg {
+			t.Errorf("unexpected arg at index %d: got %q, expected %q", i, installArgs[i], arg)
+		}
 	}
 }
 

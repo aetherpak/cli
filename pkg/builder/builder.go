@@ -15,6 +15,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -358,9 +359,6 @@ func Build(opts BuildOptions) error {
 	if opts.CCacheDir != "" {
 		args = append(args, "--ccache")
 	}
-	if opts.Install {
-		args = append(args, "--install")
-	}
 
 	// Default to target installation for flatpak-builder to match the remote registration,
 	// unless explicitly overridden in BuilderArgs.
@@ -463,59 +461,112 @@ func Build(opts BuildOptions) error {
 		}
 	}
 
-	if opts.Bundle {
-		resolvedAppID := opts.AppID
-		resolvedBranch := opts.Branch
-		resolvedArch := opts.Arch
-		refType := "app"
-
+	mainAppID := opts.AppID
+	if mainAppID == "" {
+		if m, err := manifest.ParseManifest(opts.Manifest); err == nil {
+			mainAppID = m.ID
+		}
+	}
+	if mainAppID == "" {
 		if info, err := repoinfo.Resolve(repoPath); err == nil {
-			if resolvedAppID == "" {
-				resolvedAppID = info.AppID
-			}
-			if resolvedBranch == "" {
-				resolvedBranch = info.Branch
-			}
-			if resolvedArch == "" {
-				resolvedArch = info.Arch
-			}
-			if info.RefType != "" {
-				refType = info.RefType
-			}
+			mainAppID = info.AppID
 		}
+	}
+	if mainAppID == "" {
+		return fmt.Errorf("failed to resolve application ID")
+	}
 
-		if resolvedAppID == "" {
-			return fmt.Errorf("failed to generate flatpak bundle: application ID not resolved")
-		}
+	// Parse manifest to extract extension IDs
+	var extensionIDs []string
+	if m, err := manifest.ParseManifest(opts.Manifest); err == nil {
+		extensionIDs = m.ExtensionIDs
+	}
 
-		bundleDir := filepath.Dir(repoPath)
-		bundleFile := filepath.Join(bundleDir, resolvedAppID+".flatpak")
-		logger.Info("Generating Flatpak bundle: %s", bundleFile)
-
-		bundleArgs := []string{
-			"build-bundle",
+	if opts.Install {
+		refs, err := repoinfo.ResolveAll(repoPath)
+		if err != nil {
+			// Fallback: assume only the main app ref
+			refs = []repoinfo.Info{{
+				AppID:    mainAppID,
+				Branch:   opts.Branch,
+				Arch:     opts.Arch,
+				RepoPath: repoPath,
+				RefType:  "app",
+			}}
 		}
-		if refType == "runtime" {
-			bundleArgs = append(bundleArgs, "--runtime")
+		var relatedRefs []repoinfo.Info
+		for _, ref := range refs {
+			if manifest.IsRefRelated(ref.AppID, mainAppID, extensionIDs) {
+				relatedRefs = append(relatedRefs, ref)
+			}
 		}
-		if resolvedArch != "" {
-			bundleArgs = append(bundleArgs, "--arch="+resolvedArch)
+		if len(relatedRefs) == 0 {
+			return fmt.Errorf("failed to install flatpak: no related refs found in repository")
 		}
-		bundleArgs = append(bundleArgs,
-			repoPath,
-			bundleFile,
-			resolvedAppID,
-		)
-		if resolvedBranch != "" {
-			bundleArgs = append(bundleArgs, resolvedBranch)
+		absRepoPath, err := filepath.Abs(repoPath)
+		if err != nil {
+			absRepoPath = repoPath
 		}
-
-		if err := runFlatpakCommand(opts.Executor, bundleArgs); err != nil {
-			return fmt.Errorf("failed to generate flatpak bundle: %w", err)
+		for _, ref := range relatedRefs {
+			logger.Info("Installing Flatpak ref %s (%s) from repo...", ref.AppID, ref.Ref())
+			installArgs := []string{"install", target, "-y", "--or-update", absRepoPath, ref.AppID}
+			if err := runFlatpakCommand(opts.Executor, installArgs); err != nil {
+				return fmt.Errorf("failed to install flatpak ref %s: %w", ref.AppID, err)
+			}
 		}
 	}
 
-	logger.Info("Build completed successfully for %s.", opts.AppID)
+	if opts.Bundle {
+		refs, err := repoinfo.ResolveAll(repoPath)
+		if err != nil {
+			// Fallback: assume only the main app ref
+			refs = []repoinfo.Info{{
+				AppID:    mainAppID,
+				Branch:   opts.Branch,
+				Arch:     opts.Arch,
+				RepoPath: repoPath,
+				RefType:  "app",
+			}}
+		}
+		var relatedRefs []repoinfo.Info
+		for _, ref := range refs {
+			if manifest.IsRefRelated(ref.AppID, mainAppID, extensionIDs) {
+				relatedRefs = append(relatedRefs, ref)
+			}
+		}
+		if len(relatedRefs) == 0 {
+			return fmt.Errorf("failed to generate flatpak bundle: no related refs found in repository")
+		}
+		for _, ref := range relatedRefs {
+			bundleDir := filepath.Dir(repoPath)
+			bundleFile := filepath.Join(bundleDir, ref.AppID+".flatpak")
+			logger.Info("Generating Flatpak bundle: %s", bundleFile)
+
+			bundleArgs := []string{
+				"build-bundle",
+			}
+			if ref.RefType == "runtime" {
+				bundleArgs = append(bundleArgs, "--runtime")
+			}
+			if ref.Arch != "" {
+				bundleArgs = append(bundleArgs, "--arch="+ref.Arch)
+			}
+			bundleArgs = append(bundleArgs,
+				repoPath,
+				bundleFile,
+				ref.AppID,
+			)
+			if ref.Branch != "" {
+				bundleArgs = append(bundleArgs, ref.Branch)
+			}
+
+			if err := runFlatpakCommand(opts.Executor, bundleArgs); err != nil {
+				return fmt.Errorf("failed to generate flatpak bundle for %s: %w", ref.AppID, err)
+			}
+		}
+	}
+
+	logger.Info("Build completed successfully for %s.", mainAppID)
 	return nil
 }
 

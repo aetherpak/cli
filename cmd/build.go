@@ -3,11 +3,13 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/aetherpak/aetherpak/pkg/builder"
 	"github.com/aetherpak/aetherpak/pkg/ciout"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -304,9 +306,38 @@ var buildCmd = &cobra.Command{
 				{Key: "repo-path", Value: repoPath},
 			}
 			if buildBundle {
+				var extensionIDs []string
+				if m, err := manifest.ParseManifest(job.manifest); err == nil {
+					extensionIDs = m.ExtensionIDs
+				}
+
 				bundleDir := filepath.Dir(repoPath)
-				bundleFile := filepath.Join(bundleDir, resolvedAppID+".flatpak")
-				kvList = append(kvList, ciout.KV{Key: "bundle-path", Value: bundleFile})
+				var bundlePaths []string
+				var mainBundleFile string
+
+				if refs, err := repoinfo.ResolveAll(repoPath); err == nil {
+					for _, ref := range refs {
+						if manifest.IsRefRelated(ref.AppID, resolvedAppID, extensionIDs) {
+							bundleFile := filepath.Join(bundleDir, ref.AppID+".flatpak")
+							bundlePaths = append(bundlePaths, bundleFile)
+							if ref.AppID == resolvedAppID {
+								mainBundleFile = bundleFile
+							}
+						}
+					}
+				}
+
+				if mainBundleFile == "" {
+					mainBundleFile = filepath.Join(bundleDir, resolvedAppID+".flatpak")
+					if len(bundlePaths) == 0 {
+						bundlePaths = append(bundlePaths, mainBundleFile)
+					}
+				}
+
+				kvList = append(kvList, ciout.KV{Key: "bundle-path", Value: mainBundleFile})
+				if len(bundlePaths) > 0 {
+					kvList = append(kvList, ciout.KV{Key: "bundle-paths", Value: strings.Join(bundlePaths, ",")})
+				}
 			}
 			if err := ciout.Emit(buildOutputFile, kvList); err != nil {
 				return NewCmdError(1, err)

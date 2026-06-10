@@ -979,3 +979,145 @@ func TestBuildSiteReconcileActiveOCIRepository(t *testing.T) {
 		t.Error("expected index to NOT contain example/app1-old since it is not in ActiveOCIRepository")
 	}
 }
+
+func TestBuildSiteReconcileEmptyActiveOCIRepository(t *testing.T) {
+	// Setup a mock HTTP registry that returns 200 OK for everything
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records with different OCI repositories
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	rec2 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app2",
+		Registry: server.URL,
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:          recordsDir,
+		SiteDir:             siteDir,
+		Reconcile:           true,
+		ActiveOCIRepository: "", // Empty: active OCI repo pruning is disabled!
+		Insecure:            true,
+		AllowUnsigned:       true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with reconcile=true and empty ActiveOCIRepository: %v", err)
+	}
+
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "example/app1") {
+		t.Error("expected index to contain example/app1")
+	}
+	if !strings.Contains(content, "example/app2") {
+		t.Error("expected index to contain example/app2 since ActiveOCIRepository was empty")
+	}
+}
+
+func TestBuildSiteReconcileEmptyActiveAppIDs(t *testing.T) {
+	// Setup a mock HTTP registry that returns 200 OK for everything
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records
+	rec1 := record.Record{
+		AppID:    "org.example.app1",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	rec2 := record.Record{
+		AppID:    "org.example.app2",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1",
+		Registry: server.URL,
+		Digest:   "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+	}
+	labels2 := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
+		t.Fatalf("failed to write record 2: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		ActiveAppIDs:  nil, // Nil/Empty: active App IDs pruning is disabled!
+		Insecure:      true,
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with reconcile=true and empty ActiveAppIDs: %v", err)
+	}
+
+	indexPath := filepath.Join(siteDir, "index", "static")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "org.example.app1") {
+		t.Error("expected index to contain org.example.app1")
+	}
+	if !strings.Contains(content, "org.example.app2") {
+		t.Error("expected index to contain org.example.app2 since ActiveAppIDs was empty")
+	}
+}

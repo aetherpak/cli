@@ -74,3 +74,25 @@ func TestStreamWithPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamToTargets(t *testing.T) {
+	input := "hello\nworld\r\nfinal line"
+	var buf1, buf2 bytes.Buffer
+
+	targets := []StreamTarget{
+		{Writer: &buf1, Prefix: "W1 |"},
+		{Writer: &buf2, Prefix: "W2 |"},
+	}
+
+	StreamToTargets(strings.NewReader(input), targets...)
+
+	expected1 := "W1 | hello\nW1 | world\nW1 | final line\n"
+	expected2 := "W2 | hello\nW2 | world\nW2 | final line\n"
+
+	if actual1 := buf1.String(); actual1 != expected1 {
+		t.Errorf("buf1 mismatch:\nexpected: %q\ngot: %q", expected1, actual1)
+	}
+	if actual2 := buf2.String(); actual2 != expected2 {
+		t.Errorf("buf2 mismatch:\nexpected: %q\ngot: %q", expected2, actual2)
+	}
+}

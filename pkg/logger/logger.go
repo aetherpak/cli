@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
@@ -28,6 +29,7 @@ var (
 	appLogger = log.NewWithOptions(os.Stderr, log.Options{
 		ReportTimestamp: true,
 	})
+	logMutex      sync.Mutex
 	logFileHandle *os.File
 	logFilePath   string
 	isTempLogFile bool
@@ -48,6 +50,9 @@ func TempDir() string {
 // InitFileLogging configures streaming logs to a file.
 // If filePath is empty, a temporary log file is created.
 func InitFileLogging(filePath string) error {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+
 	if logFileHandle != nil {
 		_ = logFileHandle.Close()
 	}
@@ -81,7 +86,9 @@ func InitFileLogging(filePath string) error {
 
 // CloseLogFile closes the file logging stream and cleans up temp files if successful.
 func CloseLogFile(hasError bool) {
+	logMutex.Lock()
 	if logFileHandle == nil {
+		logMutex.Unlock()
 		return
 	}
 
@@ -94,6 +101,7 @@ func CloseLogFile(hasError bool) {
 	logFileHandle = nil
 	logFilePath = ""
 	isTempLogFile = false
+	logMutex.Unlock()
 
 	if isTemp {
 		if hasError {
@@ -141,9 +149,11 @@ func IsPlain() bool {
 
 // SuccessBanner prints a beautiful success completion box to os.Stdout.
 func SuccessBanner(title, message string) {
+	logMutex.Lock()
 	if logFileHandle != nil {
 		fmt.Fprintf(logFileHandle, "\n✔  %s\n%s\n\n", title, message)
 	}
+	logMutex.Unlock()
 
 	if isJSON {
 		appLogger.Infof("%s: %s", title, message)
@@ -181,9 +191,11 @@ func SuccessBanner(title, message string) {
 
 // ErrorBanner prints a beautiful error box to os.Stderr.
 func ErrorBanner(title, message string) {
+	logMutex.Lock()
 	if logFileHandle != nil {
 		fmt.Fprintf(logFileHandle, "\n✘  %s\n%s\n\n", title, message)
 	}
+	logMutex.Unlock()
 
 	if isJSON {
 		appLogger.Errorf("%s: %s", title, message)
@@ -251,4 +263,29 @@ func Debug(format string, v ...interface{}) {
 // Error logs an error message.
 func Error(format string, v ...interface{}) {
 	appLogger.Errorf(format, v...)
+}
+
+// HasLogFile returns true if a log file is currently initialized.
+func HasLogFile() bool {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	return logFileHandle != nil
+}
+
+// logFileWriterWrapper implements io.Writer and writes to the global log file handle.
+type logFileWriterWrapper struct{}
+
+func (w logFileWriterWrapper) Write(p []byte) (n int, err error) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	if logFileHandle == nil {
+		return 0, os.ErrClosed
+	}
+	return logFileHandle.Write(p)
+}
+
+// LogFileWriter returns an io.Writer that writes to the current log file.
+// If no log file is initialized, it returns a writer that discards all inputs or errors.
+func LogFileWriter() io.Writer {
+	return logFileWriterWrapper{}
 }

@@ -298,6 +298,9 @@ Computes matrices for changed assets since a specific base SHA diff:
 ```bash
 aetherpak plan --base-sha <sha> --workflow-path <path> --output json
 ```
+Options:
+* `--override-branch <branch>`: Overrides the Flatpak branch (release channel) for all planned apps in the matrix.
+* `--force <app-id>`: Rebuilds a specific app. Supports the Flatpak standard `app-id//branch` ref format (e.g. `org.example.App//beta`) to select that app and override its target branch.
 
 #### `build`
 Wraps `flatpak-builder` sandbox compilation:
@@ -305,6 +308,7 @@ Wraps `flatpak-builder` sandbox compilation:
 aetherpak build --app-id org.example.App --manifest apps/manifest.json --arch x86_64 --linter-exception appstream-screenshot-missing --flatpak-remote flathub=https://dl.flathub.org/repo/flathub.flatpakrepo --flatpak-dep flathub:org.gnome.Sdk//45
 ```
 Options:
+* `--app-id <app-id>`: target application ID. Supports the Flatpak standard `app-id//branch` ref format (e.g. `org.example.App//beta`) to build that app and override its target branch.
 * `--flatpak-remote <name>=<url>`: Repeatable flag to register Flatpak remotes before compiling.
 * `--flatpak-dep <remote>:<ref>`: Repeatable flag to install Flatpak dependencies (runtimes, SDK extensions) before compiling.
 * `--no-install-deps`: Disable automatic injection of `--install-deps-from` flags when running `flatpak-builder`.
@@ -315,6 +319,8 @@ Ingests prebuilt bundles (`.flatpak`) and rebinds channels:
 ```bash
 aetherpak import --app-id org.example.App --bundle-url https://... --bundle-sha256 <hex>
 ```
+Options:
+* `--app-id <app-id>`: target application ID. Supports the Flatpak standard `app-id//branch` ref format (e.g. `org.example.App//beta`) to override its target branch.
 
 #### `push-oci`
 Converts repo branch to OCI image layer and pushes:
@@ -322,6 +328,7 @@ Converts repo branch to OCI image layer and pushes:
 aetherpak push-oci --app-id org.example.App --registry ghcr.io --oci-repository my-org/my-app
 ```
 Options:
+* `--app-id <app-id>`: target application ID. Supports the Flatpak standard `app-id//branch` ref format (e.g. `org.example.App//beta`) to filter repository refs or override its target branch.
 * `--gpg-key <path>`: Local path to GPG private key used to sign image manifests.
 * `--no-sign`: Disable GPG signing entirely (bypasses GPG signature step).
 * `--allow-unsigned`: Allow pushing unsigned images if signing keys are missing.
@@ -409,7 +416,7 @@ aetherpak publish --manifest apps/manifest.json --arch x86_64
 aetherpak publish --bundle https://example.com/app.flatpak
 ```
 Options:
-* `--app-id <id>`: target application ID.
+* `--app-id <id>`: target application ID. Supports the Flatpak standard `app-id//branch` ref format (e.g. `org.example.App//beta`) to override its target branch.
 * `--manifest <path>`: path to a local Flatpak manifest file (one-off publish, bypasses config).
 * `--bundle <url|path>`: Flatpak bundle URL or path to import and publish (one-off publish, bypasses config).
 * `--confirm`: skip interactive confirmation prompt when importing bundles.

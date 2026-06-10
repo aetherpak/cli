@@ -13,7 +13,6 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/oci"
 	"github.com/aetherpak/aetherpak/pkg/plan"
-	"github.com/aetherpak/aetherpak/pkg/scm"
 	"github.com/aetherpak/aetherpak/pkg/site"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -360,9 +359,6 @@ var releaseCmd = &cobra.Command{
 		var activeOCIRepo string
 		if viper.IsSet("oci_repository") && cfg != nil {
 			activeOCIRepo = cfg.OCIRepository
-		}
-		if activeOCIRepo == "" {
-			activeOCIRepo = scm.OCIRepository()
 		}
 
 		sOpts := site.SiteOptions{

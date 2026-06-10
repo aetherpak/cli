@@ -16,6 +16,7 @@ var (
 	statusGPGKeys       []string
 	statusGPGPassphrase string
 	statusJSON          bool
+	statusExecutor      executil.Executor = executil.NewOSExecutor()
 )
 
 var statusCmd = &cobra.Command{
@@ -45,7 +46,7 @@ are available, parses the repository configuration, and checks the status of GPG
 		}
 
 		report := status.Check(
-			executil.NewOSExecutor(),
+			statusExecutor,
 			statusCfg,
 			err,
 			resolvedPath,
@@ -53,16 +54,30 @@ are available, parses the repository configuration, and checks the status of GPG
 			[]byte(statusGPGPassphrase),
 		)
 
+		hasMissingRequired := false
+		for _, dep := range report.Dependencies {
+			if dep.Required && !dep.Found {
+				hasMissingRequired = true
+				break
+			}
+		}
+
 		if statusJSON {
 			bz, mErr := json.MarshalIndent(report, "", "  ")
 			if mErr != nil {
 				return NewCmdErrorf(1, "failed to serialize status JSON: %w", mErr)
 			}
 			fmt.Println(string(bz))
+			if hasMissingRequired {
+				return NewCmdErrorf(1, "missing required system dependency")
+			}
 			return nil
 		}
 
 		status.PrintReport(os.Stdout, report)
+		if hasMissingRequired {
+			return NewCmdErrorf(1, "missing required system dependency")
+		}
 		return nil
 	},
 }

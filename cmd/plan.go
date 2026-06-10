@@ -182,6 +182,9 @@ var planCmd = &cobra.Command{
 			for i := range res.MatrixManifest {
 				res.MatrixManifest[i].RunLinter = false
 			}
+			for i := range res.MatrixBundle {
+				res.MatrixBundle[i].RunLinter = false
+			}
 		}
 
 		if outputFormat == "gitlab" {

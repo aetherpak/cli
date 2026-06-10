@@ -168,3 +168,81 @@ apps:
 		}
 	})
 }
+
+func TestPlanDisableLinterMatrixBundle(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	configData := []byte(`
+apps:
+  - id: org.example.BundleApp
+    bundles:
+      x86_64:
+        url: https://example.com/app.flatpak
+        sha256: d577273ff885c3f84da8b3c859c4050d25271d596c3f3f05d527ff250567f812
+`)
+	err := os.WriteFile("aetherpak.yaml", configData, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	defer func() {
+		planManifest = ""
+		forceFlag = ""
+		planArches = nil
+		planBranch = ""
+		planOverrideBranch = ""
+		planOutputFile = ""
+		planDisableLinter = false
+		planCmd.Flags().Lookup("manifest").Changed = false
+		planCmd.Flags().Lookup("force").Changed = false
+		planCmd.Flags().Lookup("arch").Changed = false
+		planCmd.Flags().Lookup("branch").Changed = false
+		planCmd.Flags().Lookup("override-branch").Changed = false
+		planCmd.Flags().Lookup("output-file").Changed = false
+		planCmd.Flags().Lookup("disable-linter").Changed = false
+	}()
+
+	viper.Reset()
+	_ = planCmd.Flags().Set("force", "all")
+	_ = planCmd.Flags().Set("disable-linter", "true")
+	outputFile := filepath.Join(t.TempDir(), "output_bundle.env")
+	_ = planCmd.Flags().Set("output-file", outputFile)
+
+	initConfig()
+	bindFlags(planCmd)
+
+	err = planCmd.RunE(planCmd, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	var matrixBundleJSON string
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "matrix-bundle=") {
+			matrixBundleJSON = strings.Trim(strings.TrimPrefix(line, "matrix-bundle="), "'\"")
+			break
+		}
+	}
+
+	if matrixBundleJSON == "" {
+		t.Fatal("could not find matrix-bundle in output file")
+	}
+
+	var matrixRows []plan.MatrixRow
+	if err := json.Unmarshal([]byte(matrixBundleJSON), &matrixRows); err != nil {
+		t.Fatalf("failed to parse matrix bundle JSON: %v", err)
+	}
+
+	if len(matrixRows) != 1 {
+		t.Fatalf("expected 1 matrix bundle row, got %d", len(matrixRows))
+	}
+
+	if matrixRows[0].RunLinter {
+		t.Error("expected RunLinter to be false in MatrixBundle when disable-linter is set")
+	}
+}

@@ -82,3 +82,19 @@ func extractKeys(t reflect.Type, prefix string) []string {
 	}
 	return keys
 }
+
+func TestBindInheritedFlags(t *testing.T) {
+	viper.Reset()
+	viper.Set("config", "my-custom-config-path.yaml")
+
+	bindFlags(statusCmd)
+
+	f := statusCmd.Flag("config")
+	if f == nil {
+		t.Fatal("expected statusCmd to have 'config' flag (inherited from RootCmd)")
+	}
+
+	if f.Value.String() != "my-custom-config-path.yaml" {
+		t.Errorf("expected inherited flag '--config' to be bound to Viper value 'my-custom-config-path.yaml', got: %q", f.Value.String())
+	}
+}

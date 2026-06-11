@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.30.0](https://github.com/aetherpak/cli/compare/v0.29.0...v0.30.0) (2026-06-11)
+
+
+### Features
+
+* nest debug and locale companion packages under parent applications on landing page ([ca88553](https://github.com/aetherpak/cli/commit/ca885538ed5d10d6d763303c4753595b2b589171))
+
+
+### Bug Fixes
+
+* **ci:** correct repository input format for create-github-app-token ([f119733](https://github.com/aetherpak/cli/commit/f119733f96e5b59c8d1b0a31ce0f64718d1f4dd0))
+
 ## [0.29.0](https://github.com/aetherpak/cli/compare/v0.28.0...v0.29.0) (2026-06-11)
 
 

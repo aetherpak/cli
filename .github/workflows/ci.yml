@@ -118,7 +118,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
+          client-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
           private-key: ${{ secrets.AETHERPAK_ACTION_BOT_APP_PRIVATE_KEY }}
           repositories: '["aetherpak/actions"]'
 

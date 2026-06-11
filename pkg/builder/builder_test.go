@@ -393,7 +393,7 @@ func TestBuildPassesInstallFlag(t *testing.T) {
 		"install",
 		target,
 		"-y",
-		"--or-update",
+		"--reinstall",
 		absRepoPath,
 		"org.example.App",
 	}

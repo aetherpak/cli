@@ -507,7 +507,7 @@ func Build(opts BuildOptions) error {
 		}
 		for _, ref := range relatedRefs {
 			logger.Info("Installing Flatpak ref %s (%s) from repo...", ref.AppID, ref.Ref())
-			installArgs := []string{"install", target, "-y", "--or-update", absRepoPath, ref.AppID}
+			installArgs := []string{"install", target, "-y", "--reinstall", absRepoPath, ref.AppID}
 			if err := runFlatpakCommand(opts.Executor, installArgs); err != nil {
 				return fmt.Errorf("failed to install flatpak ref %s: %w", ref.AppID, err)
 			}

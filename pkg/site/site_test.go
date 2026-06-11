@@ -1271,3 +1271,127 @@ func TestBuildSiteDryRun(t *testing.T) {
 		t.Errorf("expected no files to be written to site directory in dry-run mode, got %d files", len(files))
 	}
 }
+
+func TestBuildSiteWithCompanions(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	// Set up mock records:
+	// 1. Main app
+	rec1 := record.Record{
+		AppID:    "org.example.app",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "ghcr.io",
+		Digest:   "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	}
+	labels1 := map[string]string{
+		"org.flatpak.ref":                   "app/org.example.app/x86_64/stable",
+		"org.flatpak.metadata":              "[Application]\nname=org.example.app",
+		"org.flatpak.timestamp":             "1717200000",
+		"org.flatpak.installed-size":        "20971520",
+		"org.flatpak.download-size":         "5242880",
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>Example App</name><summary>This is a main app</summary></component>`,
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
+		t.Fatalf("failed to write record 1: %v", err)
+	}
+
+	// 2. Debug companion
+	recDebug := record.Record{
+		AppID:    "org.example.app.Debug",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "ghcr.io",
+		Digest:   "sha256:111111111111111111111111111111111111111111111111111111111111111d",
+	}
+	labelsDebug := map[string]string{
+		"org.flatpak.ref":            "runtime/org.example.app.Debug/x86_64/stable",
+		"org.flatpak.metadata":       "[Runtime]\nname=org.example.app.Debug",
+		"org.flatpak.timestamp":      "1717200000",
+		"org.flatpak.installed-size": "314572800",
+		"org.flatpak.download-size":  "78643200",
+	}
+	if _, err := record.WriteRecord(recordsDir, recDebug, labelsDebug); err != nil {
+		t.Fatalf("failed to write debug record: %v", err)
+	}
+
+	// 3. Locale companion
+	recLocale := record.Record{
+		AppID:    "org.example.app.Locale",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "ghcr.io",
+		Digest:   "sha256:111111111111111111111111111111111111111111111111111111111111111l",
+	}
+	labelsLocale := map[string]string{
+		"org.flatpak.ref":            "runtime/org.example.app.Locale/x86_64/stable",
+		"org.flatpak.metadata":       "[Runtime]\nname=org.example.app.Locale",
+		"org.flatpak.timestamp":      "1717200000",
+		"org.flatpak.installed-size": "15728640",
+		"org.flatpak.download-size":  "2097152",
+	}
+	if _, err := record.WriteRecord(recordsDir, recLocale, labelsLocale); err != nil {
+		t.Fatalf("failed to write locale record: %v", err)
+	}
+
+	templateFile := filepath.Join(tempDir, "custom.html")
+	templateContent := `{{range .Apps}}
+App: {{.Name}} ({{.ID}})
+{{range .Branches}}
+- Branch: {{.Branch}}
+{{range .Companions}}
+  - Companion: {{.ID}} Type: {{.Type}} Arches: {{join .Arches "/"}} Install: {{.InstallCmd}} Ref: {{.RefFile}}
+{{end}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(templateFile, []byte(templateContent), 0644); err != nil {
+		t.Fatalf("failed to write template: %v", err)
+	}
+
+	opts := SiteOptions{
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		LandingPage:   true,
+		IndexTemplate: templateFile,
+		RepoTitle:     "TitleTest",
+		RemoteName:    "myremote",
+		AllowUnsigned: true,
+	}
+
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed: %v", err)
+	}
+
+	indexPath := filepath.Join(siteDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	output := string(data)
+	t.Logf("Generated output:\n%s", output)
+
+	// Verify that we only have ONE root app (org.example.app) listed in .Apps
+	if strings.Count(output, "App:") != 1 {
+		t.Errorf("expected exactly 1 root app to be outputted, found: %d", strings.Count(output, "App:"))
+	}
+
+	if !strings.Contains(output, "App: Example App (org.example.app)") {
+		t.Errorf("expected output to contain parent app details, got:\n%s", output)
+	}
+
+	expectedDebugLine := "  - Companion: org.example.app.Debug Type: Debug Arches: x86_64 Install: flatpak install --user myremote org.example.app.Debug//stable Ref: refs/org.example.app.Debug-stable.flatpakref"
+	if !strings.Contains(output, expectedDebugLine) {
+		t.Errorf("expected output to contain debug companion details: %q", expectedDebugLine)
+	}
+
+	expectedLocaleLine := "  - Companion: org.example.app.Locale Type: Locale Arches: x86_64 Install: flatpak install --user myremote org.example.app.Locale//stable Ref: refs/org.example.app.Locale-stable.flatpakref"
+	if !strings.Contains(output, expectedLocaleLine) {
+		t.Errorf("expected output to contain locale companion details: %q", expectedLocaleLine)
+	}
+}

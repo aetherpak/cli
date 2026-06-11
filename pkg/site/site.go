@@ -865,6 +865,16 @@ type TemplateApp struct {
 	Branches []TemplateBranch
 }
 
+type TemplateCompanion struct {
+	ID            string
+	Type          string // "Debug" or "Locale"
+	RefFile       string
+	InstallCmd    string
+	InstalledSize int64
+	DownloadSize  int64
+	Arches        []string
+}
+
 type TemplateBranch struct {
 	Branch        string
 	Arches        []string
@@ -875,6 +885,7 @@ type TemplateBranch struct {
 	Commit        string
 	RefFile       string
 	InstallCmd    string
+	Companions    []TemplateCompanion
 }
 
 type appdataComponent struct {
@@ -983,6 +994,7 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 	// Map to keep track of apps during grouping
 	appMap := make(map[string]*TemplateApp)
 
+	// First pass: aggregate main applications (excluding .Debug and .Locale)
 	for _, pkg := range index.Results {
 		for _, img := range pkg.Images {
 			refVal := img.Labels["org.flatpak.ref"]
@@ -998,6 +1010,11 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 			appID := parts[1]
 			arch := parts[2]
 			branch := parts[3]
+
+			// Skip companions during the first pass
+			if strings.HasSuffix(appID, ".Debug") || strings.HasSuffix(appID, ".Locale") {
+				continue
+			}
 
 			app, exists := appMap[appID]
 			if !exists {
@@ -1056,6 +1073,7 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 					InstalledSize: isize,
 					DownloadSize:  dsize,
 					Commit:        commit,
+					Companions:    []TemplateCompanion{},
 				}
 				app.Branches = append(app.Branches, newBranch)
 			} else {
@@ -1076,6 +1094,177 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 					b.InstalledSize = isize
 					b.DownloadSize = dsize
 					b.Commit = commit
+				}
+			}
+		}
+	}
+
+	// Second pass: process companions (Debug / Locale) and nest them under main apps
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			refVal := img.Labels["org.flatpak.ref"]
+			if refVal == "" || img.Labels["org.flatpak.metadata"] == "" {
+				continue
+			}
+
+			parts := strings.Split(refVal, "/")
+			if len(parts) < 4 || (parts[0] != "app" && parts[0] != "runtime") {
+				continue
+			}
+
+			appID := parts[1]
+			arch := parts[2]
+			branch := parts[3]
+
+			isDebug := strings.HasSuffix(appID, ".Debug")
+			isLocale := strings.HasSuffix(appID, ".Locale")
+
+			if !isDebug && !isLocale {
+				continue
+			}
+
+			var compType string
+			var parentID string
+			if isDebug {
+				compType = "Debug"
+				parentID = strings.TrimSuffix(appID, ".Debug")
+			} else {
+				compType = "Locale"
+				parentID = strings.TrimSuffix(appID, ".Locale")
+			}
+
+			var ts int64
+			if tsStr := img.Labels["org.flatpak.timestamp"]; tsStr != "" {
+				fmt.Sscanf(tsStr, "%d", &ts)
+			}
+			var isize int64
+			if isizeStr := img.Labels["org.flatpak.installed-size"]; isizeStr != "" {
+				fmt.Sscanf(isizeStr, "%d", &isize)
+			}
+			var dsize int64
+			if dsizeStr := img.Labels["org.flatpak.download-size"]; dsizeStr != "" {
+				fmt.Sscanf(dsizeStr, "%d", &dsize)
+			}
+
+			parentApp, parentExists := appMap[parentID]
+			if parentExists {
+				// Find parent branch
+				var branchIdx = -1
+				for i, b := range parentApp.Branches {
+					if b.Branch == branch {
+						branchIdx = i
+						break
+					}
+				}
+
+				if branchIdx != -1 {
+					b := &parentApp.Branches[branchIdx]
+					// Find or create template companion
+					var compIdx = -1
+					for i, comp := range b.Companions {
+						if comp.Type == compType {
+							compIdx = i
+							break
+						}
+					}
+
+					if compIdx == -1 {
+						newComp := TemplateCompanion{
+							ID:            appID,
+							Type:          compType,
+							RefFile:       fmt.Sprintf("refs/%s-%s.flatpakref", appID, strings.ReplaceAll(branch, "/", "-")),
+							InstallCmd:    fmt.Sprintf("flatpak install --user %s %s//%s", data.RemoteName, appID, branch),
+							InstalledSize: isize,
+							DownloadSize:  dsize,
+							Arches:        []string{arch},
+						}
+						b.Companions = append(b.Companions, newComp)
+					} else {
+						comp := &b.Companions[compIdx]
+						// Add arch if unique
+						foundArch := false
+						for _, a := range comp.Arches {
+							if a == arch {
+								foundArch = true
+								break
+							}
+						}
+						if !foundArch {
+							comp.Arches = append(comp.Arches, arch)
+							sort.Strings(comp.Arches)
+						}
+						// Update stats if this entry is newer
+						if ts > b.Timestamp {
+							comp.InstalledSize = isize
+							comp.DownloadSize = dsize
+						}
+					}
+				}
+			} else {
+				// Parent app is missing from index, keep companion as a standalone entry
+				app, exists := appMap[appID]
+				if !exists {
+					appName, appSummary := parseAppMetadata(img.Labels["org.freedesktop.appstream.appdata"], appID)
+					iconURL := img.Labels["org.freedesktop.appstream.icon-64"]
+
+					app = &TemplateApp{
+						ID:       appID,
+						Name:     appName,
+						Summary:  appSummary,
+						Icon:     iconURL,
+						Branches: []TemplateBranch{},
+					}
+					appMap[appID] = app
+				} else {
+					if app.Name == appID || app.Summary == "" {
+						if name, summary := parseAppMetadata(img.Labels["org.freedesktop.appstream.appdata"], appID); name != appID && name != "" {
+							app.Name = name
+							app.Summary = summary
+						}
+					}
+					if app.Icon == "" {
+						app.Icon = img.Labels["org.freedesktop.appstream.icon-64"]
+					}
+				}
+
+				// Find or create branch
+				var branchIdx = -1
+				for i, b := range app.Branches {
+					if b.Branch == branch {
+						branchIdx = i
+						break
+					}
+				}
+
+				if branchIdx == -1 {
+					newBranch := TemplateBranch{
+						Branch:        branch,
+						Arches:        []string{arch},
+						Timestamp:     ts,
+						InstalledSize: isize,
+						DownloadSize:  dsize,
+						Commit:        img.Labels["org.flatpak.commit"],
+						Companions:    []TemplateCompanion{},
+					}
+					app.Branches = append(app.Branches, newBranch)
+				} else {
+					b := &app.Branches[branchIdx]
+					foundArch := false
+					for _, a := range b.Arches {
+						if a == arch {
+							foundArch = true
+							break
+						}
+					}
+					if !foundArch {
+						b.Arches = append(b.Arches, arch)
+					}
+					if ts > b.Timestamp {
+						b.Timestamp = ts
+						b.InstalledSize = isize
+						b.DownloadSize = dsize
+						b.Commit = img.Labels["org.flatpak.commit"]
+					}
 				}
 			}
 		}

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.29.0](https://github.com/aetherpak/cli/compare/v0.28.0...v0.29.0) (2026-06-11)
+
+
+### Features
+
+* **cli:** add fallback to actual repository branches in push-oci ([9c098a9](https://github.com/aetherpak/cli/commit/9c098a92ae2590cbd29a656c9dde4ea0eb524700))
+
+
+### Bug Fixes
+
+* **ci:** avoid build tag race conditions in reusable container build ([6ea461d](https://github.com/aetherpak/cli/commit/6ea461df65361e3b60783588792bd53033861cf6))
+* scope token to actions repository using app-id ([9d49a3e](https://github.com/aetherpak/cli/commit/9d49a3ed5c25669e2a22677f2f5a2cf5b1ec6c7f))
+* use client-id and configure actionlint config to ignore warning ([75bf499](https://github.com/aetherpak/cli/commit/75bf499bf0fc04f28d25912588cb9a4442ae1408))
+
 ## [0.28.0](https://github.com/aetherpak/cli/compare/v0.27.0...v0.28.0) (2026-06-10)
 
 

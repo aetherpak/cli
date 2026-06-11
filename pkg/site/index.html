@@ -553,6 +553,105 @@
 
 
 
+    /* Companions / Extensions section styling */
+    .companions-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--border);
+    }
+    .companions-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    .companions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 0.5rem;
+    }
+    .companion-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.6rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    html.dark .companion-item {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .companion-item:hover {
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px var(--primary-glow);
+    }
+    .companion-info {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-width: 0;
+    }
+    .companion-icon-wrapper {
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .companion-details {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .companion-name {
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .companion-meta {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .companion-actions {
+      display: flex;
+      gap: 0.25rem;
+      flex-shrink: 0;
+    }
+    .btn-companion-action {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      padding: 0.2rem;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-companion-action:hover {
+      color: var(--text);
+      background: var(--card);
+      border-color: var(--primary);
+    }
+    .btn-companion-action.success {
+      color: var(--success);
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+
     /* Focus visible accessibility outlines */
     :focus-visible {
       outline: 2px solid var(--primary);
@@ -858,14 +957,66 @@
       ]).then(([signing, data]) => {
         const setup = buildSetup(signing);
         const apps = {};
+        const companions = [];
+
         (data.Results || []).forEach(res => (res.Images || []).forEach(img => {
           const L = img.Labels || {}; const ref = L['org.flatpak.ref'];
           if (!ref || !L['org.flatpak.metadata']) return;
           const [, id, arch, branch] = ref.split('/'); if (!branch) return;
-          const a = apps[id] || (apps[id] = { id, icon: L['org.freedesktop.appstream.icon-64'], meta: appMeta(L['org.freedesktop.appstream.appdata'] || ''), ch: {} });
-          const c = a.ch[branch] || (a.ch[branch] = { branch, arches: new Set(), ts: 0, isize: L['org.flatpak.installed-size'], dsize: L['org.flatpak.download-size'], commit: L['org.flatpak.commit'] });
-          c.arches.add(arch); c.ts = Math.max(c.ts, +L['org.flatpak.timestamp'] || 0);
+
+          const isDebug = id.endsWith('.Debug');
+          const isLocale = id.endsWith('.Locale');
+
+          if (isDebug || isLocale) {
+            companions.push({
+              id,
+              arch,
+              branch,
+              type: isDebug ? 'Debug' : 'Locale',
+              isize: L['org.flatpak.installed-size'],
+              dsize: L['org.flatpak.download-size'],
+              commit: L['org.flatpak.commit'],
+              ts: Math.max(0, +L['org.flatpak.timestamp'] || 0)
+            });
+          } else {
+            const a = apps[id] || (apps[id] = { id, icon: L['org.freedesktop.appstream.icon-64'], meta: appMeta(L['org.freedesktop.appstream.appdata'] || ''), ch: {} });
+            const c = a.ch[branch] || (a.ch[branch] = { branch, arches: new Set(), ts: 0, isize: L['org.flatpak.installed-size'], dsize: L['org.flatpak.download-size'], commit: L['org.flatpak.commit'], companions: [] });
+            c.arches.add(arch); c.ts = Math.max(c.ts, +L['org.flatpak.timestamp'] || 0);
+          }
         }));
+
+        companions.forEach(comp => {
+          let parentId = '';
+          if (comp.type === 'Debug') parentId = comp.id.slice(0, -6);
+          else if (comp.type === 'Locale') parentId = comp.id.slice(0, -7);
+
+          const parentApp = apps[parentId];
+          if (parentApp) {
+            const parentBranch = parentApp.ch[comp.branch];
+            if (parentBranch) {
+              let compItem = parentBranch.companions.find(c => c.type === comp.type);
+              if (!compItem) {
+                compItem = {
+                  type: comp.type,
+                  id: comp.id,
+                  isize: comp.isize,
+                  dsize: comp.dsize,
+                  commit: comp.commit,
+                  refFile: `refs/${comp.id}-${comp.branch.replace(/\//g, '-')}.flatpakref`,
+                  cmd: `flatpak install --user ${remoteName} ${comp.id}//${comp.branch}`,
+                  arches: new Set()
+                };
+                parentBranch.companions.push(compItem);
+              }
+              compItem.arches.add(comp.arch);
+            }
+          } else {
+            // No parent app found, treat companion as standalone
+            const a = apps[comp.id] || (apps[comp.id] = { id: comp.id, icon: '', meta: { name: comp.id.split('.').pop(), summary: comp.type + ' runtime extension' }, ch: {} });
+            const c = a.ch[comp.branch] || (a.ch[comp.branch] = { branch: comp.branch, arches: new Set(), ts: 0, isize: comp.isize, dsize: comp.dsize, commit: comp.commit, companions: [] });
+            c.arches.add(comp.arch); c.ts = Math.max(c.ts, comp.ts);
+          }
+        });
 
         const ids = Object.keys(apps).sort();
 
@@ -895,6 +1046,42 @@
             const cmd = `flatpak install --user ${remoteName} ${id}//${c.branch}`;
             const refFile = `refs/${id}-${c.branch.replace(/\//g, '-')}.flatpakref`;
             const arches = [...c.arches].sort().map(a => `<span class="badge">${esc(a)}</span>`).join('');
+
+            let companionsHtml = '';
+            if (c.companions && c.companions.length > 0) {
+              const itemsHtml = c.companions.map(comp => {
+                const compArches = [...comp.arches].sort().map(a => `<span class="badge">${esc(a)}</span>`).join('');
+                let iconSvg = '';
+                if (comp.type === 'Debug') {
+                  iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 8v5a4 4 0 0 1-8 0V8"></path><line x1="6" y1="7.11" x2="2" y2="5"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="6" y1="16.89" x2="2" y2="19"></line><line x1="18" y1="7.11" x2="22" y2="5"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="18" y1="16.89" x2="22" y2="19"></line></svg>`;
+                } else {
+                  iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
+                }
+                return `
+                  <div class="companion-item">
+                    <div class="companion-info">
+                      <span class="companion-icon-wrapper">${iconSvg}</span>
+                      <div class="companion-details">
+                        <span class="companion-name">${esc(comp.type)} Extension</span>
+                        <span class="companion-meta" title="${esc(comp.id)}">${esc(comp.id)} &bull; ${fmtSize(comp.isize)} installed</span>
+                      </div>
+                    </div>
+                    <div class="companion-actions">
+                      <a class="btn-companion-action" href="${esc(comp.refFile)}" download title="Download .flatpakref" aria-label="Download ${esc(comp.type)} ref file">${ICON_DL}</a>
+                      <button class="btn-companion-action" onclick="copyToClipboard('${esc(comp.cmd)}', this)" title="Copy install command" aria-label="Copy ${esc(comp.type)} install command">${ICON_COPY}</button>
+                    </div>
+                  </div>`;
+              }).join('');
+
+              companionsHtml = `
+                <div class="companions-section">
+                  <div class="companions-title">Additional Components</div>
+                  <div class="companions-grid">
+                    ${itemsHtml}
+                  </div>
+                </div>`;
+            }
+
             return `
               <div class="release ${i ? 'old' : ''}">
                 <div class="release-head">
@@ -904,6 +1091,7 @@
                 <div class="release-meta">${fmtSize(c.isize)} installed &bull; ${fmtSize(c.dsize)} download${c.commit ? ' &bull; ' + esc(c.commit.slice(0, 10)) : ''}</div>
                 <div class="actions"><a class="btn primary" href="${esc(refFile)}" download>${ICON_DL} Install (${esc(c.branch)})</a></div>
                 ${codeBlock('', cmd)}
+                ${companionsHtml}
               </div>`;
           }).join('');
           return `

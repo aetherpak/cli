@@ -274,5 +274,47 @@ func generateDummyRecords(recordsDir string, appsMode string) error {
 		return err
 	}
 
+	// GNOME Builder Debug (stable, x86_64)
+	app1Debug64 := record.Record{
+		AppID:    "org.gnome.Builder.Debug",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "gnome/builder",
+		Registry: "ghcr.io",
+		Digest:   "sha256:111111111111111111111111111111111111111111111111111111111111111d",
+	}
+	app1Debug64Labels := map[string]string{
+		"org.flatpak.ref":                   "runtime/org.gnome.Builder.Debug/x86_64/stable",
+		"org.flatpak.metadata":              "[Runtime]\nname=org.gnome.Builder.Debug\nparent=org.gnome.Builder/x86_64/stable",
+		"org.flatpak.timestamp":             "1717200000",
+		"org.flatpak.installed-size":        "314572800", // 300 MB
+		"org.flatpak.download-size":         "78643200",  // 75 MB
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>GNOME Builder Debug Symbols</name><summary>Debug symbols for GNOME Builder</summary></component>`,
+	}
+	if _, err := record.WriteRecord(recordsDir, app1Debug64, app1Debug64Labels); err != nil {
+		return err
+	}
+
+	// GNOME Builder Locale (stable, x86_64)
+	app1Locale64 := record.Record{
+		AppID:    "org.gnome.Builder.Locale",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "gnome/builder",
+		Registry: "ghcr.io",
+		Digest:   "sha256:111111111111111111111111111111111111111111111111111111111111111l",
+	}
+	app1Locale64Labels := map[string]string{
+		"org.flatpak.ref":                   "runtime/org.gnome.Builder.Locale/x86_64/stable",
+		"org.flatpak.metadata":              "[Runtime]\nname=org.gnome.Builder.Locale\nparent=org.gnome.Builder/x86_64/stable",
+		"org.flatpak.timestamp":             "1717200000",
+		"org.flatpak.installed-size":        "15728640", // 15 MB
+		"org.flatpak.download-size":         "2097152",  // 2 MB
+		"org.freedesktop.appstream.appdata": `<?xml version="1.0" encoding="UTF-8"?><component><name>GNOME Builder Translations</name><summary>Translations for GNOME Builder</summary></component>`,
+	}
+	if _, err := record.WriteRecord(recordsDir, app1Locale64, app1Locale64Labels); err != nil {
+		return err
+	}
+
 	return nil
 }

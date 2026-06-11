@@ -120,6 +120,7 @@ jobs:
         with:
           app-id: ${{ vars.AETHERPAK_ACTION_BOT_CLIENT_ID }}
           private-key: ${{ secrets.AETHERPAK_ACTION_BOT_APP_PRIVATE_KEY }}
+          repositories: '["aetherpak/actions"]'
 
       - name: Trigger bump CLI version workflow
         env:

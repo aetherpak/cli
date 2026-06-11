@@ -129,7 +129,40 @@ var pushOCICmd = &cobra.Command{
 				})
 			}
 			if pushAppID != "" && len(targets) == 0 {
-				return NewCmdErrorf(1, "no refs found in repository matching app-id %q", pushAppID)
+				var candidates []string
+				for _, refInfo := range repoRefs {
+					if manifest.IsRefRelated(refInfo.AppID, pushAppID, extensionIDs) {
+						foundCandidate := false
+						for _, c := range candidates {
+							if c == refInfo.Branch {
+								foundCandidate = true
+								break
+							}
+						}
+						if !foundCandidate {
+							candidates = append(candidates, refInfo.Branch)
+						}
+					}
+				}
+				if len(candidates) > 0 {
+					logger.Warn("requested branch %q for app %q not found, but other branch(es) %v exist in repository. Pushing the existing branch instead.", pushBranch, pushAppID, candidates)
+					for _, refInfo := range repoRefs {
+						if !manifest.IsRefRelated(refInfo.AppID, pushAppID, extensionIDs) {
+							continue
+						}
+						if cmd.Flags().Changed("arch") && refInfo.Arch != pushArch {
+							continue
+						}
+						targets = append(targets, pushTarget{
+							AppID:   refInfo.AppID,
+							Arch:    refInfo.Arch,
+							Branch:  refInfo.Branch,
+							RefType: refInfo.RefType,
+						})
+					}
+				} else {
+					return NewCmdErrorf(1, "no refs found in repository matching app-id %q", pushAppID)
+				}
 			}
 		}
 

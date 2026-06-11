@@ -462,6 +462,54 @@ apps:
 		}
 	})
 
+	t.Run("Scenario 5: Push-oci fallback when requested branch not found but other branches exist", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "aetherpak-sc5-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		repoPath := filepath.Join(tempDir, "repo")
+		recordsDir := filepath.Join(tempDir, "records")
+
+		// Create mock app with branch stable
+		createMockFlatpakAppCustom(t, repoPath, "org.example.AppFallback", "x86_64", "stable")
+
+		// Push requesting branch beta
+		pushCmd := exec.Command(binaryPath, "push-oci",
+			"--registry=localhost:"+registryPort,
+			"--oci-repository=aetherpak/test-fallback",
+			"--repo-path="+repoPath,
+			"--records-dir="+recordsDir,
+			"--app-id=org.example.AppFallback",
+			"--branch=beta",
+			"--allow-unsigned",
+		)
+		pushCmd.Dir = tempDir
+		var stdout, stderr bytes.Buffer
+		pushCmd.Stdout = &stdout
+		pushCmd.Stderr = &stderr
+
+		if err := pushCmd.Run(); err != nil {
+			t.Fatalf("push-oci fallback failed: %v\nStdout: %s\nStderr: %s", err, stdout.String(), stderr.String())
+		}
+
+		// Verify that a record exists under the actual built branch 'stable' rather than 'beta'
+		rec := filepath.Join(recordsDir, "org.example.AppFallback-x86_64", "record.json")
+		if _, err := os.Stat(rec); os.IsNotExist(err) {
+			t.Fatalf("Expected record for AppFallback to exist: %s", rec)
+		}
+
+		// Read record to ensure it is stable
+		data, err := os.ReadFile(rec)
+		if err != nil {
+			t.Fatalf("failed to read record: %v", err)
+		}
+		if !strings.Contains(string(data), `"branch": "stable"`) {
+			t.Errorf("expected record to specify branch stable, got: %s", string(data))
+		}
+	})
+
 	t.Run("Scenario 4: Push a runtime (extension) ref and verify it succeeds using autodetect", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "aetherpak-sc4-*")
 		if err != nil {

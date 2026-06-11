@@ -23,8 +23,43 @@ on:
         default: "dev"
 
 jobs:
+  resolve:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      sha-tag: ${{ steps.resolve.outputs.sha-tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Resolve SHA Tag and Version
+        id: resolve
+        shell: bash
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          # Resolve version string
+          VERSION="${{ inputs.version }}"
+          if [ "$VERSION" = "dev" ] || [ -z "$VERSION" ]; then
+            if [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+              VERSION="${{ github.ref_name }}"
+            else
+              VERSION="git+$SHORT_SHA"
+            fi
+          fi
+
+          CLEAN_VERSION=$(echo "$VERSION" | tr '+' '-')
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha-tag=sha-$SHORT_SHA-$CLEAN_VERSION" >> "$GITHUB_OUTPUT"
+
   build-arch:
     name: Build & Test (${{ matrix.platform }})
+    needs: resolve
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -46,24 +81,6 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
 
-      - name: Resolve SHA Tag and Version
-        id: resolve
-        shell: bash
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
-
-          # Resolve version string
-          VERSION="${{ inputs.version }}"
-          if [ "$VERSION" = "dev" ] || [ -z "$VERSION" ]; then
-            if [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
-              VERSION="${{ github.ref_name }}"
-            else
-              VERSION="git+$SHORT_SHA"
-            fi
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Enable Unprivileged User Namespaces (Ubuntu 24.04+)
         shell: bash
         run: |
@@ -75,18 +92,18 @@ jobs:
       - name: Build & Test Container Image
         uses: ./.github/actions/container-build
         with:
-          tags: ${{ steps.resolve.outputs.sha-tag }}
+          tags: ${{ needs.resolve.outputs.sha-tag }}
           push: ${{ inputs.push }}
           platform: ${{ matrix.platform }}
           suffix: ${{ matrix.suffix }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
-          version: ${{ steps.resolve.outputs.version }}
+          version: ${{ needs.resolve.outputs.version }}
 
 
   merge-manifests:
     name: Merge Multi-Arch Manifests
-    needs: build-arch
+    needs: [resolve, build-arch]
     if: ${{ inputs.push }}
     runs-on: ubuntu-latest
     permissions:
@@ -97,13 +114,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
-
-      - name: Resolve SHA Tag
-        id: resolve
-        shell: bash
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "sha-tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Log in to the Container registry
         uses: redhat-actions/podman-login@v1
@@ -117,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           TAGS=$(echo "${{ inputs.image-tags }}" | xargs)
-          SHA_TAG="${{ steps.resolve.outputs.sha-tag }}"
+          SHA_TAG="${{ needs.resolve.outputs.sha-tag }}"
           for tag in $TAGS; do
             echo "=== Merging tags for CLI image tag: ${tag} ==="
             podman manifest create "ghcr.io/aetherpak/cli:${tag}"

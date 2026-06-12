@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/aetherpak/cli/compare/v0.30.0...v0.31.0) (2026-06-12)
+
+
+### Features
+
+* **builder:** use --reinstall for build --install ([a37e150](https://github.com/aetherpak/cli/commit/a37e1505ba6bb72c1f171b716b4ae480bcbb60ee))
+
 ## [0.30.0](https://github.com/aetherpak/cli/compare/v0.29.0...v0.30.0) (2026-06-11)
 
 

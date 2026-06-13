@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/aetherpak/cli/compare/v0.31.0...v0.32.0) (2026-06-13)
+
+
+### Features
+
+* **site:** use remote name as default Flatpak repo title ([226747a](https://github.com/aetherpak/cli/commit/226747a34d69a718f311ba1bd6665f98dc533bb8))
+
 ## [0.31.0](https://github.com/aetherpak/cli/compare/v0.30.0...v0.31.0) (2026-06-12)
 
 

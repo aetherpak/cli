@@ -37,7 +37,7 @@ The CLI parses settings from a configuration file, looking for `aetherpak.yaml` 
 * **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`). Historically used for OCI registry pushes; now acts as a fallback for `oci_repository` (deprecated for registry pushes).
 * **`output_dir`** (string): Base directory for all output assets (state, records, site, ccache, repo) unless overridden.
 * **`no_sign`** (boolean): Set to `true` to disable GPG signing of repositories and OCI images entirely (defaults to `false`).
-* **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to `"Flatpak Repository"`).
+* **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to the value of `remote_name`, which defaults to `"aetherpak"`).
 * **`repo_homepage`** (string): URL link for repository homepage metadata.
 * **`runtime_repo`** (string): Fallback `.flatpakrepo` URL used to resolve dependencies (defaults to Flathub).
 * **`channel_mappings`** (map[string]string): Key-value pairs mapping Git references (supporting glob wildcards like `staging/*`) to target flatpak branches.

@@ -529,7 +529,7 @@ func writeFlatpakRepoFile(siteDir string, registry string, gpgKeyBase64 string, 
 
 	title := opts.RepoTitle
 	if title == "" {
-		title = "Flatpak Repository"
+		title = remote
 	}
 
 	homepage := opts.RepoHomepage
@@ -968,7 +968,7 @@ func buildTemplateData(opts SiteOptions, index FlatpakIndex, fingerprint string,
 		data.RemoteName = "aetherpak"
 	}
 	if data.RepoTitle == "" {
-		data.RepoTitle = "Flatpak Repository"
+		data.RepoTitle = data.RemoteName
 	}
 	if data.AccentColor == "" {
 		data.AccentColor = "#8b5cf6"

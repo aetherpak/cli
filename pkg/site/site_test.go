@@ -1231,6 +1231,64 @@ func TestWriteFlatpakRepoCustomSigDir(t *testing.T) {
 	}
 }
 
+func TestWriteFlatpakRepoDefaultTitle(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteName string
+		repoTitle  string
+		expected   string
+	}{
+		{
+			name:       "defaults to remote name when title is empty",
+			remoteName: "my-custom-remote",
+			repoTitle:  "",
+			expected:   "Title=my-custom-remote",
+		},
+		{
+			name:       "defaults to aetherpak when both are empty",
+			remoteName: "",
+			repoTitle:  "",
+			expected:   "Title=aetherpak",
+		},
+		{
+			name:       "uses configured repo title override",
+			remoteName: "my-custom-remote",
+			repoTitle:  "Override Title",
+			expected:   "Title=Override Title",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			opts := SiteOptions{
+				RemoteName: tt.remoteName,
+				RepoTitle:  tt.repoTitle,
+			}
+
+			err := writeFlatpakRepoFile(tempDir, "ghcr.io", "", opts)
+			if err != nil {
+				t.Fatalf("writeFlatpakRepoFile failed: %v", err)
+			}
+
+			remote := tt.remoteName
+			if remote == "" {
+				remote = "aetherpak"
+			}
+			repoFilePath := filepath.Join(tempDir, remote+".flatpakrepo")
+			repoBytes, err := os.ReadFile(repoFilePath)
+			if err != nil {
+				t.Fatalf("failed to read generated flatpakrepo file: %v", err)
+			}
+			repoContent := string(repoBytes)
+
+			if !strings.Contains(repoContent, tt.expected) {
+				t.Errorf("expected flatpakrepo to contain %q, got:\n%s", tt.expected, repoContent)
+			}
+		})
+	}
+}
+
 func TestBuildSiteDryRun(t *testing.T) {
 	tempDir := t.TempDir()
 	recordsDir := filepath.Join(tempDir, "records")

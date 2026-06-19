@@ -20,7 +20,7 @@ jobs:
       latest_tag: ${{ steps.get-tag.outputs.latest_tag }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Get latest tag

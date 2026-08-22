@@ -968,3 +968,75 @@ func TestBuildAutoInjectsInstallDepsFrom(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildZeroManifest(t *testing.T) {
+	tempDir := t.TempDir()
+	stateDir := filepath.Join(tempDir, ".state")
+	repoPath := filepath.Join(tempDir, "repo")
+
+	mockExec := executil.NewMockExecutor()
+	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"
+
+	opts := BuildOptions{
+		AppID:          "ai.lemonade_server.Lemonade",
+		Runtime:        "org.gnome.Platform",
+		RuntimeVersion: "49",
+		SDK:            "org.gnome.Sdk",
+		Arch:           "x86_64",
+		Branch:         "stable",
+		StateDir:       stateDir,
+		RepoPath:       repoPath,
+		NoFlathub:      true,
+		Sources: &config.SourcesConfig{
+			Binaries: []config.BinarySource{
+				{Path: "build/lemond", Dest: "/app/bin/lemond"},
+				{Path: "build/lemonade", Dest: "/app/bin/lemonade"},
+			},
+			Desktop:  "data/lemonade-app.desktop",
+			Metainfo: "data/ai.lemonade_server.Lemonade.metainfo.xml",
+			Icons:    "src/app/src-tauri/icons/",
+		},
+		Executor: mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("expected build to succeed, got: %v", err)
+	}
+
+	// Verify generated manifest was created
+	genManifest := filepath.Join(stateDir, "manifests", "ai.lemonade_server.Lemonade.yaml")
+	data, err := os.ReadFile(genManifest)
+	if err != nil {
+		t.Fatalf("expected generated manifest file at %s, got err: %v", genManifest, err)
+	}
+
+	if !strings.Contains(string(data), "id: ai.lemonade_server.Lemonade") {
+		t.Errorf("expected manifest to contain app id, got: %s", string(data))
+	}
+	if !strings.Contains(string(data), `install -Dm755 "lemond" "/app/bin/lemond"`) {
+		t.Errorf("expected manifest to contain binary install command, got: %s", string(data))
+	}
+
+	// Verify flatpak-builder ran with the generated manifest
+	var builderRan bool
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "flatpak-builder" {
+			builderRan = true
+			foundManifest := false
+			for _, arg := range cmd.Args {
+				if arg == genManifest {
+					foundManifest = true
+					break
+				}
+			}
+			if !foundManifest {
+				t.Errorf("expected flatpak-builder to receive generated manifest %s, got args: %v", genManifest, cmd.Args)
+			}
+		}
+	}
+
+	if !builderRan {
+		t.Errorf("expected flatpak-builder to have run")
+	}
+}

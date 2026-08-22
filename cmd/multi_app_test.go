@@ -413,3 +413,65 @@ func TestGlobalOutputDirFlagOverride(t *testing.T) {
 		t.Errorf("expected OutputDir to be 'custom-global-out', got %q", cfg.OutputDir)
 	}
 }
+
+func TestBuildZeroManifestLemonade(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Chdir(tempDir)
+
+	defer func() {
+		viper.Reset()
+		initConfig()
+	}()
+
+	// Create dummy binary files and desktop/metainfo/icons
+	_ = os.MkdirAll("build", 0755)
+	_ = os.WriteFile("build/lemond", []byte("#!/bin/sh\necho lemond"), 0755)
+	_ = os.WriteFile("build/lemonade", []byte("#!/bin/sh\necho lemonade"), 0755)
+	_ = os.MkdirAll("data", 0755)
+	_ = os.WriteFile("data/lemonade-app.desktop", []byte("[Desktop Entry]\nType=Application\nName=Lemonade\nExec=lemond\n"), 0644)
+	_ = os.WriteFile("data/ai.lemonade_server.Lemonade.metainfo.xml", []byte("<component></component>"), 0644)
+	_ = os.MkdirAll("src/app/src-tauri/icons", 0755)
+	_ = os.WriteFile("src/app/src-tauri/icons/128x128.png", []byte("fake-png"), 0644)
+
+	yamlContent := `
+app_id: ai.lemonade_server.Lemonade
+runtime: org.gnome.Platform//49
+sources:
+  binaries:
+    - path: build/lemond
+      dest: /app/bin/lemond
+    - path: build/lemonade
+      dest: /app/bin/lemonade
+  desktop: data/lemonade-app.desktop
+  metainfo: data/ai.lemonade_server.Lemonade.metainfo.xml
+  icons: src/app/src-tauri/icons/
+`
+	if err := os.WriteFile("aetherpak.yaml", []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write aetherpak.yaml: %v", err)
+	}
+
+	viper.Reset()
+	initConfig()
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 app loaded, got %d", len(cfg.Apps))
+	}
+	app := cfg.Apps[0]
+	if app.ID != "ai.lemonade_server.Lemonade" {
+		t.Errorf("expected app ID ai.lemonade_server.Lemonade, got %q", app.ID)
+	}
+	if app.Runtime != "org.gnome.Platform" || app.RuntimeVersion != "49" {
+		t.Errorf("expected runtime org.gnome.Platform 49, got %s %s", app.Runtime, app.RuntimeVersion)
+	}
+	if app.Command != "lemond" {
+		t.Errorf("expected command lemond, got %q", app.Command)
+	}
+	if len(app.Sources.Binaries) != 2 {
+		t.Fatalf("expected 2 binaries, got %d", len(app.Sources.Binaries))
+	}
+}

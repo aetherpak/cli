@@ -44,6 +44,15 @@ type BuildOptions struct {
 	Bundle               bool                           // generate a bundled flatpak binary (.flatpak) for the application
 	NoInstallDeps        bool                           // disable auto-injection of --install-deps-from flags
 	NoFlathub            bool                           // disable auto-injection of flathub as a dependency remote
+
+	// Zero-Manifest Mode options:
+	Sources        *config.SourcesConfig
+	Runtime        string
+	RuntimeVersion string
+	SDK            string
+	SDKVersion     string
+	Command        string
+	FinishArgs     []string
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -90,8 +99,49 @@ func Build(opts BuildOptions) error {
 	}
 	logger.Info("Executing build for application: %s (arch: %s, branch: %s)", opts.AppID, opts.Arch, opts.Branch)
 
-	if err := checkSubmodules(opts.Manifest); err != nil {
-		return err
+	stateDir := opts.StateDir
+	if stateDir == "" {
+		stateDir = ".state"
+	}
+
+	if opts.Manifest == "" && opts.Sources != nil {
+		manifestDir := filepath.Join(stateDir, "manifests")
+		if err := os.MkdirAll(manifestDir, 0755); err != nil {
+			return fmt.Errorf("failed to create generated manifests directory: %w", err)
+		}
+		genManifestPath := filepath.Join(manifestDir, opts.AppID+".yaml")
+
+		genOpts := manifest.GenerateOptions{
+			AppID:          opts.AppID,
+			Runtime:        opts.Runtime,
+			RuntimeVersion: opts.RuntimeVersion,
+			SDK:            opts.SDK,
+			SDKVersion:     opts.SDKVersion,
+			Command:        opts.Command,
+			FinishArgs:     opts.FinishArgs,
+			Binaries:       opts.Sources.Binaries,
+			Desktop:        opts.Sources.Desktop,
+			Metainfo:       opts.Sources.Metainfo,
+			Icons:          opts.Sources.Icons,
+			Files:          opts.Sources.Files,
+			Symlinks:       opts.Sources.Symlinks,
+			BuildCommands:  opts.Sources.BuildCommands,
+			PostInstall:    opts.Sources.PostInstall,
+		}
+		yamlData, err := manifest.GenerateManifestYAML(genOpts, manifestDir)
+		if err != nil {
+			return fmt.Errorf("failed to generate manifest for app %s: %w", opts.AppID, err)
+		}
+		if err := os.WriteFile(genManifestPath, yamlData, 0644); err != nil {
+			return fmt.Errorf("failed to write generated manifest for app %s: %w", opts.AppID, err)
+		}
+		opts.Manifest = genManifestPath
+	}
+
+	if opts.Manifest != "" {
+		if err := checkSubmodules(opts.Manifest); err != nil {
+			return err
+		}
 	}
 
 	target := getInstallationTarget(opts.BuilderArgs)
@@ -314,7 +364,6 @@ func Build(opts BuildOptions) error {
 	}
 
 	// Ensure build directories are initialized
-	stateDir := opts.StateDir
 	if stateDir == "" {
 		stateDir = ".state"
 	}

@@ -3,12 +3,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
-	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/go-viper/mapstructure/v2"
 	"gopkg.in/yaml.v3"
 )
@@ -41,6 +42,25 @@ type Config struct {
 	Branding        *BrandingConfig   `yaml:"branding,omitempty" json:"branding,omitempty" mapstructure:"branding"`
 	Defaults        *DefaultsConfig   `yaml:"defaults,omitempty" json:"defaults,omitempty" mapstructure:"defaults"`
 	ChannelMappings map[string]string `yaml:"channel_mappings,omitempty" json:"channel_mappings,omitempty" mapstructure:"channel_mappings"`
+
+	// Top-level Single App / Zero-Manifest fields:
+	AppID               string            `yaml:"app_id,omitempty" json:"app_id,omitempty" mapstructure:"app_id"`
+	ID                  string            `yaml:"id,omitempty" json:"id,omitempty" mapstructure:"id"`
+	Branch              string            `yaml:"branch,omitempty" json:"branch,omitempty" mapstructure:"branch"`
+	Arches              []string          `yaml:"arches,omitempty" json:"arches,omitempty" mapstructure:"arches"`
+	Manifest            string            `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
+	Runtime             string            `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	RuntimeVersion      string            `yaml:"runtime_version,omitempty" json:"runtime_version,omitempty" mapstructure:"runtime_version"`
+	RuntimeVersionKebab string            `yaml:"runtime-version,omitempty" json:"-" mapstructure:"runtime-version"`
+	SDK                 string            `yaml:"sdk,omitempty" json:"sdk,omitempty" mapstructure:"sdk"`
+	SDKVersion          string            `yaml:"sdk_version,omitempty" json:"sdk_version,omitempty" mapstructure:"sdk_version"`
+	SDKVersionKebab     string            `yaml:"sdk-version,omitempty" json:"-" mapstructure:"sdk-version"`
+	Command             string            `yaml:"command,omitempty" json:"command,omitempty" mapstructure:"command"`
+	FinishArgs          []string          `yaml:"finish_args,omitempty" json:"finish_args,omitempty" mapstructure:"finish_args"`
+	FinishArgsKebab     []string          `yaml:"finish-args,omitempty" json:"-" mapstructure:"finish-args"`
+	Permissions         []string          `yaml:"permissions,omitempty" json:"permissions,omitempty" mapstructure:"permissions"`
+	Sources             *SourcesConfig    `yaml:"sources,omitempty" json:"sources,omitempty" mapstructure:"sources"`
+	Bundles             map[string]Bundle `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
 }
 
 // LinterConfig defines validation linter strictness and rules to ignore.
@@ -79,28 +99,63 @@ type DefaultsConfig struct {
 	NoFlathub     *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 }
 
+// SourcesConfig defines zero-manifest precompiled binary and artifact packaging.
+type SourcesConfig struct {
+	Binaries      []BinarySource `yaml:"binaries,omitempty" json:"binaries,omitempty" mapstructure:"binaries"`
+	Desktop       string         `yaml:"desktop,omitempty" json:"desktop,omitempty" mapstructure:"desktop"`
+	Metainfo      string         `yaml:"metainfo,omitempty" json:"metainfo,omitempty" mapstructure:"metainfo"`
+	Appdata       string         `yaml:"appdata,omitempty" json:"appdata,omitempty" mapstructure:"appdata"`
+	Icons         string         `yaml:"icons,omitempty" json:"icons,omitempty" mapstructure:"icons"`
+	Files         []FileSource   `yaml:"files,omitempty" json:"files,omitempty" mapstructure:"files"`
+	Symlinks      []string       `yaml:"symlinks,omitempty" json:"symlinks,omitempty" mapstructure:"symlinks"`
+	BuildCommands []string       `yaml:"build_commands,omitempty" json:"build_commands,omitempty" mapstructure:"build_commands"`
+	PostInstall   []string       `yaml:"post_install,omitempty" json:"post_install,omitempty" mapstructure:"post_install"`
+}
+
+// BinarySource represents a source binary to destination mapping.
+type BinarySource struct {
+	Path string `yaml:"path,omitempty" json:"path,omitempty" mapstructure:"path"`
+	Dest string `yaml:"dest,omitempty" json:"dest,omitempty" mapstructure:"dest"`
+	Src  string `yaml:"src,omitempty" json:"src,omitempty" mapstructure:"src"`
+}
+
+// FileSource represents a generic file or directory source to destination mapping.
+type FileSource struct {
+	Path string `yaml:"path,omitempty" json:"path,omitempty" mapstructure:"path"`
+	Dest string `yaml:"dest,omitempty" json:"dest,omitempty" mapstructure:"dest"`
+	Src  string `yaml:"src,omitempty" json:"src,omitempty" mapstructure:"src"`
+}
+
 // App represents an individual application configuration.
 type App struct {
-	ID       string   `yaml:"id" json:"id" mapstructure:"id"`
-	Branch   string   `yaml:"branch" json:"branch" mapstructure:"branch"`
-	Arches   []string `yaml:"arches" json:"arches" mapstructure:"arches"`
-	Manifest string   `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
-	// Runtime is deprecated and is no longer required or used by the actions.
-	Runtime string `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
-	// RuntimeVersion is deprecated and is no longer required or used by the actions.
-	RuntimeVersion string                  `yaml:"runtime-version,omitempty" json:"runtime-version,omitempty" mapstructure:"runtime-version"`
-	RunLinter      bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	RunLinterKebab bool                    `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
-	Linter         *LinterConfig           `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
-	CCache         *bool                   `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
-	CCacheDir      string                  `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
-	StateDir       string                  `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
-	Bundles        map[string]Bundle       `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
-	BuilderArgs    []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes        map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks       []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
-	NoInstallDeps  *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
-	NoFlathub      *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
+	ID                  string                  `yaml:"id" json:"id" mapstructure:"id"`
+	AppID               string                  `yaml:"app_id,omitempty" json:"app_id,omitempty" mapstructure:"app_id"`
+	Branch              string                  `yaml:"branch" json:"branch" mapstructure:"branch"`
+	Arches              []string                `yaml:"arches" json:"arches" mapstructure:"arches"`
+	Manifest            string                  `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
+	Runtime             string                  `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	RuntimeVersion      string                  `yaml:"runtime_version,omitempty" json:"runtime_version,omitempty" mapstructure:"runtime_version"`
+	RuntimeVersionKebab string                  `yaml:"runtime-version,omitempty" json:"-" mapstructure:"runtime-version"`
+	SDK                 string                  `yaml:"sdk,omitempty" json:"sdk,omitempty" mapstructure:"sdk"`
+	SDKVersion          string                  `yaml:"sdk_version,omitempty" json:"sdk_version,omitempty" mapstructure:"sdk_version"`
+	SDKVersionKebab     string                  `yaml:"sdk-version,omitempty" json:"-" mapstructure:"sdk-version"`
+	Command             string                  `yaml:"command,omitempty" json:"command,omitempty" mapstructure:"command"`
+	FinishArgs          []string                `yaml:"finish_args,omitempty" json:"finish_args,omitempty" mapstructure:"finish_args"`
+	FinishArgsKebab     []string                `yaml:"finish-args,omitempty" json:"-" mapstructure:"finish-args"`
+	Permissions         []string                `yaml:"permissions,omitempty" json:"permissions,omitempty" mapstructure:"permissions"`
+	Sources             *SourcesConfig          `yaml:"sources,omitempty" json:"sources,omitempty" mapstructure:"sources"`
+	RunLinter           bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	RunLinterKebab      bool                    `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
+	Linter              *LinterConfig           `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
+	CCache              *bool                   `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
+	CCacheDir           string                  `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
+	StateDir            string                  `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
+	Bundles             map[string]Bundle       `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
+	BuilderArgs         []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes             map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks            []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	NoInstallDeps       *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
+	NoFlathub           *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -182,6 +237,352 @@ func (r RemoteConfig) String() string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
+// UnmarshalYAML customizes YAML unmarshaling for SourcesConfig to support both lists and dictionary mappings.
+func (s *SourcesConfig) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("expected mapping node for sources")
+	}
+
+	for i := 0; i < len(value.Content); i += 2 {
+		keyNode := value.Content[i]
+		valNode := value.Content[i+1]
+
+		switch keyNode.Value {
+		case "binaries":
+			if valNode.Kind == yaml.SequenceNode {
+				var list []BinarySource
+				if err := valNode.Decode(&list); err != nil {
+					return err
+				}
+				s.Binaries = list
+			} else if valNode.Kind == yaml.MappingNode {
+				for j := 0; j < len(valNode.Content); j += 2 {
+					k := valNode.Content[j].Value
+					v := valNode.Content[j+1].Value
+					s.Binaries = append(s.Binaries, BinarySource{Path: k, Src: k, Dest: v})
+				}
+			}
+		case "desktop":
+			s.Desktop = valNode.Value
+		case "metainfo":
+			s.Metainfo = valNode.Value
+		case "appdata":
+			s.Appdata = valNode.Value
+		case "icons":
+			s.Icons = valNode.Value
+		case "files":
+			if valNode.Kind == yaml.SequenceNode {
+				var list []FileSource
+				if err := valNode.Decode(&list); err != nil {
+					return err
+				}
+				s.Files = list
+			} else if valNode.Kind == yaml.MappingNode {
+				for j := 0; j < len(valNode.Content); j += 2 {
+					k := valNode.Content[j].Value
+					v := valNode.Content[j+1].Value
+					s.Files = append(s.Files, FileSource{Path: k, Src: k, Dest: v})
+				}
+			}
+		case "symlinks":
+			if valNode.Kind == yaml.SequenceNode {
+				var list []string
+				if err := valNode.Decode(&list); err != nil {
+					return err
+				}
+				s.Symlinks = list
+			} else if valNode.Kind == yaml.MappingNode {
+				for j := 0; j < len(valNode.Content); j += 2 {
+					k := valNode.Content[j].Value
+					v := valNode.Content[j+1].Value
+					s.Symlinks = append(s.Symlinks, fmt.Sprintf("%s: %s", k, v))
+				}
+			}
+		case "build_commands", "build-commands":
+			var list []string
+			if err := valNode.Decode(&list); err != nil {
+				return err
+			}
+			s.BuildCommands = list
+		case "post_install", "post-install":
+			var list []string
+			if err := valNode.Decode(&list); err != nil {
+				return err
+			}
+			s.PostInstall = list
+		}
+	}
+	return nil
+}
+
+// UnmarshalYAML customizes YAML unmarshaling for BinarySource.
+func (b *BinarySource) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err == nil {
+		b.Path = s
+		b.Src = s
+		return nil
+	}
+	type rawBinarySource BinarySource
+	var raw rawBinarySource
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*b = BinarySource(raw)
+	if b.Path == "" && b.Src != "" {
+		b.Path = b.Src
+	}
+	return nil
+}
+
+// UnmarshalJSON customizes JSON unmarshaling for BinarySource.
+func (b *BinarySource) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		b.Path = s
+		b.Src = s
+		return nil
+	}
+	type rawBinarySource BinarySource
+	var raw rawBinarySource
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*b = BinarySource(raw)
+	if b.Path == "" && b.Src != "" {
+		b.Path = b.Src
+	}
+	return nil
+}
+
+// String returns a friendly string representation of BinarySource.
+func (b BinarySource) String() string {
+	path := b.Path
+	if path == "" {
+		path = b.Src
+	}
+	if b.Dest != "" {
+		return fmt.Sprintf("%s: %s", path, b.Dest)
+	}
+	return path
+}
+
+// UnmarshalYAML customizes YAML unmarshaling for FileSource.
+func (f *FileSource) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err == nil {
+		f.Path = s
+		f.Src = s
+		return nil
+	}
+	type rawFileSource FileSource
+	var raw rawFileSource
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*f = FileSource(raw)
+	if f.Path == "" && f.Src != "" {
+		f.Path = f.Src
+	}
+	return nil
+}
+
+// UnmarshalJSON customizes JSON unmarshaling for FileSource.
+func (f *FileSource) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		f.Path = s
+		f.Src = s
+		return nil
+	}
+	type rawFileSource FileSource
+	var raw rawFileSource
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*f = FileSource(raw)
+	if f.Path == "" && f.Src != "" {
+		f.Path = f.Src
+	}
+	return nil
+}
+
+// String returns a friendly string representation of FileSource.
+func (f FileSource) String() string {
+	path := f.Path
+	if path == "" {
+		path = f.Src
+	}
+	if f.Dest != "" {
+		return fmt.Sprintf("%s: %s", path, f.Dest)
+	}
+	return path
+}
+
+func flattenNestedMap(m map[string]interface{}, prefix string) (string, string) {
+	for k, v := range m {
+		fullKey := k
+		if prefix != "" {
+			fullKey = prefix + "." + k
+		}
+		if childMap, ok := v.(map[string]interface{}); ok {
+			return flattenNestedMap(childMap, fullKey)
+		}
+		return fullKey, fmt.Sprintf("%v", v)
+	}
+	return "", ""
+}
+
+// SourcesConfigDecodeHook returns a mapstructure.DecodeHookFunc that handles dictionary maps for binaries and files.
+func SourcesConfigDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(SourcesConfig{}) {
+			return data, nil
+		}
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return data, nil
+		}
+		if bMap, ok := m["binaries"].(map[string]interface{}); ok {
+			keys := make([]string, 0, len(bMap))
+			for k := range bMap {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var binaries []BinarySource
+			for _, k := range keys {
+				v := bMap[k]
+				if childMap, ok := v.(map[string]interface{}); ok {
+					src, dest := flattenNestedMap(childMap, k)
+					binaries = append(binaries, BinarySource{Path: src, Src: src, Dest: dest})
+				} else {
+					binaries = append(binaries, BinarySource{Path: k, Src: k, Dest: fmt.Sprintf("%v", v)})
+				}
+			}
+			m["binaries"] = binaries
+		}
+		if fMap, ok := m["files"].(map[string]interface{}); ok {
+			keys := make([]string, 0, len(fMap))
+			for k := range fMap {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			var files []FileSource
+			for _, k := range keys {
+				v := fMap[k]
+				if childMap, ok := v.(map[string]interface{}); ok {
+					src, dest := flattenNestedMap(childMap, k)
+					files = append(files, FileSource{Path: src, Src: src, Dest: dest})
+				} else {
+					files = append(files, FileSource{Path: k, Src: k, Dest: fmt.Sprintf("%v", v)})
+				}
+			}
+			m["files"] = files
+		}
+		return m, nil
+	}
+}
+
+// BinarySourceDecodeHook returns a mapstructure.DecodeHookFunc for BinarySource.
+func BinarySourceDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(BinarySource{}) {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case string:
+			return BinarySource{Path: v, Src: v}, nil
+		case map[string]interface{}:
+			var b BinarySource
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &b,
+				TagName:  "mapstructure",
+			}
+			decoder, err := mapstructure.NewDecoder(cfg)
+			if err != nil {
+				return nil, err
+			}
+			if err := decoder.Decode(v); err != nil {
+				return nil, err
+			}
+			if b.Path == "" && b.Src != "" {
+				b.Path = b.Src
+			}
+			return b, nil
+		default:
+			return data, nil
+		}
+	}
+}
+
+// FileSourceDecodeHook returns a mapstructure.DecodeHookFunc for FileSource.
+func FileSourceDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if t != reflect.TypeOf(FileSource{}) {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case string:
+			return FileSource{Path: v, Src: v}, nil
+		case map[string]interface{}:
+			var fsrc FileSource
+			cfg := &mapstructure.DecoderConfig{
+				Metadata: nil,
+				Result:   &fsrc,
+				TagName:  "mapstructure",
+			}
+			decoder, err := mapstructure.NewDecoder(cfg)
+			if err != nil {
+				return nil, err
+			}
+			if err := decoder.Decode(v); err != nil {
+				return nil, err
+			}
+			if fsrc.Path == "" && fsrc.Src != "" {
+				fsrc.Path = fsrc.Src
+			}
+			return fsrc, nil
+		default:
+			return data, nil
+		}
+	}
+}
+
+// ParseRuntimeRef parses a runtime reference string like "org.gnome.Platform//49",
+// "org.gnome.Platform/x86_64/49", or "org.gnome.Platform:49" into runtime and version.
+func ParseRuntimeRef(ref string) (runtime, version string) {
+	ref = strings.TrimSpace(ref)
+	if strings.Contains(ref, "//") {
+		parts := strings.SplitN(ref, "//", 2)
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	if strings.Contains(ref, "/") {
+		parts := strings.Split(ref, "/")
+		if len(parts) >= 3 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[len(parts)-1])
+		} else if len(parts) == 2 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		}
+	}
+	if strings.Contains(ref, ":") {
+		parts := strings.SplitN(ref, ":", 2)
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return ref, ""
+}
+
 // RemoteConfigDecodeHook returns a mapstructure.DecodeHookFunc that decodes a string or a map into a RemoteConfig.
 func RemoteConfigDecodeHook() mapstructure.DecodeHookFunc {
 	return func(
@@ -249,6 +650,37 @@ func (cfg *Config) Normalize() {
 		if cfg.Linter.Strict == nil {
 			t := true
 			cfg.Linter.Strict = &t
+		}
+	}
+
+	// If no apps are configured, but top-level single app fields are specified,
+	// synthesize cfg.Apps with the single app.
+	if len(cfg.Apps) == 0 {
+		appID := cfg.AppID
+		if appID == "" {
+			appID = cfg.ID
+		}
+		if appID != "" || cfg.Sources != nil || cfg.Manifest != "" || len(cfg.Bundles) > 0 {
+			topApp := App{
+				ID:                  appID,
+				AppID:               appID,
+				Branch:              cfg.Branch,
+				Arches:              cfg.Arches,
+				Manifest:            cfg.Manifest,
+				Runtime:             cfg.Runtime,
+				RuntimeVersion:      cfg.RuntimeVersion,
+				RuntimeVersionKebab: cfg.RuntimeVersionKebab,
+				SDK:                 cfg.SDK,
+				SDKVersion:          cfg.SDKVersion,
+				SDKVersionKebab:     cfg.SDKVersionKebab,
+				Command:             cfg.Command,
+				FinishArgs:          cfg.FinishArgs,
+				FinishArgsKebab:     cfg.FinishArgsKebab,
+				Permissions:         cfg.Permissions,
+				Sources:             cfg.Sources,
+				Bundles:             cfg.Bundles,
+			}
+			cfg.Apps = []App{topApp}
 		}
 	}
 
@@ -406,24 +838,164 @@ func (cfg *Config) Normalize() {
 
 // Normalize sets default values for App fields if they are missing.
 func (app *App) Normalize() {
+	if app.ID == "" && app.AppID != "" {
+		app.ID = app.AppID
+	}
 	if app.RunLinterKebab {
 		app.RunLinter = true
 	}
+	if app.RuntimeVersion == "" && app.RuntimeVersionKebab != "" {
+		app.RuntimeVersion = app.RuntimeVersionKebab
+	}
+	if app.SDKVersion == "" && app.SDKVersionKebab != "" {
+		app.SDKVersion = app.SDKVersionKebab
+	}
+	if len(app.FinishArgs) == 0 && len(app.FinishArgsKebab) > 0 {
+		app.FinishArgs = app.FinishArgsKebab
+	}
+	if len(app.FinishArgs) == 0 && len(app.Permissions) > 0 {
+		app.FinishArgs = app.Permissions
+	}
+
+	if app.Runtime != "" {
+		rt, ver := ParseRuntimeRef(app.Runtime)
+		app.Runtime = rt
+		if app.RuntimeVersion == "" && ver != "" {
+			app.RuntimeVersion = ver
+		}
+	}
+
+	if app.SDK == "" && app.Runtime != "" {
+		if strings.Contains(app.Runtime, "Platform") {
+			app.SDK = strings.Replace(app.Runtime, "Platform", "Sdk", 1)
+		} else {
+			app.SDK = "org.freedesktop.Sdk"
+		}
+	}
+
+	if app.SDKVersion == "" && app.RuntimeVersion != "" {
+		app.SDKVersion = app.RuntimeVersion
+	}
+
+	if app.Sources != nil {
+		// Normalize binary sources
+		for i := range app.Sources.Binaries {
+			b := &app.Sources.Binaries[i]
+			if b.Path == "" && b.Src != "" {
+				b.Path = b.Src
+			}
+			if b.Dest == "" {
+				b.Dest = "/app/bin/" + filepath.Base(b.Path)
+			} else if strings.HasPrefix(b.Dest, "bin/") {
+				b.Dest = "/app/" + b.Dest
+			} else if !strings.HasPrefix(b.Dest, "/app/") {
+				if !strings.HasPrefix(b.Dest, "/") {
+					b.Dest = "/app/" + b.Dest
+				}
+			}
+			b.Dest = filepath.Clean(b.Dest)
+		}
+
+		// Normalize file sources
+		for i := range app.Sources.Files {
+			f := &app.Sources.Files[i]
+			if f.Path == "" && f.Src != "" {
+				f.Path = f.Src
+			}
+			if f.Dest == "" && f.Path != "" {
+				f.Dest = fmt.Sprintf("/app/share/%s/%s", app.ID, filepath.Base(strings.TrimSuffix(f.Path, "/")))
+			}
+			if f.Dest != "" && !strings.HasPrefix(f.Dest, "/app/") && !strings.HasPrefix(f.Dest, "/") {
+				f.Dest = "/app/" + f.Dest
+			}
+			if f.Dest != "" {
+				f.Dest = filepath.Clean(f.Dest)
+			}
+		}
+
+		// Normalize desktop / metainfo / icons
+		if app.Sources.Metainfo == "" && app.Sources.Appdata != "" {
+			app.Sources.Metainfo = app.Sources.Appdata
+		}
+
+		// Infer command if missing
+		if app.Command == "" {
+			var candidateCommand string
+			targetSuffix := ""
+			if app.ID != "" {
+				parts := strings.Split(app.ID, ".")
+				targetSuffix = parts[len(parts)-1]
+			}
+			for _, b := range app.Sources.Binaries {
+				dest := b.Dest
+				if dest == "" {
+					dest = b.Path
+				}
+				base := filepath.Base(dest)
+				if targetSuffix != "" && base == targetSuffix {
+					candidateCommand = base
+					break
+				}
+			}
+			if candidateCommand != "" {
+				app.Command = candidateCommand
+			} else if len(app.Sources.Binaries) > 0 {
+				dest := app.Sources.Binaries[0].Dest
+				if dest == "" {
+					dest = app.Sources.Binaries[0].Path
+				}
+				app.Command = filepath.Base(dest)
+			} else if targetSuffix != "" {
+				app.Command = targetSuffix
+			}
+		}
+
+		// Default GUI finish-args if none provided
+		if len(app.FinishArgs) == 0 {
+			app.FinishArgs = []string{
+				"--socket=wayland",
+				"--socket=fallback-x11",
+				"--share=ipc",
+				"--share=network",
+				"--device=dri",
+			}
+		}
+	}
+
 	if app.Branch == "" {
 		if app.Manifest != "" {
-			if m, err := manifest.ParseManifest(app.Manifest); err == nil && m.Branch != "" {
-				app.Branch = m.Branch
+			if br := readManifestBranch(app.Manifest); br != "" {
+				app.Branch = br
 			}
 		}
 	}
 	if app.Branch == "" {
 		app.Branch = "stable"
 	}
-	if app.Manifest != "" {
-		if len(app.Arches) == 0 {
-			app.Arches = []string{"x86_64"}
+	if len(app.Arches) == 0 {
+		app.Arches = []string{"x86_64"}
+	}
+}
+
+func readManifestBranch(manifestPath string) string {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return ""
+	}
+	var doc struct {
+		Branch string `json:"branch" yaml:"branch"`
+	}
+	ext := strings.ToLower(filepath.Ext(manifestPath))
+	if ext == ".json" {
+		if err := json.Unmarshal(data, &doc); err == nil && doc.Branch != "" {
+			return doc.Branch
+		}
+	} else if ext == ".yaml" || ext == ".yml" {
+		if err := yaml.Unmarshal(data, &doc); err == nil && doc.Branch != "" {
+			return doc.Branch
 		}
 	}
+	return ""
 }
 
 // ValidateBasic validates basic metadata (ID, branch, runtime, and arches) without path checks.
@@ -459,9 +1031,21 @@ func (app *App) Validate() error {
 
 	hasManifest := app.Manifest != ""
 	hasBundles := len(app.Bundles) > 0
+	hasSources := app.Sources != nil
 
-	if hasManifest == hasBundles {
-		return fmt.Errorf("app %q: exactly one of 'manifest' or 'bundles' is required", app.ID)
+	count := 0
+	if hasManifest {
+		count++
+	}
+	if hasBundles {
+		count++
+	}
+	if hasSources {
+		count++
+	}
+
+	if count != 1 {
+		return fmt.Errorf("app %q: exactly one of 'manifest', 'bundles', or 'sources' is required", app.ID)
 	}
 
 	if hasManifest {
@@ -473,7 +1057,7 @@ func (app *App) Validate() error {
 		if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
 			return fmt.Errorf("app %q: 'manifest' must be a relative path with no '..' segments", app.ID)
 		}
-	} else {
+	} else if hasBundles {
 		for arch, b := range app.Bundles {
 			if !supportedArches[arch] {
 				return fmt.Errorf("app %q: unsupported bundle arch %q", app.ID, arch)
@@ -486,6 +1070,81 @@ func (app *App) Validate() error {
 			}
 			if !sha256Regexp.MatchString(b.SHA256) {
 				return fmt.Errorf("app %q bundle %q: 'sha256' must be 64 lowercase hex characters", app.ID, arch)
+			}
+		}
+	} else if hasSources {
+		if app.Runtime == "" {
+			return fmt.Errorf("app %q: 'runtime' is required when using 'sources'", app.ID)
+		}
+		if len(app.Sources.Binaries) == 0 && app.Sources.Desktop == "" && len(app.Sources.Files) == 0 {
+			return fmt.Errorf("app %q: 'sources' must declare at least one binary, desktop file, or file mapping", app.ID)
+		}
+		for _, b := range app.Sources.Binaries {
+			path := b.Path
+			if path == "" {
+				path = b.Src
+			}
+			if path == "" {
+				return fmt.Errorf("app %q: binary source path cannot be empty", app.ID)
+			}
+			if strings.HasPrefix(path, "/") {
+				return fmt.Errorf("app %q: binary path %q must be a relative path, cannot be absolute", app.ID, path)
+			}
+			cleanPath := filepath.Clean(path)
+			if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+				return fmt.Errorf("app %q: binary path %q cannot contain '..' segments", app.ID, path)
+			}
+			if b.Dest != "" && !strings.HasPrefix(b.Dest, "/app/") {
+				return fmt.Errorf("app %q: binary destination %q must start with /app/", app.ID, b.Dest)
+			}
+		}
+		if app.Sources.Desktop != "" {
+			if strings.HasPrefix(app.Sources.Desktop, "/") {
+				return fmt.Errorf("app %q: desktop path %q must be a relative path, cannot be absolute", app.ID, app.Sources.Desktop)
+			}
+			cleanPath := filepath.Clean(app.Sources.Desktop)
+			if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+				return fmt.Errorf("app %q: desktop path %q cannot contain '..' segments", app.ID, app.Sources.Desktop)
+			}
+		}
+		if app.Sources.Metainfo != "" {
+			if strings.HasPrefix(app.Sources.Metainfo, "/") {
+				return fmt.Errorf("app %q: metainfo path %q must be a relative path, cannot be absolute", app.ID, app.Sources.Metainfo)
+			}
+			cleanPath := filepath.Clean(app.Sources.Metainfo)
+			if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+				return fmt.Errorf("app %q: metainfo path %q cannot contain '..' segments", app.ID, app.Sources.Metainfo)
+			}
+		}
+		if app.Sources.Icons != "" {
+			if strings.HasPrefix(app.Sources.Icons, "/") {
+				return fmt.Errorf("app %q: icons path %q must be a relative path, cannot be absolute", app.ID, app.Sources.Icons)
+			}
+			cleanPath := filepath.Clean(app.Sources.Icons)
+			if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+				return fmt.Errorf("app %q: icons path %q cannot contain '..' segments", app.ID, app.Sources.Icons)
+			}
+		}
+		for _, f := range app.Sources.Files {
+			path := f.Path
+			if path == "" {
+				path = f.Src
+			}
+			if path == "" {
+				return fmt.Errorf("app %q: file source path cannot be empty", app.ID)
+			}
+			if strings.HasPrefix(path, "/") {
+				return fmt.Errorf("app %q: file path %q must be a relative path, cannot be absolute", app.ID, path)
+			}
+			cleanPath := filepath.Clean(path)
+			if cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+				return fmt.Errorf("app %q: file path %q cannot contain '..' segments", app.ID, path)
+			}
+			if f.Dest == "" {
+				return fmt.Errorf("app %q: generic file destination cannot be empty", app.ID)
+			}
+			if !strings.HasPrefix(f.Dest, "/app/") {
+				return fmt.Errorf("app %q: file destination %q must start with /app/", app.ID, f.Dest)
 			}
 		}
 	}
@@ -530,6 +1189,8 @@ func ValidateArch(arch string) error {
 func (app App) Equal(other App) bool {
 	if app.ID != other.ID || app.Branch != other.Branch || app.Manifest != other.Manifest ||
 		app.Runtime != other.Runtime || app.RuntimeVersion != other.RuntimeVersion ||
+		app.SDK != other.SDK || app.SDKVersion != other.SDKVersion ||
+		app.Command != other.Command ||
 		app.RunLinter != other.RunLinter ||
 		app.CCacheDir != other.CCacheDir || app.StateDir != other.StateDir {
 		return false
@@ -540,6 +1201,14 @@ func (app App) Equal(other App) bool {
 	}
 
 	if !slicesEqual(app.BuilderArgs, other.BuilderArgs) {
+		return false
+	}
+
+	if !slicesEqual(app.FinishArgs, other.FinishArgs) {
+		return false
+	}
+
+	if !sourcesEqual(app.Sources, other.Sources) {
 		return false
 	}
 
@@ -586,6 +1255,62 @@ func (app App) Equal(other App) bool {
 		return false
 	}
 
+	return true
+}
+
+func sourcesEqual(a, b *SourcesConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Desktop != b.Desktop || a.Metainfo != b.Metainfo || a.Appdata != b.Appdata || a.Icons != b.Icons {
+		return false
+	}
+	if len(a.Binaries) != len(b.Binaries) || len(a.Files) != len(b.Files) || len(a.Symlinks) != len(b.Symlinks) {
+		return false
+	}
+
+	// Compare Binaries set-wise
+	binCounts := make(map[BinarySource]int, len(a.Binaries))
+	for _, bin := range a.Binaries {
+		binCounts[bin]++
+	}
+	for _, bin := range b.Binaries {
+		binCounts[bin]--
+		if binCounts[bin] < 0 {
+			return false
+		}
+	}
+
+	// Compare Files set-wise
+	fileCounts := make(map[FileSource]int, len(a.Files))
+	for _, f := range a.Files {
+		fileCounts[f]++
+	}
+	for _, f := range b.Files {
+		fileCounts[f]--
+		if fileCounts[f] < 0 {
+			return false
+		}
+	}
+
+	// Compare Symlinks set-wise
+	symCounts := make(map[string]int, len(a.Symlinks))
+	for _, s := range a.Symlinks {
+		symCounts[s]++
+	}
+	for _, s := range b.Symlinks {
+		symCounts[s]--
+		if symCounts[s] < 0 {
+			return false
+		}
+	}
+
+	if !slicesEqual(a.BuildCommands, b.BuildCommands) || !slicesEqual(a.PostInstall, b.PostInstall) {
+		return false
+	}
 	return true
 }
 

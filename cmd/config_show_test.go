@@ -193,3 +193,70 @@ func TestConfigShowSecretsMasking(t *testing.T) {
 		t.Error("expected --gpg-key flag override to be masked")
 	}
 }
+
+func TestConfigShowZeroManifest(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Chdir(tempDir)
+
+	data := []byte(`
+app_id: ai.lemonade_server.Lemonade
+runtime: org.gnome.Platform//49
+sources:
+  binaries:
+    build/lemond: /app/bin/lemond
+    build/lemonade: /app/bin/lemonade
+  desktop: data/lemonade-app.desktop
+  metainfo: data/ai.lemonade_server.Lemonade.metainfo.xml
+  icons: src/app/src-tauri/icons/
+`)
+	err := os.WriteFile("aetherpak.yaml", data, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	viper.Reset()
+	initConfig()
+	defer func() {
+		viper.Reset()
+		initConfig()
+	}()
+
+	// 1. Test plain mode
+	logger.Init(false, false, true)
+	buf := new(bytes.Buffer)
+	configShowCmd.SetOut(buf)
+	err = configShowCmd.RunE(configShowCmd, []string{})
+	if err != nil {
+		t.Fatalf("failed to run config show: %v", err)
+	}
+	output := buf.String()
+
+	if !strings.Contains(output, "ai.lemonade_server.Lemonade") {
+		t.Errorf("expected output to contain 'ai.lemonade_server.Lemonade', got %q", output)
+	}
+	if !strings.Contains(output, "build/lemond") {
+		t.Errorf("expected output to contain 'build/lemond', got %q", output)
+	}
+
+	// 2. Test rich mode
+	ci := os.Getenv("CI")
+	if ci != "" {
+		os.Unsetenv("CI")
+		defer os.Setenv("CI", ci)
+	}
+	logger.Init(false, false, false)
+	defer logger.Init(false, false, ci != "")
+
+	buf.Reset()
+	err = configShowCmd.RunE(configShowCmd, []string{})
+	if err != nil {
+		t.Fatalf("failed to run config show rich: %v", err)
+	}
+	outputRich := buf.String()
+	if !strings.Contains(outputRich, "sources:") {
+		t.Errorf("expected rich output to contain 'sources:', got %q", outputRich)
+	}
+	if !strings.Contains(outputRich, "2 binaries, org.gnome.Platform") {
+		t.Errorf("expected rich output to contain '2 binaries, org.gnome.Platform', got %q", outputRich)
+	}
+}

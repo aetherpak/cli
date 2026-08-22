@@ -14,31 +14,45 @@ import (
 // appOut is the minimal projection of an App that `add` writes. Field order
 // here is the emitted key order; omitempty keeps the entry tidy.
 type appOut struct {
-	ID            string                   `yaml:"id"`
-	Branch        string                   `yaml:"branch,omitempty"`
-	Arches        []string                 `yaml:"arches,omitempty"`
-	Manifest      string                   `yaml:"manifest,omitempty"`
-	RunLinter     bool                     `yaml:"run-linter,omitempty"`
-	CCache        *bool                    `yaml:"ccache,omitempty"`
-	NoInstallDeps *bool                    `yaml:"no_install_deps,omitempty"`
-	NoFlathub     *bool                    `yaml:"no_flathub,omitempty"`
-	BuilderArgs   []string                 `yaml:"builder_args,omitempty"`
-	Bundles       map[string]config.Bundle `yaml:"bundles,omitempty"`
+	ID             string                   `yaml:"id"`
+	Branch         string                   `yaml:"branch,omitempty"`
+	Arches         []string                 `yaml:"arches,omitempty"`
+	Manifest       string                   `yaml:"manifest,omitempty"`
+	Runtime        string                   `yaml:"runtime,omitempty"`
+	RuntimeVersion string                   `yaml:"runtime-version,omitempty"`
+	SDK            string                   `yaml:"sdk,omitempty"`
+	SDKVersion     string                   `yaml:"sdk-version,omitempty"`
+	Command        string                   `yaml:"command,omitempty"`
+	FinishArgs     []string                 `yaml:"finish-args,omitempty"`
+	Sources        *config.SourcesConfig    `yaml:"sources,omitempty"`
+	RunLinter      bool                     `yaml:"run-linter,omitempty"`
+	CCache         *bool                    `yaml:"ccache,omitempty"`
+	NoInstallDeps  *bool                    `yaml:"no_install_deps,omitempty"`
+	NoFlathub      *bool                    `yaml:"no_flathub,omitempty"`
+	BuilderArgs    []string                 `yaml:"builder_args,omitempty"`
+	Bundles        map[string]config.Bundle `yaml:"bundles,omitempty"`
 }
 
 // appNode marshals an App into a standalone YAML mapping node.
 func appNode(app config.App) (*yaml.Node, error) {
 	out := appOut{
-		ID:            app.ID,
-		Branch:        app.Branch,
-		Arches:        app.Arches,
-		Manifest:      app.Manifest,
-		RunLinter:     app.RunLinter,
-		CCache:        app.CCache,
-		NoInstallDeps: app.NoInstallDeps,
-		NoFlathub:     app.NoFlathub,
-		BuilderArgs:   app.BuilderArgs,
-		Bundles:       app.Bundles,
+		ID:             app.ID,
+		Branch:         app.Branch,
+		Arches:         app.Arches,
+		Manifest:       app.Manifest,
+		Runtime:        app.Runtime,
+		RuntimeVersion: app.RuntimeVersion,
+		SDK:            app.SDK,
+		SDKVersion:     app.SDKVersion,
+		Command:        app.Command,
+		FinishArgs:     app.FinishArgs,
+		Sources:        app.Sources,
+		RunLinter:      app.RunLinter,
+		CCache:         app.CCache,
+		NoInstallDeps:  app.NoInstallDeps,
+		NoFlathub:      app.NoFlathub,
+		BuilderArgs:    app.BuilderArgs,
+		Bundles:        app.Bundles,
 	}
 	data, err := yaml.Marshal(out)
 	if err != nil {

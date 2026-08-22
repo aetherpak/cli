@@ -155,6 +155,54 @@ func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force st
 						}
 					}
 
+					// 1b. Check if zero-manifest source files were touched
+					if !selectedSet[app.ID] && app.Sources != nil {
+						var sourcePaths []string
+						for _, b := range app.Sources.Binaries {
+							if b.Path != "" {
+								sourcePaths = append(sourcePaths, b.Path)
+							}
+							if b.Src != "" && b.Src != b.Path {
+								sourcePaths = append(sourcePaths, b.Src)
+							}
+						}
+						if app.Sources.Desktop != "" {
+							sourcePaths = append(sourcePaths, app.Sources.Desktop)
+						}
+						if app.Sources.Metainfo != "" {
+							sourcePaths = append(sourcePaths, app.Sources.Metainfo)
+						}
+						if app.Sources.Appdata != "" {
+							sourcePaths = append(sourcePaths, app.Sources.Appdata)
+						}
+						if app.Sources.Icons != "" {
+							sourcePaths = append(sourcePaths, app.Sources.Icons)
+						}
+						for _, f := range app.Sources.Files {
+							if f.Path != "" {
+								sourcePaths = append(sourcePaths, f.Path)
+							}
+							if f.Src != "" && f.Src != f.Path {
+								sourcePaths = append(sourcePaths, f.Src)
+							}
+						}
+
+						for _, sp := range sourcePaths {
+							cleanSP := filepath.Clean(sp)
+							prefix := cleanSP + "/"
+							for _, cf := range changedFiles {
+								if cf == cleanSP || strings.HasPrefix(cf, prefix) {
+									selectedSet[app.ID] = true
+									logger.Debug("App %s source path %s was touched.", app.ID, sp)
+									break
+								}
+							}
+							if selectedSet[app.ID] {
+								break
+							}
+						}
+					}
+
 					// 2. Check if configuration changed
 					if !selectedSet[app.ID] {
 						prevApp, exists := prevMap[app.ID]
@@ -191,7 +239,7 @@ func ComputePlan(cfg *config.Config, configPath string, baseSHA string, force st
 			branch = "stable"
 		}
 
-		if app.Manifest != "" {
+		if app.Manifest != "" || app.Sources != nil {
 			arches := app.Arches
 			if len(arches) == 0 {
 				arches = []string{"x86_64"}

@@ -573,3 +573,395 @@ remotes:
 		t.Errorf("expected string representation to contain key/verify, got %q", str)
 	}
 }
+
+func TestZeroManifestSourcesParsing(t *testing.T) {
+	yamlData := `
+app_id: ai.lemonade_server.Lemonade
+runtime: org.gnome.Platform//49
+sources:
+  binaries:
+    - path: build/lemond
+      dest: /app/bin/lemond
+    - path: build/lemonade
+      dest: /app/bin/lemonade
+    - src/simple_binary
+  desktop: data/lemonade-app.desktop
+  metainfo: data/ai.lemonade_server.Lemonade.metainfo.xml
+  icons: src/app/src-tauri/icons/
+  files:
+    - path: assets/
+      dest: /app/share/lemonade/assets
+`
+	var cfg Config
+	err := yaml.Unmarshal([]byte(yamlData), &cfg)
+	if err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	cfg.Normalize()
+	if len(cfg.Apps) != 1 {
+		t.Fatalf("expected 1 normalized app, got %d", len(cfg.Apps))
+	}
+
+	app := cfg.Apps[0]
+	if app.ID != "ai.lemonade_server.Lemonade" {
+		t.Errorf("expected app ID ai.lemonade_server.Lemonade, got %q", app.ID)
+	}
+	if app.Runtime != "org.gnome.Platform" {
+		t.Errorf("expected Runtime org.gnome.Platform, got %q", app.Runtime)
+	}
+	if app.RuntimeVersion != "49" {
+		t.Errorf("expected RuntimeVersion 49, got %q", app.RuntimeVersion)
+	}
+	if app.SDK != "org.gnome.Sdk" {
+		t.Errorf("expected SDK org.gnome.Sdk, got %q", app.SDK)
+	}
+	if app.SDKVersion != "49" {
+		t.Errorf("expected SDKVersion 49, got %q", app.SDKVersion)
+	}
+	if app.Command != "lemond" {
+		t.Errorf("expected Command lemond, got %q", app.Command)
+	}
+	if len(app.FinishArgs) == 0 {
+		t.Errorf("expected default FinishArgs to be set")
+	}
+
+	if app.Sources == nil {
+		t.Fatalf("expected Sources to not be nil")
+	}
+	if len(app.Sources.Binaries) != 3 {
+		t.Fatalf("expected 3 binaries, got %d", len(app.Sources.Binaries))
+	}
+	if app.Sources.Binaries[0].Path != "build/lemond" || app.Sources.Binaries[0].Dest != "/app/bin/lemond" {
+		t.Errorf("unexpected binary 0: %+v", app.Sources.Binaries[0])
+	}
+	if app.Sources.Binaries[1].Path != "build/lemonade" || app.Sources.Binaries[1].Dest != "/app/bin/lemonade" {
+		t.Errorf("unexpected binary 1: %+v", app.Sources.Binaries[1])
+	}
+	if app.Sources.Binaries[2].Path != "src/simple_binary" || app.Sources.Binaries[2].Dest != "/app/bin/simple_binary" {
+		t.Errorf("unexpected binary 2: %+v", app.Sources.Binaries[2])
+	}
+
+	if app.Sources.Desktop != "data/lemonade-app.desktop" {
+		t.Errorf("expected desktop data/lemonade-app.desktop, got %q", app.Sources.Desktop)
+	}
+	if app.Sources.Metainfo != "data/ai.lemonade_server.Lemonade.metainfo.xml" {
+		t.Errorf("expected metainfo data/ai.lemonade_server.Lemonade.metainfo.xml, got %q", app.Sources.Metainfo)
+	}
+	if app.Sources.Icons != "src/app/src-tauri/icons/" {
+		t.Errorf("expected icons src/app/src-tauri/icons/, got %q", app.Sources.Icons)
+	}
+	if len(app.Sources.Files) != 1 || app.Sources.Files[0].Path != "assets/" || app.Sources.Files[0].Dest != "/app/share/lemonade/assets" {
+		t.Errorf("unexpected files source: %+v", app.Sources.Files)
+	}
+
+	if err := app.Validate(); err != nil {
+		t.Errorf("expected app.Validate() to pass, got: %v", err)
+	}
+}
+
+func TestZeroManifestColonAndMapFormats(t *testing.T) {
+	// 1. Test list of path/dest pairs and bare strings
+	listYAML := `
+app_id: co.nowledge.con
+runtime: org.freedesktop.Platform//25.08
+sources:
+  binaries:
+    - path: dist/con
+      dest: /path/custom/con
+    - path: dist/con-cli
+      dest: /app/bin/con-cli
+    - dist/con-daemon
+  files:
+    - path: assets/themes
+      dest: /app/share/themes
+`
+	var cfg1 Config
+	if err := yaml.Unmarshal([]byte(listYAML), &cfg1); err != nil {
+		t.Fatalf("failed to unmarshal list yaml: %v", err)
+	}
+	cfg1.Normalize()
+	app1 := cfg1.Apps[0]
+	if len(app1.Sources.Binaries) != 3 {
+		t.Fatalf("expected 3 binaries, got %d", len(app1.Sources.Binaries))
+	}
+	if app1.Sources.Binaries[0].Path != "dist/con" || app1.Sources.Binaries[0].Dest != "/path/custom/con" {
+		t.Errorf("unexpected binary 0: %+v", app1.Sources.Binaries[0])
+	}
+	if app1.Sources.Binaries[1].Path != "dist/con-cli" || app1.Sources.Binaries[1].Dest != "/app/bin/con-cli" {
+		t.Errorf("unexpected binary 1: %+v", app1.Sources.Binaries[1])
+	}
+	if app1.Sources.Binaries[2].Path != "dist/con-daemon" || app1.Sources.Binaries[2].Dest != "/app/bin/con-daemon" {
+		t.Errorf("unexpected binary 2: %+v", app1.Sources.Binaries[2])
+	}
+	if len(app1.Sources.Files) != 1 || app1.Sources.Files[0].Path != "assets/themes" || app1.Sources.Files[0].Dest != "/app/share/themes" {
+		t.Errorf("unexpected files 0: %+v", app1.Sources.Files[0])
+	}
+
+	// 2. Test dictionary mapping format
+	mapYAML := `
+app_id: co.nowledge.con
+runtime: org.freedesktop.Platform//25.08
+sources:
+  binaries:
+    dist/con: /app/bin/con
+    dist/con-cli: /app/bin/con-cli
+  files:
+    assets/themes: /app/share/themes
+  symlinks:
+    /app/bin/con-cli: /app/bin/con-helper
+`
+	var cfg2 Config
+	if err := yaml.Unmarshal([]byte(mapYAML), &cfg2); err != nil {
+		t.Fatalf("failed to unmarshal map yaml: %v", err)
+	}
+	cfg2.Normalize()
+	app2 := cfg2.Apps[0]
+	if len(app2.Sources.Binaries) != 2 {
+		t.Fatalf("expected 2 binaries from map, got %d", len(app2.Sources.Binaries))
+	}
+	if len(app2.Sources.Files) != 1 {
+		t.Fatalf("expected 1 file from map, got %d", len(app2.Sources.Files))
+	}
+	if len(app2.Sources.Symlinks) != 1 {
+		t.Fatalf("expected 1 symlink from map, got %d", len(app2.Sources.Symlinks))
+	}
+}
+
+func TestZeroManifestValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		app     App
+		wantErr bool
+	}{
+		{
+			name: "valid zero manifest app",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Binaries: []BinarySource{
+						{Path: "bin/app", Dest: "/app/bin/app"},
+					},
+					Desktop: "data/app.desktop",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing runtime",
+			app: App{
+				ID: "org.example.App",
+				Sources: &SourcesConfig{
+					Binaries: []BinarySource{
+						{Path: "bin/app", Dest: "/app/bin/app"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty sources",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "path traversal in binary",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Binaries: []BinarySource{
+						{Path: "../secret/bin", Dest: "/app/bin/bin"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "absolute path in binary",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Binaries: []BinarySource{
+						{Path: "/usr/bin/app", Dest: "/app/bin/app"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid binary destination not in /app/",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Binaries: []BinarySource{
+						{Path: "bin/app", Dest: "/usr/bin/app"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "path traversal in desktop",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Desktop: "../data/app.desktop",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "path traversal in icons",
+			app: App{
+				ID:      "org.example.App",
+				Runtime: "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Icons: "../icons/",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "multiple sources defined (manifest and sources)",
+			app: App{
+				ID:       "org.example.App",
+				Manifest: "app.yaml",
+				Runtime:  "org.gnome.Platform//49",
+				Sources: &SourcesConfig{
+					Desktop: "data/app.desktop",
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := tt.app
+			app.Normalize()
+			err := app.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseRuntimeRef(t *testing.T) {
+	cases := []struct {
+		input       string
+		wantRuntime string
+		wantVersion string
+	}{
+		{"org.gnome.Platform//49", "org.gnome.Platform", "49"},
+		{"org.gnome.Platform/x86_64/49", "org.gnome.Platform", "49"},
+		{"org.freedesktop.Platform//24.08", "org.freedesktop.Platform", "24.08"},
+		{"org.kde.Platform:6.7", "org.kde.Platform", "6.7"},
+		{"org.gnome.Platform", "org.gnome.Platform", ""},
+	}
+
+	for _, c := range cases {
+		rt, ver := ParseRuntimeRef(c.input)
+		if rt != c.wantRuntime || ver != c.wantVersion {
+			t.Errorf("ParseRuntimeRef(%q) = (%q, %q), want (%q, %q)", c.input, rt, ver, c.wantRuntime, c.wantVersion)
+		}
+	}
+}
+
+func TestZeroManifestBareFileDestinationDefault(t *testing.T) {
+	app := App{
+		ID:      "org.example.MyApp",
+		Runtime: "org.gnome.Platform//49",
+		Sources: &SourcesConfig{
+			Files: []FileSource{
+				{Path: "data/config.json"},
+				{Path: "data/themes/"},
+			},
+		},
+	}
+
+	app.Normalize()
+
+	if err := app.Validate(); err != nil {
+		t.Fatalf("expected Validate() to pass after Normalize(), got: %v", err)
+	}
+
+	if app.Sources.Files[0].Dest != "/app/share/org.example.MyApp/config.json" {
+		t.Errorf("expected default dest for file, got: %q", app.Sources.Files[0].Dest)
+	}
+	if app.Sources.Files[1].Dest != "/app/share/org.example.MyApp/themes" {
+		t.Errorf("expected default dest for dir, got: %q", app.Sources.Files[1].Dest)
+	}
+}
+
+func TestZeroManifestCommandInferenceMatching(t *testing.T) {
+	app := App{
+		ID:      "co.nowledge.con",
+		Runtime: "org.freedesktop.Platform//25.08",
+		Sources: &SourcesConfig{
+			Binaries: []BinarySource{
+				{Path: "dist/con-cli", Dest: "/app/bin/con-cli"},
+				{Path: "dist/con", Dest: "/app/bin/con"},
+				{Path: "dist/con-daemon", Dest: "/app/bin/con-daemon"},
+			},
+		},
+	}
+
+	app.Normalize()
+
+	// Should infer "con" because it matches the last segment of co.nowledge.con
+	if app.Command != "con" {
+		t.Errorf("expected inferred command 'con', got: %q", app.Command)
+	}
+}
+
+func TestSourcesEqualOrderInvariance(t *testing.T) {
+	s1 := &SourcesConfig{
+		Binaries: []BinarySource{
+			{Path: "a", Dest: "/app/bin/a"},
+			{Path: "b", Dest: "/app/bin/b"},
+		},
+		Files: []FileSource{
+			{Path: "f1", Dest: "/app/share/f1"},
+			{Path: "f2", Dest: "/app/share/f2"},
+		},
+		Symlinks: []string{
+			"/app/bin/a: /app/bin/a-sym",
+			"/app/bin/b: /app/bin/b-sym",
+		},
+	}
+
+	s2 := &SourcesConfig{
+		Binaries: []BinarySource{
+			{Path: "b", Dest: "/app/bin/b"},
+			{Path: "a", Dest: "/app/bin/a"},
+		},
+		Files: []FileSource{
+			{Path: "f2", Dest: "/app/share/f2"},
+			{Path: "f1", Dest: "/app/share/f1"},
+		},
+		Symlinks: []string{
+			"/app/bin/b: /app/bin/b-sym",
+			"/app/bin/a: /app/bin/a-sym",
+		},
+	}
+
+	if !sourcesEqual(s1, s2) {
+		t.Errorf("sourcesEqual returned false for reordered identical sources")
+	}
+
+	app1 := App{ID: "app", Runtime: "rt", Sources: s1}
+	app2 := App{ID: "app", Runtime: "rt", Sources: s2}
+	if !app1.Equal(app2) {
+		t.Errorf("App.Equal returned false for reordered identical sources")
+	}
+}

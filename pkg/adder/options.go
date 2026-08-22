@@ -20,6 +20,9 @@ type Option struct {
 // git), as opposed to a prebuilt bundle.
 func builtSrc(s Source) bool { return s != SourceBundle }
 
+// anySrc reports that an option is applicable to all sources including prebuilt bundles.
+func anySrc(s Source) bool { return true }
+
 // appendArg appends arg to args only if it is not already present.
 func appendArg(args []string, arg string) []string {
 	for _, a := range args {
@@ -57,6 +60,14 @@ var BoolOptions = []Option{
 		Default:   false,
 		AppliesTo: builtSrc,
 		Apply:     func(a *config.App) { t := true; a.CCache = &t },
+	},
+	{
+		Key:       "auto-release-metadata",
+		Label:     "Auto-sync release metadata",
+		Help:      "Automatically stamp git release tag and date into AppStream metadata",
+		Default:   false,
+		AppliesTo: anySrc,
+		Apply:     func(a *config.App) { t := true; a.AutoReleaseMetadata = &t },
 	},
 }
 

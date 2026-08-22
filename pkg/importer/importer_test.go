@@ -391,3 +391,67 @@ func TestFetchCleansUpOnError(t *testing.T) {
 		}
 	}
 }
+
+func TestImportAutoReleaseMetadata(t *testing.T) {
+	dummyBundle, err := os.CreateTemp("", "aetherpak-dummy-*.flatpak")
+	if err != nil {
+		t.Fatalf("failed to create dummy bundle: %v", err)
+	}
+	defer os.Remove(dummyBundle.Name())
+	_, _ = dummyBundle.WriteString("dummy bundle content")
+	dummyBundle.Close()
+
+	destRepo, err := os.MkdirTemp("", "aetherpak-test-import-repo-*")
+	if err != nil {
+		t.Fatalf("failed to create temp repo: %v", err)
+	}
+	defer os.RemoveAll(destRepo)
+
+	mockExec := executil.NewMockExecutor()
+	mockExec.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "ostree" && len(cmd.Args) >= 2 && cmd.Args[0] == "refs" {
+			cmd.OutData = []byte("app/org.example.App/x86_64/master\n")
+		}
+		if cmd.Name == "ostree" && len(cmd.Args) >= 3 && cmd.Args[0] == "ls" {
+			cmd.OutData = []byte("-rw-r--r-- 0 0 1000 /files/share/metainfo/org.example.App.metainfo.xml\n")
+		}
+		if cmd.Name == "ostree" && len(cmd.Args) >= 3 && cmd.Args[0] == "cat" {
+			cmd.OutData = []byte(`<?xml version="1.0" encoding="UTF-8"?><component type="desktop-application"><id>org.example.App</id></component>`)
+		}
+	}
+
+	opts := ImportOptions{
+		AppID:               "org.example.App",
+		Arch:                "x86_64",
+		Branch:              "stable",
+		BundlePath:          dummyBundle.Name(),
+		RepoPath:            destRepo,
+		AutoReleaseMetadata: true,
+		ReleaseVersion:      "v2.1.0",
+		ReleaseDate:         "2026-08-22",
+		Executor:            mockExec,
+	}
+
+	err = Import(opts)
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify ostree commit and flatpak build-update-repo were triggered
+	var hasOstreeCommit, hasUpdateRepo bool
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "ostree" && len(cmd.Args) > 0 && cmd.Args[0] == "commit" {
+			hasOstreeCommit = true
+		}
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-update-repo" {
+			hasUpdateRepo = true
+		}
+	}
+
+	if !hasOstreeCommit {
+		t.Errorf("expected ostree commit for AppStream sync in Import")
+	}
+	if !hasUpdateRepo {
+		t.Errorf("expected flatpak build-update-repo for AppStream sync in Import")
+	}
+}

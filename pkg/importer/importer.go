@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aetherpak/aetherpak/pkg/appstream"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/repoinfo"
@@ -22,14 +23,19 @@ var maxBundleSize int64 = 10 * 1024 * 1024 * 1024 // 10 GB
 
 // ImportOptions contains options for importing external flatpak bundles.
 type ImportOptions struct {
-	AppID        string
-	Arch         string
-	Branch       string
-	BundleURL    string
-	BundleSHA256 string
-	BundlePath   string // local path override
-	RepoPath     string // destination OSTree repo (default "repo")
-	Executor     executil.Executor
+	AppID               string
+	Arch                string
+	Branch              string
+	BundleURL           string
+	BundleSHA256        string
+	BundlePath          string // local path override
+	RepoPath            string // destination OSTree repo (default "repo")
+	Executor            executil.Executor
+	AutoReleaseMetadata bool   // dynamically stamp active release tag/date into AppStream catalog
+	ReleaseVersion      string // explicit release version override
+	ReleaseDate         string // explicit release date override (YYYY-MM-DD)
+	ReleaseDescription  string // explicit release description/changelog
+	ReleaseURL          string // explicit release notes URL
 }
 
 // Import downloads (if necessary), verifies, and imports a bundle, performing channel rebinding.
@@ -180,6 +186,21 @@ func Import(opts ImportOptions) error {
 	rebindCmd.SetStderr(&rebindStderr)
 	if err := rebindCmd.Run(); err != nil {
 		return fmt.Errorf("failed to rebind imported branch commit (%w): %s", err, rebindStderr.String())
+	}
+
+	// Synchronize dynamic AppStream release metadata if enabled
+	if opts.AutoReleaseMetadata || opts.ReleaseVersion != "" {
+		if res, ok := appstream.ResolveRelease(opts.Executor, opts.ReleaseVersion, opts.ReleaseDate, opts.ReleaseDescription, opts.ReleaseURL); ok {
+			relOpts := appstream.ReleaseOptions{
+				Version:     res.Version,
+				Date:        res.Date,
+				Description: res.Description,
+				URL:         res.URL,
+			}
+			if _, err := appstream.SyncOSTreeCommitAppStream(opts.Executor, repoPath, destRef, relOpts); err != nil {
+				return fmt.Errorf("failed to synchronize AppStream release metadata: %w", err)
+			}
+		}
 	}
 
 	logger.Info("Import and branch rebinding completed successfully.")

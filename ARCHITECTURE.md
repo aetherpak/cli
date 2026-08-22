@@ -19,12 +19,16 @@ graph TD
         Builder[pkg/builder] --> Executor
         Importer[pkg/importer] --> Executor
         OCI[pkg/oci] --> Executor
+        AppStream[pkg/appstream] --> Executor
         Site[pkg/site]
         Plan[pkg/plan]
         Signing[pkg/signing]
         Record[pkg/record]
     end
 
+    Builder --> AppStream
+    Importer --> AppStream
+    OCI --> AppStream
     CLI --> Builder
     CLI --> Importer
     CLI --> OCI
@@ -147,6 +151,11 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 
 ### `pkg/configdiff`
 * Renders a unified, lipgloss-colored diff between two config blobs (using `go-udiff`), with a plain mode for non-TTY output.
+
+### `pkg/appstream`
+* Implements pure Go XML token manipulation for dynamic `<releases>` and `<release>` AppStream metadata synchronization.
+* Resolves active release version and ISO date (`YYYY-MM-DD`) from explicit CLI flags, CI environment variables (GitHub Actions, GitLab CI, CircleCI, Travis CI), or git tags (`git describe`).
+* Discovers and updates AppStream metainfo files (`/files/share/metainfo/*.xml` / `/files/share/appdata/*.xml`) inside OSTree commits and regenerates the repository catalog (`flatpak build-update-repo --no-update-summary`) without modifying user source files on disk.
 
 ### `pkg/oci`
 * Bundles OSTree repositories into OCI images using `flatpak build-bundle`.

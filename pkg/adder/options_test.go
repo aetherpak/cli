@@ -22,12 +22,17 @@ func TestBoolOptionsDefaults(t *testing.T) {
 		"run-linter":                false,
 		"install-deps-from-flathub": true,
 		"ccache":                    false,
+		"auto-release-metadata":     false,
 	}
 	for _, o := range BoolOptions {
 		if !o.AppliesTo(SourceManifest) {
 			t.Errorf("%s should apply to manifest source", o.Key)
 		}
-		if o.AppliesTo(SourceBundle) {
+		if o.Key == "auto-release-metadata" {
+			if !o.AppliesTo(SourceBundle) {
+				t.Errorf("%s must apply to bundle source", o.Key)
+			}
+		} else if o.AppliesTo(SourceBundle) {
 			t.Errorf("%s must not apply to bundle source", o.Key)
 		}
 		if exp, ok := want[o.Key]; !ok {

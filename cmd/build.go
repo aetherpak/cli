@@ -36,6 +36,11 @@ var (
 	buildBundle               bool
 	buildNoInstallDeps        bool
 	buildNoFlathub            bool
+	buildAutoReleaseMetadata  bool
+	buildReleaseVersion       string
+	buildReleaseDate          string
+	buildReleaseDescription   string
+	buildReleaseURL           string
 )
 
 var buildCmd = &cobra.Command{
@@ -258,4 +263,9 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildBundle, "bundle", false, "generate a bundled flatpak binary (.flatpak) for the application")
 	buildCmd.Flags().BoolVar(&buildNoInstallDeps, "no-install-deps", false, "disable auto-injection of --install-deps-from flags for remotes")
 	buildCmd.Flags().BoolVar(&buildNoFlathub, "no-flathub", false, "disable auto-injection of flathub as a dependency remote")
+	buildCmd.Flags().BoolVar(&buildAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
+	buildCmd.Flags().StringVar(&buildReleaseVersion, "release-version", "", "explicit release version override")
+	buildCmd.Flags().StringVar(&buildReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")
+	buildCmd.Flags().StringVar(&buildReleaseDescription, "release-description", "", "explicit release description/changelog")
+	buildCmd.Flags().StringVar(&buildReleaseURL, "release-url", "", "explicit release notes URL")
 }

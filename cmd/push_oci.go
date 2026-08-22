@@ -17,20 +17,25 @@ import (
 )
 
 var (
-	pushAppID         string
-	pushArch          string
-	pushBranch        string
-	pushRegistry      string
-	pushOCIRepository string
-	pushRepoPath      string
-	pushRecordsDir    string
-	pushGPGKeys       []string
-	pushGPGPassphrase string
-	pushInsecure      bool
-	pushOutputFile    string
-	pushNoSign        bool
-	pushAllowUnsigned bool
-	pushDryRun        bool
+	pushAppID               string
+	pushArch                string
+	pushBranch              string
+	pushRegistry            string
+	pushOCIRepository       string
+	pushRepoPath            string
+	pushRecordsDir          string
+	pushGPGKeys             []string
+	pushGPGPassphrase       string
+	pushInsecure            bool
+	pushOutputFile          string
+	pushNoSign              bool
+	pushAllowUnsigned       bool
+	pushDryRun              bool
+	pushAutoReleaseMetadata bool
+	pushReleaseVersion      string
+	pushReleaseDate         string
+	pushReleaseDescription  string
+	pushReleaseURL          string
 )
 
 var pushOCICmd = &cobra.Command{
@@ -273,23 +278,44 @@ var pushOCICmd = &cobra.Command{
 			noSign := pushNoSign
 			allowUnsigned := pushAllowUnsigned
 
+			var matchedApp *config.App
+			if cfg != nil {
+				for i := range cfg.Apps {
+					if cfg.Apps[i].ID == target.AppID {
+						matchedApp = &cfg.Apps[i]
+						break
+					}
+				}
+			}
+			autoRel := pushAutoReleaseMetadata
+			if !cmd.Flags().Changed("auto-release-metadata") && matchedApp != nil && matchedApp.AutoReleaseMetadata != nil {
+				autoRel = *matchedApp.AutoReleaseMetadata
+			} else if !cmd.Flags().Changed("auto-release-metadata") && cfg != nil && cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+				autoRel = *cfg.Defaults.AutoReleaseMetadata
+			}
+
 			opts := oci.PushOptions{
-				AppID:         target.AppID,
-				Arch:          target.Arch,
-				Branch:        target.Branch,
-				Registry:      pushRegistry,
-				OCIRepository: appOCIRepository,
-				RepoPath:      repoPath,
-				RecordsDir:    recordsDir,
-				GPGKeys:       keys,
-				GPGPassphrase: passphrase,
-				Insecure:      pushInsecure,
-				OCIUsername:   viper.GetString("oci_username"),
-				OCIPassword:   viper.GetString("oci_password"),
-				NoSign:        noSign,
-				AllowUnsigned: allowUnsigned,
-				RefType:       target.RefType,
-				DryRun:        pushDryRun,
+				AppID:               target.AppID,
+				Arch:                target.Arch,
+				Branch:              target.Branch,
+				Registry:            pushRegistry,
+				OCIRepository:       appOCIRepository,
+				RepoPath:            repoPath,
+				RecordsDir:          recordsDir,
+				GPGKeys:             keys,
+				GPGPassphrase:       passphrase,
+				Insecure:            pushInsecure,
+				OCIUsername:         viper.GetString("oci_username"),
+				OCIPassword:         viper.GetString("oci_password"),
+				NoSign:              noSign,
+				AllowUnsigned:       allowUnsigned,
+				RefType:             target.RefType,
+				DryRun:              pushDryRun,
+				AutoReleaseMetadata: autoRel,
+				ReleaseVersion:      pushReleaseVersion,
+				ReleaseDate:         pushReleaseDate,
+				ReleaseDescription:  pushReleaseDescription,
+				ReleaseURL:          pushReleaseURL,
 			}
 
 			res, err := oci.Push(opts)
@@ -338,4 +364,9 @@ func init() {
 	pushOCICmd.Flags().BoolVar(&pushNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	pushOCICmd.Flags().BoolVar(&pushAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 	pushOCICmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "simulate pushing OCI image without writing to remote registry or records")
+	pushOCICmd.Flags().BoolVar(&pushAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
+	pushOCICmd.Flags().StringVar(&pushReleaseVersion, "release-version", "", "explicit release version override")
+	pushOCICmd.Flags().StringVar(&pushReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")
+	pushOCICmd.Flags().StringVar(&pushReleaseDescription, "release-description", "", "explicit release description/changelog")
+	pushOCICmd.Flags().StringVar(&pushReleaseURL, "release-url", "", "explicit release notes URL")
 }

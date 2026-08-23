@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.33.0](https://github.com/aetherpak/cli/compare/v0.32.0...v0.33.0) (2026-08-23)
+
+
+### Features
+
+* **appstream:** dynamic release metadata synchronization ([#152](https://github.com/aetherpak/cli/issues/152)) ([864d498](https://github.com/aetherpak/cli/commit/864d4988621bf5e05be7e7050fc4de1c3c11fcd9))
+* **config:** support app-id resolution for multi-app lookups ([#154](https://github.com/aetherpak/cli/issues/154)) ([26d218b](https://github.com/aetherpak/cli/commit/26d218b36f267fa8a1fcf66d214702a07c3c76e8))
+* **snippets:** add automated install snippet generator ([#150](https://github.com/aetherpak/cli/issues/150)) ([10ea152](https://github.com/aetherpak/cli/commit/10ea15284fa8c03fe6e9833e0aab736c280ca7a8))
+* support direct binary and artifact packaging in zero-manifest mode ([#151](https://github.com/aetherpak/cli/issues/151)) ([d927b94](https://github.com/aetherpak/cli/commit/d927b9469a75e7b21e6ea25144654c0bcfe29afd))
+
+
+### Bug Fixes
+
+* **ci:** strip registry prefix in buildah action ([#155](https://github.com/aetherpak/cli/issues/155)) ([3719d44](https://github.com/aetherpak/cli/commit/3719d44aed490ff0824b1fb4faf69ba4de83cec2))
+
 ## [0.32.0](https://github.com/aetherpak/cli/compare/v0.31.0...v0.32.0) (2026-06-13)
 
 

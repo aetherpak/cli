@@ -38,7 +38,7 @@ runs:
 
     - name: Log in to the Container registry
       if: ${{ inputs.push == 'true' && inputs.password != '' }}
-      uses: redhat-actions/podman-login@v1
+      uses: redhat-actions/podman-login@v2
       with:
         registry: ghcr.io
         username: ${{ inputs.username }}
@@ -114,7 +114,7 @@ runs:
 
     - name: Push CLI image
       if: ${{ inputs.push == 'true' && inputs.password != '' }}
-      uses: redhat-actions/push-to-registry@v2
+      uses: redhat-actions/push-to-registry@v3
       with:
         image: ${{ steps.build-cli.outputs.image }}
         tags: ${{ steps.build-cli.outputs.tags }}
@@ -124,7 +124,7 @@ runs:
 
     - name: Push Builder CLI image
       if: ${{ inputs.push == 'true' && inputs.password != '' }}
-      uses: redhat-actions/push-to-registry@v2
+      uses: redhat-actions/push-to-registry@v3
       with:
         image: ${{ steps.build-builder.outputs.image }}
         tags: ${{ steps.build-builder.outputs.tags }}

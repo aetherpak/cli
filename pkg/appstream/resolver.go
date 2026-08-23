@@ -40,29 +40,36 @@ func ResolveRelease(executor executil.Executor, explicitVersion, explicitDate, e
 		res.Source = "explicit"
 	}
 
+	var rawGitTag string
+
 	// 2. CI Environment Variables
 	if res.Version == "" {
 		if os.Getenv("GITHUB_REF_TYPE") == "tag" && os.Getenv("GITHUB_REF_NAME") != "" {
-			res.Version = SanitizeVersion(os.Getenv("GITHUB_REF_NAME"))
+			tag := os.Getenv("GITHUB_REF_NAME")
+			res.Version = SanitizeVersion(tag)
+			rawGitTag = tag
 			res.Source = "env:GITHUB_REF_NAME"
 		} else if ref := os.Getenv("GITHUB_REF"); strings.HasPrefix(ref, "refs/tags/") {
 			tag := strings.TrimPrefix(ref, "refs/tags/")
 			res.Version = SanitizeVersion(tag)
+			rawGitTag = tag
 			res.Source = "env:GITHUB_REF"
 		} else if tag := os.Getenv("CI_COMMIT_TAG"); tag != "" {
 			res.Version = SanitizeVersion(tag)
+			rawGitTag = tag
 			res.Source = "env:CI_COMMIT_TAG"
 		} else if tag := os.Getenv("CIRCLE_TAG"); tag != "" {
 			res.Version = SanitizeVersion(tag)
+			rawGitTag = tag
 			res.Source = "env:CIRCLE_TAG"
 		} else if tag := os.Getenv("TRAVIS_TAG"); tag != "" {
 			res.Version = SanitizeVersion(tag)
+			rawGitTag = tag
 			res.Source = "env:TRAVIS_TAG"
 		}
 	}
 
 	// 3. Local Git repository tags
-	var rawGitTag string
 	if res.Version == "" {
 		// Attempt exact tag match on HEAD
 		cmdExact := executor.Command("git", "describe", "--tags", "--exact-match")

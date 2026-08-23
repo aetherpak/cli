@@ -553,6 +553,30 @@ Options:
 * `--no-serve`: Do not start a local HTTP server to preview the site (defaults to `false`).
 * `--port <port>`: Port for local HTTP server (defaults to `8080`).
 
+#### `snippets`
+Generates ready-to-use installation and channel-switching documentation snippets for Stable, Nightly, and Flatpakref one-click installs based on your repository configuration:
+```bash
+# Generate default Markdown snippets
+aetherpak snippets
+
+# Generate HTML snippets for a specific application
+aetherpak snippets --format=html --app=org.example.App
+
+# Generate structured JSON metadata for custom static site generators
+aetherpak snippets --format=json
+
+# Write Markdown snippets directly to a file
+aetherpak snippets --format=markdown --output-file=INSTALL.md
+```
+Options:
+* `--format, -f <markdown|html|json>`: Output format (`markdown` [default], `html`, or `json`).
+* `--app, -a <app-id>`: Filter snippets by application ID.
+* `--channel, -c <channel>`: Filter snippets by channel/branch (e.g. `stable`, `nightly`).
+* `--pages-url <url>`: Override base Pages repository URL (defaults to `pages_url` in config).
+* `--remote-name <name>`: Override Flatpak remote repository name (defaults to `remote_name` in config).
+* `--no-sign`: Generate unverified/unsigned repository command syntax (`--no-gpg-verify`).
+* `--output-file, -o <path>`: Write generated snippets to the specified file path (`-` or empty for stdout).
+
 #### `clean`
 Clears builder compiler caches, state directories, template preview files, production site outputs, build-site records, and local OSTree repositories.
 Requires confirmation unless `--yes`, `-y`, or `--confirm` is specified.

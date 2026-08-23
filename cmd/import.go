@@ -15,14 +15,19 @@ import (
 )
 
 var (
-	importAppID        string
-	importArch         string
-	importBranch       string
-	importBundleURLs   []string
-	importBundleSHA256 string
-	importBundlePaths  []string
-	importRepoPath     string
-	importOutputFile   string
+	importAppID               string
+	importArch                string
+	importBranch              string
+	importBundleURLs          []string
+	importBundleSHA256        string
+	importBundlePaths         []string
+	importRepoPath            string
+	importOutputFile          string
+	importAutoReleaseMetadata bool
+	importReleaseVersion      string
+	importReleaseDate         string
+	importReleaseDescription  string
+	importReleaseURL          string
 )
 
 var importCmd = &cobra.Command{
@@ -99,12 +104,22 @@ var importCmd = &cobra.Command{
 			bundleURL    string
 			bundleSHA256 string
 			bundlePath   string
+			appConfig    *config.App
 		}
 
 		var jobs []importJob
 
 		if explicitBundle {
 			// Explicit bundles specified
+			var targetApp *config.App
+			if cfg != nil && importAppID != "" {
+				for i := range cfg.Apps {
+					if cfg.Apps[i].ID == importAppID {
+						targetApp = &cfg.Apps[i]
+						break
+					}
+				}
+			}
 			for _, url := range importBundleURLs {
 				jobs = append(jobs, importJob{
 					appID:        importAppID,
@@ -112,6 +127,7 @@ var importCmd = &cobra.Command{
 					branch:       importBranch,
 					bundleURL:    url,
 					bundleSHA256: importBundleSHA256,
+					appConfig:    targetApp,
 				})
 			}
 			for _, path := range resolvedPaths {
@@ -120,6 +136,7 @@ var importCmd = &cobra.Command{
 					arch:       importArch,
 					branch:     importBranch,
 					bundlePath: path,
+					appConfig:  targetApp,
 				})
 			}
 		} else if importAppID != "" {
@@ -152,6 +169,7 @@ var importCmd = &cobra.Command{
 				branch:       branch,
 				bundleURL:    bundle.URL,
 				bundleSHA256: bundle.SHA256,
+				appConfig:    targetApp,
 			})
 		} else {
 			// No app-id and no bundle specified:
@@ -176,6 +194,7 @@ var importCmd = &cobra.Command{
 							branch:       branch,
 							bundleURL:    bundle.URL,
 							bundleSHA256: bundle.SHA256,
+							appConfig:    &cfg.Apps[i],
 						})
 					}
 				}
@@ -207,14 +226,35 @@ var importCmd = &cobra.Command{
 		}
 
 		for _, job := range jobs {
+			appCfg := job.appConfig
+			if appCfg == nil && cfg != nil && job.appID != "" {
+				for i := range cfg.Apps {
+					if cfg.Apps[i].ID == job.appID {
+						appCfg = &cfg.Apps[i]
+						break
+					}
+				}
+			}
+			autoRel := importAutoReleaseMetadata
+			if !cmd.Flags().Changed("auto-release-metadata") && appCfg != nil && appCfg.AutoReleaseMetadata != nil {
+				autoRel = *appCfg.AutoReleaseMetadata
+			} else if !cmd.Flags().Changed("auto-release-metadata") && cfg != nil && cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+				autoRel = *cfg.Defaults.AutoReleaseMetadata
+			}
+
 			opts := importer.ImportOptions{
-				AppID:        job.appID,
-				Arch:         job.arch,
-				Branch:       job.branch,
-				BundleURL:    job.bundleURL,
-				BundleSHA256: job.bundleSHA256,
-				BundlePath:   job.bundlePath,
-				RepoPath:     importRepo,
+				AppID:               job.appID,
+				Arch:                job.arch,
+				Branch:              job.branch,
+				BundleURL:           job.bundleURL,
+				BundleSHA256:        job.bundleSHA256,
+				BundlePath:          job.bundlePath,
+				RepoPath:            importRepo,
+				AutoReleaseMetadata: autoRel,
+				ReleaseVersion:      importReleaseVersion,
+				ReleaseDate:         importReleaseDate,
+				ReleaseDescription:  importReleaseDescription,
+				ReleaseURL:          importReleaseURL,
 			}
 
 			if err := importer.Import(opts); err != nil {
@@ -277,4 +317,9 @@ func init() {
 	importCmd.Flags().StringSliceVar(&importBundlePaths, "bundle-path", nil, "local path(s) override to Flatpak bundle file(s) (supports globs)")
 	importCmd.Flags().StringVar(&importRepoPath, "repo-path", "repo", "destination OSTree repository path")
 	importCmd.Flags().StringVar(&importOutputFile, "output-file", "", "write resolved outputs as dotenv KEY=VALUE (- or empty = stdout)")
+	importCmd.Flags().BoolVar(&importAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
+	importCmd.Flags().StringVar(&importReleaseVersion, "release-version", "", "explicit release version override")
+	importCmd.Flags().StringVar(&importReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")
+	importCmd.Flags().StringVar(&importReleaseDescription, "release-description", "", "explicit release description/changelog")
+	importCmd.Flags().StringVar(&importReleaseURL, "release-url", "", "explicit release notes URL")
 }

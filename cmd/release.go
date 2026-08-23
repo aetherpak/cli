@@ -52,6 +52,11 @@ var (
 	relLinterExceptions     []string
 	relFlatpakRemotes       []string
 	relFlatpakDeps          []string
+	relAutoReleaseMetadata  bool
+	relReleaseVersion       string
+	relReleaseDate          string
+	relReleaseDescription   string
+	relReleaseURL           string
 )
 
 var releaseRepoMutex sync.Mutex
@@ -185,14 +190,33 @@ func runRelease(cmd *cobra.Command, args []string) error {
 								return fmt.Errorf("build failed for %s (%s): %w", row.AppID, row.Arch, buildErr)
 							}
 						} else {
+							var matchedApp *config.App
+							for idx := range cfg.Apps {
+								if cfg.Apps[idx].ID == row.AppID {
+									matchedApp = &cfg.Apps[idx]
+									break
+								}
+							}
+							autoRel := relAutoReleaseMetadata
+							if !cmd.Flags().Changed("auto-release-metadata") && matchedApp != nil && matchedApp.AutoReleaseMetadata != nil {
+								autoRel = *matchedApp.AutoReleaseMetadata
+							} else if !cmd.Flags().Changed("auto-release-metadata") && cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+								autoRel = *cfg.Defaults.AutoReleaseMetadata
+							}
+
 							iOpts := importer.ImportOptions{
-								AppID:        row.AppID,
-								Arch:         row.Arch,
-								Branch:       row.Branch,
-								BundleURL:    row.BundleURL,
-								BundleSHA256: row.BundleSHA256,
-								RepoPath:     repoPath,
-								Executor:     executor,
+								AppID:               row.AppID,
+								Arch:                row.Arch,
+								Branch:              row.Branch,
+								BundleURL:           row.BundleURL,
+								BundleSHA256:        row.BundleSHA256,
+								RepoPath:            repoPath,
+								Executor:            executor,
+								AutoReleaseMetadata: autoRel,
+								ReleaseVersion:      relReleaseVersion,
+								ReleaseDate:         relReleaseDate,
+								ReleaseDescription:  relReleaseDescription,
+								ReleaseURL:          relReleaseURL,
 							}
 							releaseRepoMutex.Lock()
 							importErr := importer.Import(iOpts)
@@ -203,23 +227,42 @@ func runRelease(cmd *cobra.Command, args []string) error {
 						}
 
 						// 2. Push to Registry
+						var matchedApp *config.App
+						for idx := range cfg.Apps {
+							if cfg.Apps[idx].ID == row.AppID {
+								matchedApp = &cfg.Apps[idx]
+								break
+							}
+						}
+						autoRel := relAutoReleaseMetadata
+						if !cmd.Flags().Changed("auto-release-metadata") && matchedApp != nil && matchedApp.AutoReleaseMetadata != nil {
+							autoRel = *matchedApp.AutoReleaseMetadata
+						} else if !cmd.Flags().Changed("auto-release-metadata") && cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+							autoRel = *cfg.Defaults.AutoReleaseMetadata
+						}
+
 						pOpts := oci.PushOptions{
-							AppID:         row.AppID,
-							Arch:          row.Arch,
-							Branch:        row.Branch,
-							Registry:      cfg.Registry,
-							OCIRepository: cfg.OCIRepository,
-							RepoPath:      repoPath,
-							RecordsDir:    recordsDir,
-							GPGKeys:       keys,
-							GPGPassphrase: passphrase,
-							Insecure:      relInsecure,
-							OCIUsername:   viper.GetString("oci_username"),
-							OCIPassword:   viper.GetString("oci_password"),
-							NoSign:        noSign,
-							AllowUnsigned: allowUnsigned,
-							Executor:      executor,
-							DryRun:        relDryRun,
+							AppID:               row.AppID,
+							Arch:                row.Arch,
+							Branch:              row.Branch,
+							Registry:            cfg.Registry,
+							OCIRepository:       cfg.OCIRepository,
+							RepoPath:            repoPath,
+							RecordsDir:          recordsDir,
+							GPGKeys:             keys,
+							GPGPassphrase:       passphrase,
+							Insecure:            relInsecure,
+							OCIUsername:         viper.GetString("oci_username"),
+							OCIPassword:         viper.GetString("oci_password"),
+							NoSign:              noSign,
+							AllowUnsigned:       allowUnsigned,
+							Executor:            executor,
+							DryRun:              relDryRun,
+							AutoReleaseMetadata: autoRel,
+							ReleaseVersion:      relReleaseVersion,
+							ReleaseDate:         relReleaseDate,
+							ReleaseDescription:  relReleaseDescription,
+							ReleaseURL:          relReleaseURL,
 						}
 						if _, err := oci.Push(pOpts); err != nil {
 							return fmt.Errorf("push failed for %s (%s): %w", row.AppID, row.Arch, err)
@@ -350,4 +393,9 @@ func init() {
 	releaseCmd.Flags().StringSliceVar(&relLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
 	releaseCmd.Flags().StringArrayVar(&relFlatpakRemotes, "flatpak-remote", nil, "Flatpak remote repository to register (format: name=url)")
 	releaseCmd.Flags().StringArrayVar(&relFlatpakDeps, "flatpak-dep", nil, "Flatpak dependency to install before build (format: remote:ref)")
+	releaseCmd.Flags().BoolVar(&relAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
+	releaseCmd.Flags().StringVar(&relReleaseVersion, "release-version", "", "explicit release version override")
+	releaseCmd.Flags().StringVar(&relReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")
+	releaseCmd.Flags().StringVar(&relReleaseDescription, "release-description", "", "explicit release description/changelog")
+	releaseCmd.Flags().StringVar(&relReleaseURL, "release-url", "", "explicit release notes URL")
 }

@@ -88,15 +88,17 @@ type FlatpakDep struct {
 
 // DefaultsConfig defines global repository build defaults.
 type DefaultsConfig struct {
-	CCache        *bool                   `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
-	CCacheDir     string                  `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
-	StateDir      string                  `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
-	RunLinter     bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	BuilderArgs   []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes       map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks      []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
-	NoInstallDeps *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
-	NoFlathub     *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
+	CCache                   *bool                   `yaml:"ccache" json:"ccache" mapstructure:"ccache"`
+	CCacheDir                string                  `yaml:"ccache_dir" json:"ccache_dir" mapstructure:"ccache_dir"`
+	StateDir                 string                  `yaml:"state_dir" json:"state_dir" mapstructure:"state_dir"`
+	RunLinter                bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	BuilderArgs              []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes                  map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks                 []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	NoInstallDeps            *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
+	NoFlathub                *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
+	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
+	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
 }
 
 // SourcesConfig defines zero-manifest precompiled binary and artifact packaging.
@@ -128,34 +130,36 @@ type FileSource struct {
 
 // App represents an individual application configuration.
 type App struct {
-	ID                  string                  `yaml:"id" json:"id" mapstructure:"id"`
-	AppID               string                  `yaml:"app_id,omitempty" json:"app_id,omitempty" mapstructure:"app_id"`
-	Branch              string                  `yaml:"branch" json:"branch" mapstructure:"branch"`
-	Arches              []string                `yaml:"arches" json:"arches" mapstructure:"arches"`
-	Manifest            string                  `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
-	Runtime             string                  `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
-	RuntimeVersion      string                  `yaml:"runtime_version,omitempty" json:"runtime_version,omitempty" mapstructure:"runtime_version"`
-	RuntimeVersionKebab string                  `yaml:"runtime-version,omitempty" json:"-" mapstructure:"runtime-version"`
-	SDK                 string                  `yaml:"sdk,omitempty" json:"sdk,omitempty" mapstructure:"sdk"`
-	SDKVersion          string                  `yaml:"sdk_version,omitempty" json:"sdk_version,omitempty" mapstructure:"sdk_version"`
-	SDKVersionKebab     string                  `yaml:"sdk-version,omitempty" json:"-" mapstructure:"sdk-version"`
-	Command             string                  `yaml:"command,omitempty" json:"command,omitempty" mapstructure:"command"`
-	FinishArgs          []string                `yaml:"finish_args,omitempty" json:"finish_args,omitempty" mapstructure:"finish_args"`
-	FinishArgsKebab     []string                `yaml:"finish-args,omitempty" json:"-" mapstructure:"finish-args"`
-	Permissions         []string                `yaml:"permissions,omitempty" json:"permissions,omitempty" mapstructure:"permissions"`
-	Sources             *SourcesConfig          `yaml:"sources,omitempty" json:"sources,omitempty" mapstructure:"sources"`
-	RunLinter           bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
-	RunLinterKebab      bool                    `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
-	Linter              *LinterConfig           `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
-	CCache              *bool                   `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
-	CCacheDir           string                  `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
-	StateDir            string                  `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
-	Bundles             map[string]Bundle       `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
-	BuilderArgs         []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
-	Remotes             map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
-	Flatpaks            []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
-	NoInstallDeps       *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
-	NoFlathub           *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
+	ID                       string                  `yaml:"id" json:"id" mapstructure:"id"`
+	AppID                    string                  `yaml:"app_id,omitempty" json:"app_id,omitempty" mapstructure:"app_id"`
+	Branch                   string                  `yaml:"branch" json:"branch" mapstructure:"branch"`
+	Arches                   []string                `yaml:"arches" json:"arches" mapstructure:"arches"`
+	Manifest                 string                  `yaml:"manifest,omitempty" json:"manifest,omitempty" mapstructure:"manifest"`
+	Runtime                  string                  `yaml:"runtime,omitempty" json:"runtime,omitempty" mapstructure:"runtime"`
+	RuntimeVersion           string                  `yaml:"runtime_version,omitempty" json:"runtime_version,omitempty" mapstructure:"runtime_version"`
+	RuntimeVersionKebab      string                  `yaml:"runtime-version,omitempty" json:"-" mapstructure:"runtime-version"`
+	SDK                      string                  `yaml:"sdk,omitempty" json:"sdk,omitempty" mapstructure:"sdk"`
+	SDKVersion               string                  `yaml:"sdk_version,omitempty" json:"sdk_version,omitempty" mapstructure:"sdk_version"`
+	SDKVersionKebab          string                  `yaml:"sdk-version,omitempty" json:"-" mapstructure:"sdk-version"`
+	Command                  string                  `yaml:"command,omitempty" json:"command,omitempty" mapstructure:"command"`
+	FinishArgs               []string                `yaml:"finish_args,omitempty" json:"finish_args,omitempty" mapstructure:"finish_args"`
+	FinishArgsKebab          []string                `yaml:"finish-args,omitempty" json:"-" mapstructure:"finish-args"`
+	Permissions              []string                `yaml:"permissions,omitempty" json:"permissions,omitempty" mapstructure:"permissions"`
+	Sources                  *SourcesConfig          `yaml:"sources,omitempty" json:"sources,omitempty" mapstructure:"sources"`
+	RunLinter                bool                    `yaml:"run_linter" json:"run_linter" mapstructure:"run_linter"`
+	RunLinterKebab           bool                    `yaml:"run-linter,omitempty" json:"-" mapstructure:"run-linter"`
+	Linter                   *LinterConfig           `yaml:"linter,omitempty" json:"linter,omitempty" mapstructure:"linter"`
+	CCache                   *bool                   `yaml:"ccache,omitempty" json:"ccache,omitempty" mapstructure:"ccache"`
+	CCacheDir                string                  `yaml:"ccache_dir,omitempty" json:"ccache_dir,omitempty" mapstructure:"ccache_dir"`
+	StateDir                 string                  `yaml:"state_dir,omitempty" json:"state_dir,omitempty" mapstructure:"state_dir"`
+	Bundles                  map[string]Bundle       `yaml:"bundles,omitempty" json:"bundles,omitempty" mapstructure:"bundles"`
+	BuilderArgs              []string                `yaml:"builder_args,omitempty" json:"builder_args,omitempty" mapstructure:"builder_args"`
+	Remotes                  map[string]RemoteConfig `yaml:"remotes,omitempty" json:"remotes,omitempty" mapstructure:"remotes"`
+	Flatpaks                 []FlatpakDep            `yaml:"flatpaks,omitempty" json:"flatpaks,omitempty" mapstructure:"flatpaks"`
+	NoInstallDeps            *bool                   `yaml:"no_install_deps,omitempty" json:"no_install_deps,omitempty" mapstructure:"no_install_deps"`
+	NoFlathub                *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
+	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
+	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -646,6 +650,10 @@ func (cfg *Config) Normalize() {
 		cfg.Defaults = &DefaultsConfig{}
 	}
 
+	if cfg.Defaults.AutoReleaseMetadataKebab != nil && cfg.Defaults.AutoReleaseMetadata == nil {
+		cfg.Defaults.AutoReleaseMetadata = cfg.Defaults.AutoReleaseMetadataKebab
+	}
+
 	if cfg.Linter != nil {
 		if cfg.Linter.Strict == nil {
 			t := true
@@ -769,6 +777,11 @@ func (cfg *Config) Normalize() {
 			app.NoFlathub = &val
 		}
 
+		if app.AutoReleaseMetadata == nil && cfg.Defaults.AutoReleaseMetadata != nil {
+			val := *cfg.Defaults.AutoReleaseMetadata
+			app.AutoReleaseMetadata = &val
+		}
+
 		if app.CCacheDir == "" {
 			if cfg.Defaults.CCacheDir != "" {
 				app.CCacheDir = cfg.Defaults.CCacheDir
@@ -840,6 +853,9 @@ func (cfg *Config) Normalize() {
 func (app *App) Normalize() {
 	if app.ID == "" && app.AppID != "" {
 		app.ID = app.AppID
+	}
+	if app.AutoReleaseMetadataKebab != nil && app.AutoReleaseMetadata == nil {
+		app.AutoReleaseMetadata = app.AutoReleaseMetadataKebab
 	}
 	if app.RunLinterKebab {
 		app.RunLinter = true
@@ -996,6 +1012,17 @@ func readManifestBranch(manifestPath string) string {
 		}
 	}
 	return ""
+}
+
+// ResolveAutoReleaseMetadata reports whether automatic AppStream release metadata synchronization is enabled.
+func (app *App) ResolveAutoReleaseMetadata(defaults *DefaultsConfig) bool {
+	if app != nil && app.AutoReleaseMetadata != nil {
+		return *app.AutoReleaseMetadata
+	}
+	if defaults != nil && defaults.AutoReleaseMetadata != nil {
+		return *defaults.AutoReleaseMetadata
+	}
+	return false
 }
 
 // ValidateBasic validates basic metadata (ID, branch, runtime, and arches) without path checks.
@@ -1230,6 +1257,13 @@ func (app App) Equal(other App) bool {
 		return false
 	}
 	if app.NoFlathub != nil && *app.NoFlathub != *other.NoFlathub {
+		return false
+	}
+
+	if (app.AutoReleaseMetadata == nil) != (other.AutoReleaseMetadata == nil) {
+		return false
+	}
+	if app.AutoReleaseMetadata != nil && *app.AutoReleaseMetadata != *other.AutoReleaseMetadata {
 		return false
 	}
 

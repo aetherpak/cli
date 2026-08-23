@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aetherpak/aetherpak/pkg/appstream"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
@@ -24,23 +25,28 @@ import (
 
 // PushOptions holds options for converting and pushing an OSTree branch to an OCI registry.
 type PushOptions struct {
-	AppID         string
-	Arch          string
-	Branch        string
-	Registry      string
-	OCIRepository string
-	RepoPath      string
-	RecordsDir    string
-	GPGKeys       []string // GPG private key blocks or file paths
-	GPGPassphrase []byte   // unlocks passphrase-protected keys
-	Insecure      bool
-	Executor      executil.Executor
-	OCIUsername   string
-	OCIPassword   string
-	NoSign        bool
-	AllowUnsigned bool
-	RefType       string // "app" or "runtime"; defaults to "app"
-	DryRun        bool
+	AppID               string
+	Arch                string
+	Branch              string
+	Registry            string
+	OCIRepository       string
+	RepoPath            string
+	RecordsDir          string
+	GPGKeys             []string // GPG private key blocks or file paths
+	GPGPassphrase       []byte   // unlocks passphrase-protected keys
+	Insecure            bool
+	Executor            executil.Executor
+	OCIUsername         string
+	OCIPassword         string
+	NoSign              bool
+	AllowUnsigned       bool
+	RefType             string // "app" or "runtime"; defaults to "app"
+	DryRun              bool
+	AutoReleaseMetadata bool   // dynamically stamp active release tag/date into AppStream catalog
+	ReleaseVersion      string // explicit release version override
+	ReleaseDate         string // explicit release date override (YYYY-MM-DD)
+	ReleaseDescription  string // explicit release description/changelog
+	ReleaseURL          string // explicit release notes URL
 }
 
 // PushResult reports the coordinates of a completed push for CI consumption.
@@ -64,6 +70,27 @@ func Push(opts PushOptions) (PushResult, error) {
 	safeAppID := strings.ReplaceAll(opts.AppID, ".", "_")
 	tag := fmt.Sprintf("%s-%s-%s", safeAppID, opts.Branch, opts.Arch)
 	logger.Debug("Target OCI image tag resolved to: %s", tag)
+
+	refType := opts.RefType
+	if refType == "" {
+		refType = "app"
+	}
+	ref := fmt.Sprintf("%s/%s/%s/%s", refType, opts.AppID, opts.Arch, opts.Branch)
+
+	// Synchronize dynamic AppStream release metadata if enabled (skipped in dry-run mode)
+	if !opts.DryRun && (opts.AutoReleaseMetadata || opts.ReleaseVersion != "") {
+		if res, ok := appstream.ResolveRelease(opts.Executor, opts.ReleaseVersion, opts.ReleaseDate, opts.ReleaseDescription, opts.ReleaseURL); ok {
+			relOpts := appstream.ReleaseOptions{
+				Version:     res.Version,
+				Date:        res.Date,
+				Description: res.Description,
+				URL:         res.URL,
+			}
+			if _, err := appstream.SyncOSTreeCommitAppStream(opts.Executor, opts.RepoPath, ref, relOpts); err != nil {
+				return PushResult{}, fmt.Errorf("failed to synchronize AppStream release metadata: %w", err)
+			}
+		}
+	}
 
 	// 1. Compile OCI layout locally using flatpak build-bundle
 	ociDir, err := os.MkdirTemp("", "aetherpak-oci-layout-*")
@@ -259,11 +286,6 @@ func Push(opts PushOptions) (PushResult, error) {
 	logger.Info("OCI push completed successfully.")
 
 	// 5. Write parallel records contracts to filesystem
-	refType := opts.RefType
-	if refType == "" {
-		refType = "app"
-	}
-	ref := fmt.Sprintf("%s/%s/%s/%s", refType, opts.AppID, opts.Arch, opts.Branch)
 	scheme := "https://"
 	if opts.Insecure {
 		scheme = "http://"

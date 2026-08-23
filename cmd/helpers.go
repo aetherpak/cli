@@ -147,9 +147,17 @@ func resolveBuildOptions(
 	var appNoSign = false
 	var appNoInstallDeps = false
 	var appNoFlathub = false
+	var appAutoReleaseMetadata = false
+	var appReleaseVersion = ""
+	var appReleaseDate = ""
+	var appReleaseDescription = ""
+	var appReleaseURL = ""
 
 	if cfg != nil {
 		appNoSign = cfg.NoSign
+		if cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+			appAutoReleaseMetadata = *cfg.Defaults.AutoReleaseMetadata
+		}
 	}
 
 	// 2. Resolve defaults from app configuration
@@ -160,6 +168,11 @@ func resolveBuildOptions(
 		appBuilderArgs = appConfig.BuilderArgs
 		appRemotes = appConfig.Remotes
 		appFlatpaks = appConfig.Flatpaks
+		if cfg != nil {
+			appAutoReleaseMetadata = appConfig.ResolveAutoReleaseMetadata(cfg.Defaults)
+		} else if appConfig.AutoReleaseMetadata != nil {
+			appAutoReleaseMetadata = *appConfig.AutoReleaseMetadata
+		}
 		if appConfig.NoInstallDeps != nil {
 			appNoInstallDeps = *appConfig.NoInstallDeps
 		}
@@ -229,6 +242,21 @@ func resolveBuildOptions(
 	}
 	if cmd.Flags().Lookup("no-flathub") != nil && cmd.Flags().Changed("no-flathub") {
 		appNoFlathub, _ = cmd.Flags().GetBool("no-flathub")
+	}
+	if cmd.Flags().Lookup("auto-release-metadata") != nil && cmd.Flags().Changed("auto-release-metadata") {
+		appAutoReleaseMetadata, _ = cmd.Flags().GetBool("auto-release-metadata")
+	}
+	if cmd.Flags().Lookup("release-version") != nil && cmd.Flags().Changed("release-version") {
+		appReleaseVersion, _ = cmd.Flags().GetString("release-version")
+	}
+	if cmd.Flags().Lookup("release-date") != nil && cmd.Flags().Changed("release-date") {
+		appReleaseDate, _ = cmd.Flags().GetString("release-date")
+	}
+	if cmd.Flags().Lookup("release-description") != nil && cmd.Flags().Changed("release-description") {
+		appReleaseDescription, _ = cmd.Flags().GetString("release-description")
+	}
+	if cmd.Flags().Lookup("release-url") != nil && cmd.Flags().Changed("release-url") {
+		appReleaseURL, _ = cmd.Flags().GetString("release-url")
 	}
 	if cmd.Flags().Changed("builder-arg") {
 		appBuilderArgs, _ = cmd.Flags().GetStringSlice("builder-arg")
@@ -324,6 +352,11 @@ func resolveBuildOptions(
 		SDKVersion:           appSDKVersion,
 		Command:              appCommand,
 		FinishArgs:           appFinishArgs,
+		AutoReleaseMetadata:  appAutoReleaseMetadata,
+		ReleaseVersion:       appReleaseVersion,
+		ReleaseDate:          appReleaseDate,
+		ReleaseDescription:   appReleaseDescription,
+		ReleaseURL:           appReleaseURL,
 	}
 
 	return opts, nil

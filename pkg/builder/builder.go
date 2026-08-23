@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aetherpak/aetherpak/pkg/appstream"
 	"github.com/aetherpak/aetherpak/pkg/config"
 	"github.com/aetherpak/aetherpak/pkg/executil"
 	"github.com/aetherpak/aetherpak/pkg/logger"
@@ -53,6 +54,12 @@ type BuildOptions struct {
 	SDKVersion     string
 	Command        string
 	FinishArgs     []string
+
+	AutoReleaseMetadata bool   // dynamically stamp active release tag/date into AppStream catalog
+	ReleaseVersion      string // explicit release version override
+	ReleaseDate         string // explicit release date override (YYYY-MM-DD)
+	ReleaseDescription  string // explicit release description/changelog
+	ReleaseURL          string // explicit release notes URL
 }
 
 // extraBuilderArgs appends a CI default to the pass-through flags: rofiles-fuse
@@ -486,6 +493,55 @@ func Build(opts BuildOptions) error {
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("flatpak-builder failed: %w", err)
+	}
+
+	// Synchronize dynamic AppStream release metadata if enabled
+	if opts.AutoReleaseMetadata || opts.ReleaseVersion != "" {
+		if res, ok := appstream.ResolveRelease(opts.Executor, opts.ReleaseVersion, opts.ReleaseDate, opts.ReleaseDescription, opts.ReleaseURL); ok {
+			cleanAppID := opts.AppID
+			var extensionIDs []string
+			if m, parseErr := manifest.ParseManifest(opts.Manifest); parseErr == nil {
+				if cleanAppID == "" {
+					cleanAppID = m.ID
+				}
+				extensionIDs = m.ExtensionIDs
+			}
+
+			refs, err := repoinfo.ResolveAll(opts.Executor, repoPath)
+			if err != nil {
+				// Fallback to primary ref coordinates if resolving fails
+				if cleanAppID != "" && opts.Branch != "" && opts.Arch != "" {
+					refs = []repoinfo.Info{{
+						AppID:    cleanAppID,
+						Arch:     opts.Arch,
+						Branch:   opts.Branch,
+						RepoPath: repoPath,
+						RefType:  "app",
+					}}
+				}
+			}
+
+			relOpts := appstream.ReleaseOptions{
+				Version:     res.Version,
+				Date:        res.Date,
+				Description: res.Description,
+				URL:         res.URL,
+			}
+
+			for _, ref := range refs {
+				if ref.RefType == "app" && manifest.IsRefRelated(ref.AppID, cleanAppID, extensionIDs) {
+					if opts.Arch != "" && ref.Arch != opts.Arch {
+						continue
+					}
+					if opts.Branch != "" && ref.Branch != opts.Branch {
+						continue
+					}
+					if _, err := appstream.SyncOSTreeCommitAppStream(opts.Executor, repoPath, ref.Ref(), relOpts); err != nil {
+						return fmt.Errorf("failed to synchronize AppStream release metadata for %s: %w", ref.Ref(), err)
+					}
+				}
+			}
+		}
 	}
 
 	if opts.RunLinter {

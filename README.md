@@ -63,6 +63,7 @@ Fallback build configurations applied when individual application settings are o
 * **`ccache_dir`** (string): Custom folder directory to store compiler cache assets.
 * **`state_dir`** (string): Path to store intermediate state outputs (defaults to `.state`).
 * **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
+* **`auto_release_metadata`** (boolean): Set to `true` to automatically stamp the current git tag/release version and date into AppStream metadata without modifying source files.
 * **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
 * **`no_install_deps`** (boolean): Disable automatic injection of `--install-deps-from` flags when running `flatpak-builder` (defaults to `false`).
 * **`no_flathub`** (boolean): Disable automatic injection of the `flathub` remote as a dependency source (defaults to `false`).
@@ -90,6 +91,7 @@ Each entry in `apps` (or top-level single-app settings) supports:
   * **`url`** (string, required): Download link to the `.flatpak` bundle.
   * **`sha256`** (string, required): 64-character SHA-256 validation checksum of the file.
 * **`run-linter`** (boolean): Local toggle to execute linter validation checks.
+* **`auto_release_metadata`** (boolean): Application-specific toggle to enable automatic AppStream release metadata synchronization.
 * **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), `exceptions` (list[string]), and `exceptions_file` (string).
 * **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`** / **`no_install_deps`** / **`no_flathub`**: Application-specific overrides for compilation parameters.
 * **`remotes`** / **`flatpaks`**: Application-specific overrides/merges for Flatpak remotes and dependencies.

@@ -1040,3 +1040,51 @@ func TestBuildZeroManifest(t *testing.T) {
 		t.Errorf("expected flatpak-builder to have run")
 	}
 }
+
+func TestBuildAutoReleaseMetadata(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+	mockExec.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "ostree" && len(cmd.Args) >= 3 && cmd.Args[0] == "ls" {
+			cmd.OutData = []byte("-rw-r--r-- 0 0 1000 /files/share/metainfo/org.example.App.metainfo.xml\n")
+		}
+		if cmd.Name == "ostree" && len(cmd.Args) >= 3 && cmd.Args[0] == "cat" {
+			cmd.OutData = []byte(`<?xml version="1.0" encoding="UTF-8"?><component type="desktop-application"><id>org.example.App</id></component>`)
+		}
+	}
+
+	opts := BuildOptions{
+		AppID:               "org.example.App",
+		Manifest:            "apps/org.example.App.json",
+		Arch:                "x86_64",
+		Branch:              "stable",
+		StateDir:            ".state",
+		RepoPath:            "repo",
+		AutoReleaseMetadata: true,
+		ReleaseVersion:      "v1.2.3",
+		ReleaseDate:         "2026-08-22",
+		Executor:            mockExec,
+	}
+
+	err := Build(opts)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	// Verify ostree commit and flatpak build-update-repo were triggered
+	var hasOstreeCommit, hasUpdateRepo bool
+	for _, cmd := range mockExec.Commands {
+		if cmd.Name == "ostree" && len(cmd.Args) > 0 && cmd.Args[0] == "commit" {
+			hasOstreeCommit = true
+		}
+		if cmd.Name == "flatpak" && len(cmd.Args) > 0 && cmd.Args[0] == "build-update-repo" {
+			hasUpdateRepo = true
+		}
+	}
+
+	if !hasOstreeCommit {
+		t.Errorf("expected ostree commit for AppStream sync")
+	}
+	if !hasUpdateRepo {
+		t.Errorf("expected flatpak build-update-repo for AppStream sync")
+	}
+}

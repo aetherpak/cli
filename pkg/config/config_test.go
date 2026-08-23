@@ -965,3 +965,66 @@ func TestSourcesEqualOrderInvariance(t *testing.T) {
 		t.Errorf("App.Equal returned false for reordered identical sources")
 	}
 }
+
+func TestAutoReleaseMetadata(t *testing.T) {
+	yamlStr := `
+defaults:
+  auto_release_metadata: true
+apps:
+  - id: org.example.AppOne
+    manifest: apps/one.json
+  - id: org.example.AppTwo
+    manifest: apps/two.json
+    auto_release_metadata: false
+  - id: org.example.AppThree
+    manifest: apps/three.json
+    auto-release-metadata: true
+`
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(yamlStr), &cfg); err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+	cfg.Normalize()
+
+	if cfg.Defaults.AutoReleaseMetadata == nil || !*cfg.Defaults.AutoReleaseMetadata {
+		t.Errorf("expected defaults.auto_release_metadata to be true")
+	}
+
+	// AppOne inherits true from defaults
+	if !cfg.Apps[0].ResolveAutoReleaseMetadata(cfg.Defaults) {
+		t.Errorf("expected AppOne to inherit auto_release_metadata=true")
+	}
+
+	// AppTwo explicitly false
+	if cfg.Apps[1].ResolveAutoReleaseMetadata(cfg.Defaults) {
+		t.Errorf("expected AppTwo to have auto_release_metadata=false")
+	}
+
+	// AppThree uses kebab-case
+	if !cfg.Apps[2].ResolveAutoReleaseMetadata(cfg.Defaults) {
+		t.Errorf("expected AppThree to have auto_release_metadata=true")
+	}
+}
+
+func TestAppEqual_AutoReleaseMetadata(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	app1 := App{ID: "org.example.App", AutoReleaseMetadata: &trueVal}
+	app2 := App{ID: "org.example.App", AutoReleaseMetadata: &trueVal}
+	app3 := App{ID: "org.example.App", AutoReleaseMetadata: &falseVal}
+	app4 := App{ID: "org.example.App", AutoReleaseMetadata: nil}
+
+	if !app1.Equal(app2) {
+		t.Errorf("expected app1 and app2 to be equal")
+	}
+	if app1.Equal(app3) {
+		t.Errorf("expected app1 and app3 not to be equal")
+	}
+	if app1.Equal(app4) {
+		t.Errorf("expected app1 and app4 not to be equal")
+	}
+	if app4.Equal(app1) {
+		t.Errorf("expected app4 and app1 not to be equal")
+	}
+}

@@ -46,6 +46,11 @@ var (
 	pubLinterExceptionsFile string
 	pubLinterExceptions     []string
 	pubDryRun               bool
+	pubAutoReleaseMetadata  bool
+	pubReleaseVersion       string
+	pubReleaseDate          string
+	pubReleaseDescription   string
+	pubReleaseURL           string
 )
 
 var publishCmd = &cobra.Command{
@@ -195,7 +200,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, resolvedAppID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir, passphrase); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir, passphrase, buildOpts.AutoReleaseMetadata); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -303,12 +308,17 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 			for _, job := range importJobs {
 				importOpts := importer.ImportOptions{
-					AppID:      importAppID,
-					Arch:       importArch,
-					Branch:     importBranch,
-					BundleURL:  job.bundleURL,
-					BundlePath: job.bundlePath,
-					RepoPath:   importRepo,
+					AppID:               importAppID,
+					Arch:                importArch,
+					Branch:              importBranch,
+					BundleURL:           job.bundleURL,
+					BundlePath:          job.bundlePath,
+					RepoPath:            importRepo,
+					AutoReleaseMetadata: pubAutoReleaseMetadata,
+					ReleaseVersion:      pubReleaseVersion,
+					ReleaseDate:         pubReleaseDate,
+					ReleaseDescription:  pubReleaseDescription,
+					ReleaseURL:          pubReleaseURL,
 				}
 				bundleDisplay := job.bundleURL
 				if bundleDisplay == "" {
@@ -367,7 +377,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 			// Push to registry
 			for _, ra := range resolvedApps {
-				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir, passphrase); err != nil {
+				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir, passphrase, pubAutoReleaseMetadata); err != nil {
 					return err
 				}
 			}
@@ -502,13 +512,25 @@ func runPublish(cmd *cobra.Command, args []string) error {
 				return NewCmdErrorf(1, "no bundle configured for architecture %q for app %s", pubArch, targetApp.ID)
 			}
 
+			autoRel := pubAutoReleaseMetadata
+			if !cmd.Flags().Changed("auto-release-metadata") && targetApp.AutoReleaseMetadata != nil {
+				autoRel = *targetApp.AutoReleaseMetadata
+			} else if !cmd.Flags().Changed("auto-release-metadata") && cfg != nil && cfg.Defaults != nil && cfg.Defaults.AutoReleaseMetadata != nil {
+				autoRel = *cfg.Defaults.AutoReleaseMetadata
+			}
+
 			opts := importer.ImportOptions{
-				AppID:        targetApp.ID,
-				Arch:         pubArch,
-				Branch:       appBranch,
-				BundleURL:    bundle.URL,
-				BundleSHA256: bundle.SHA256,
-				RepoPath:     repoPath,
+				AppID:               targetApp.ID,
+				Arch:                pubArch,
+				Branch:              appBranch,
+				BundleURL:           bundle.URL,
+				BundleSHA256:        bundle.SHA256,
+				RepoPath:            repoPath,
+				AutoReleaseMetadata: autoRel,
+				ReleaseVersion:      pubReleaseVersion,
+				ReleaseDate:         pubReleaseDate,
+				ReleaseDescription:  pubReleaseDescription,
+				ReleaseURL:          pubReleaseURL,
 			}
 			logger.Info("Step 1: Importing bundle package %s...", targetApp.ID)
 			if err := importer.Import(opts); err != nil {
@@ -527,10 +549,15 @@ func runPublish(cmd *cobra.Command, args []string) error {
 				extensionIDs = m.ExtensionIDs
 			}
 
+			autoRel := targetApp.ResolveAutoReleaseMetadata(cfg.Defaults)
+			if cmd.Flags().Changed("auto-release-metadata") {
+				autoRel = pubAutoReleaseMetadata
+			}
+
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, targetApp.ID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -540,7 +567,11 @@ func runPublish(cmd *cobra.Command, args []string) error {
 				return NewCmdErrorf(1, "no related refs found to push")
 			}
 		} else {
-			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase); err != nil {
+			autoRel := targetApp.ResolveAutoReleaseMetadata(cfg.Defaults)
+			if cmd.Flags().Changed("auto-release-metadata") {
+				autoRel = pubAutoReleaseMetadata
+			}
+			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel); err != nil {
 				return err
 			}
 		}
@@ -549,27 +580,32 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string, passphrase []byte) error {
+func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string, passphrase []byte, autoRel bool) error {
 	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 	keys := pubGPGKeys
 
 	logger.Info("Step 2: Pushing %s to registry...", appID)
 	pushOpts := oci.PushOptions{
-		AppID:         appID,
-		Arch:          arch,
-		Branch:        branch,
-		Registry:      registry,
-		OCIRepository: ociRepo,
-		RepoPath:      repoPath,
-		RecordsDir:    recordsDir,
-		GPGKeys:       keys,
-		GPGPassphrase: passphrase,
-		Insecure:      pubInsecure,
-		OCIUsername:   viper.GetString("oci_username"),
-		OCIPassword:   viper.GetString("oci_password"),
-		NoSign:        pubNoSign,
-		AllowUnsigned: pubAllowUnsigned,
-		DryRun:        pubDryRun,
+		AppID:               appID,
+		Arch:                arch,
+		Branch:              branch,
+		Registry:            registry,
+		OCIRepository:       ociRepo,
+		RepoPath:            repoPath,
+		RecordsDir:          recordsDir,
+		GPGKeys:             keys,
+		GPGPassphrase:       passphrase,
+		Insecure:            pubInsecure,
+		OCIUsername:         viper.GetString("oci_username"),
+		OCIPassword:         viper.GetString("oci_password"),
+		NoSign:              pubNoSign,
+		AllowUnsigned:       pubAllowUnsigned,
+		DryRun:              pubDryRun,
+		AutoReleaseMetadata: autoRel,
+		ReleaseVersion:      pubReleaseVersion,
+		ReleaseDate:         pubReleaseDate,
+		ReleaseDescription:  pubReleaseDescription,
+		ReleaseURL:          pubReleaseURL,
 	}
 
 	res, err := oci.Push(pushOpts)
@@ -621,4 +657,9 @@ func init() {
 	publishCmd.Flags().BoolVar(&pubConfirm, "confirm", false, "skip interactive confirmation prompt")
 	publishCmd.Flags().StringVar(&pubLinterExceptionsFile, "linter-exceptions-file", "", "path to linter exceptions file (JSON)")
 	publishCmd.Flags().StringSliceVar(&pubLinterExceptions, "linter-exception", nil, "linter exceptions to ignore")
+	publishCmd.Flags().BoolVar(&pubAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
+	publishCmd.Flags().StringVar(&pubReleaseVersion, "release-version", "", "explicit release version override")
+	publishCmd.Flags().StringVar(&pubReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")
+	publishCmd.Flags().StringVar(&pubReleaseDescription, "release-description", "", "explicit release description/changelog")
+	publishCmd.Flags().StringVar(&pubReleaseURL, "release-url", "", "explicit release notes URL")
 }

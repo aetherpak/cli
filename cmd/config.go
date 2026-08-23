@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -20,24 +21,312 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	configGetAppID string
+)
+
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage aetherpak configuration",
 }
 
+// findAppInConfig looks up an application by ID or app_id in the loaded Config.
+func findAppInConfig(cfg *config.Config, appID string) (*config.App, int) {
+	if cfg == nil || len(cfg.Apps) == 0 || appID == "" {
+		return nil, -1
+	}
+	cleanID, _ := parseAppIDRef(appID)
+	for i := range cfg.Apps {
+		if cfg.Apps[i].ID == cleanID || cfg.Apps[i].AppID == cleanID {
+			return &cfg.Apps[i], i
+		}
+	}
+	return nil, -1
+}
+
+// appToMap converts a config.App struct to a generic map for property traversal.
+func appToMap(app *config.App, appIndex int) map[string]interface{} {
+	if app == nil {
+		return nil
+	}
+	data, err := yaml.Marshal(app)
+	if err != nil {
+		return nil
+	}
+	var m map[string]interface{}
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	if m == nil {
+		m = make(map[string]interface{})
+	}
+
+	// Merge with raw map in Viper if available (to retain any raw unmapped custom fields)
+	if appsSlice, ok := viper.Get("apps").([]interface{}); ok && appIndex >= 0 && appIndex < len(appsSlice) {
+		if rawMap, ok := appsSlice[appIndex].(map[string]interface{}); ok {
+			for k, v := range rawMap {
+				if _, exists := m[k]; !exists {
+					m[k] = v
+				}
+			}
+		}
+	}
+
+	if m["id"] == nil && app.ID != "" {
+		m["id"] = app.ID
+	}
+	if m["app_id"] == nil && app.ID != "" {
+		m["app_id"] = app.ID
+	}
+
+	return m
+}
+
+// lookupInMap traverses a nested map / slice using dot-separated path segments with
+// support for kebab-case, snake_case, and case-insensitive matching.
+func lookupInMap(data interface{}, path []string) interface{} {
+	if len(path) == 0 {
+		return data
+	}
+	if data == nil {
+		return nil
+	}
+
+	curr := data
+	for i, segment := range path {
+		if segment == "" {
+			continue
+		}
+		switch node := curr.(type) {
+		case map[string]interface{}:
+			// 1. Exact match
+			if val, ok := node[segment]; ok {
+				curr = val
+				continue
+			}
+			// 2. Kebab to snake
+			kebabToSnake := strings.ReplaceAll(segment, "-", "_")
+			if val, ok := node[kebabToSnake]; ok {
+				curr = val
+				continue
+			}
+			// 3. Snake to kebab
+			snakeToKebab := strings.ReplaceAll(segment, "_", "-")
+			if val, ok := node[snakeToKebab]; ok {
+				curr = val
+				continue
+			}
+			// 4. Case-insensitive match
+			matched := false
+			for k, val := range node {
+				if strings.EqualFold(k, segment) || strings.EqualFold(k, kebabToSnake) || strings.EqualFold(k, snakeToKebab) {
+					curr = val
+					matched = true
+					break
+				}
+			}
+			if matched {
+				continue
+			}
+			// 5. id / app_id alias
+			if (segment == "app_id" || segment == "app-id") && node["id"] != nil {
+				curr = node["id"]
+				continue
+			}
+			if segment == "id" && (node["app_id"] != nil || node["app-id"] != nil) {
+				if node["app_id"] != nil {
+					curr = node["app_id"]
+				} else {
+					curr = node["app-id"]
+				}
+				continue
+			}
+			return nil
+		case map[interface{}]interface{}:
+			strMap := make(map[string]interface{}, len(node))
+			for k, v := range node {
+				strMap[fmt.Sprintf("%v", k)] = v
+			}
+			return lookupInMap(strMap, path[i:])
+		case []interface{}:
+			idx, err := strconv.Atoi(segment)
+			if err != nil || idx < 0 || idx >= len(node) {
+				return nil
+			}
+			curr = node[idx]
+		default:
+			return nil
+		}
+	}
+	return curr
+}
+
+// resolveConfigGet resolves a configuration key taking into account --app-id and apps.<id> paths.
+func resolveConfigGet(cfg *config.Config, appID string, key string) interface{} {
+	// Case 1: Explicit app-id provided
+	if appID != "" {
+		app, appIdx := findAppInConfig(cfg, appID)
+		if app == nil {
+			return nil
+		}
+		appMap := appToMap(app, appIdx)
+
+		cleanID, _ := parseAppIDRef(appID)
+
+		subKey := key
+		if strings.HasPrefix(subKey, "apps.") {
+			subKey = strings.TrimPrefix(subKey, "apps.")
+			if strings.HasPrefix(subKey, cleanID+".") {
+				subKey = strings.TrimPrefix(subKey, cleanID+".")
+			} else if strings.HasPrefix(subKey, cleanID+"//") {
+				remAfterBranch := strings.TrimPrefix(subKey, cleanID+"//")
+				if idx := strings.Index(remAfterBranch, "."); idx != -1 {
+					subKey = remAfterBranch[idx+1:]
+				} else {
+					subKey = ""
+				}
+			} else if subKey == cleanID {
+				subKey = ""
+			}
+		}
+
+		if subKey == "" || subKey == "." {
+			return appMap
+		}
+
+		parts := strings.Split(subKey, ".")
+		return lookupInMap(appMap, parts)
+	}
+
+	// Case 2: key starts with "apps." (e.g. apps.org.example.App.manifest or apps.0.manifest)
+	if strings.HasPrefix(key, "apps.") {
+		afterApps := strings.TrimPrefix(key, "apps.")
+		if afterApps == "" {
+			if v := viper.Get("apps"); v != nil {
+				return v
+			}
+			if cfg != nil && len(cfg.Apps) > 0 {
+				return cfg.Apps
+			}
+			return nil
+		}
+
+		parts := strings.Split(afterApps, ".")
+		// Check for numeric index: apps.0.manifest
+		if idx, err := strconv.Atoi(parts[0]); err == nil {
+			if val := viper.Get(key); val != nil {
+				return val
+			}
+			if cfg != nil && idx >= 0 && idx < len(cfg.Apps) {
+				appMap := appToMap(&cfg.Apps[idx], idx)
+				if len(parts) == 1 {
+					return appMap
+				}
+				return lookupInMap(appMap, parts[1:])
+			}
+			return nil
+		}
+
+		// App ID lookup: match candidate app IDs from cfg.Apps
+		if cfg != nil && len(cfg.Apps) > 0 {
+			type appMatch struct {
+				app *config.App
+				idx int
+				id  string
+			}
+			var candidates []appMatch
+			for i := range cfg.Apps {
+				a := &cfg.Apps[i]
+				cleanID, _ := parseAppIDRef(a.ID)
+				if cleanID != "" {
+					candidates = append(candidates, appMatch{app: a, idx: i, id: cleanID})
+				}
+				if a.AppID != "" && a.AppID != a.ID {
+					cleanAppID, _ := parseAppIDRef(a.AppID)
+					candidates = append(candidates, appMatch{app: a, idx: i, id: cleanAppID})
+				}
+			}
+			sort.Slice(candidates, func(i, j int) bool {
+				return len(candidates[i].id) > len(candidates[j].id)
+			})
+
+			for _, c := range candidates {
+				if afterApps == c.id {
+					return appToMap(c.app, c.idx)
+				}
+				if strings.HasPrefix(afterApps, c.id+".") {
+					subPath := strings.TrimPrefix(afterApps, c.id+".")
+					appMap := appToMap(c.app, c.idx)
+					return lookupInMap(appMap, strings.Split(subPath, "."))
+				}
+				if strings.HasPrefix(afterApps, c.id+"//") {
+					remAfterBranch := strings.TrimPrefix(afterApps, c.id+"//")
+					appMap := appToMap(c.app, c.idx)
+					if idx := strings.Index(remAfterBranch, "."); idx != -1 {
+						subPath := remAfterBranch[idx+1:]
+						return lookupInMap(appMap, strings.Split(subPath, "."))
+					}
+					return appMap
+				}
+			}
+		}
+
+		return viper.Get(key)
+	}
+
+	// Case 3: Standard viper.Get
+	val := viper.Get(key)
+	if val != nil {
+		return val
+	}
+
+	if key == "apps" && cfg != nil && len(cfg.Apps) > 0 {
+		return cfg.Apps
+	}
+
+	return nil
+}
+
 var configGetCmd = &cobra.Command{
-	Use:   "get <key>",
+	Use:   "get [key]",
 	Short: "Get a configuration value",
-	Args:  cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		appID := configGetAppID
+		if appID == "" && cmd.Flags().Changed("app-id") {
+			appID, _ = cmd.Flags().GetString("app-id")
+		}
+		if appID == "" && cmd.Flags().Changed("app") {
+			appID, _ = cmd.Flags().GetString("app")
+		}
+		if len(args) == 0 && appID == "" {
+			return fmt.Errorf("accepts 1 arg(s), received 0")
+		}
+		if len(args) > 1 {
+			return fmt.Errorf("accepts at most 1 arg(s), received %d", len(args))
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Ensure config is loaded so viper is populated
-		_, err := LoadConfig()
+		cfg, err := LoadConfig()
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
-		key := args[0]
-		val := viper.Get(key)
+		appID := configGetAppID
+		if appID == "" && cmd.Flags().Changed("app-id") {
+			appID, _ = cmd.Flags().GetString("app-id")
+		}
+		if appID == "" && cmd.Flags().Changed("app") {
+			appID, _ = cmd.Flags().GetString("app")
+		}
+
+		var key string
+		if len(args) > 0 {
+			key = args[0]
+		}
+
+		val := resolveConfigGet(cfg, appID, key)
 		if val == nil {
 			// Print nothing and exit with 0 if key is not found
 			return nil
@@ -510,4 +799,8 @@ func init() {
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configShowCmd)
+
+	configGetCmd.Flags().StringVar(&configGetAppID, "app-id", "", "target application ID for multi-app configuration lookups")
+	configGetCmd.Flags().StringVar(&configGetAppID, "app", "", "deprecated alias for --app-id")
+	_ = configGetCmd.Flags().MarkDeprecated("app", "please use --app-id instead")
 }

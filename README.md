@@ -435,9 +435,14 @@ aetherpak inspect-repo --repo-path repo
 #### `config`
 Gets, sets, or displays configuration parameter settings:
 ```bash
-# Get a configuration value
+# Get a top-level configuration value
 aetherpak config get remote_name
 aetherpak config get branding.logo_url
+
+# Get app-specific configuration in multi-app repositories
+aetherpak config get apps.org.example.App.manifest
+aetherpak config get --app-id org.example.App manifest
+aetherpak config get --app-id org.example.App  # returns full app configuration as YAML
 
 # Set a configuration value
 aetherpak config set remote_name custom-remote
@@ -446,7 +451,8 @@ aetherpak config set branding.logo_url https://new-logo.png
 # Show resolved configuration and active overrides
 aetherpak config show
 ```
-
+Options for `config get`:
+* `--app-id <app-id>`: target application ID for multi-app configuration lookups (supports Flatpak `app-id//branch` ref format).
 
 ### Porcelain Commands
 

@@ -116,7 +116,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Log in to the Container registry
-        uses: redhat-actions/podman-login@v1
+        uses: redhat-actions/podman-login@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

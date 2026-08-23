@@ -594,3 +594,243 @@ apps:
 		}
 	})
 }
+
+func TestConfigGetNumericLeadingAppID(t *testing.T) {
+	yamlData := []byte(`
+apps:
+  - id: 1.App
+    manifest: apps/1.App.json
+    branch: stable
+  - id: org.example.App
+    manifest: apps/org.example.App.json
+    branch: beta
+`)
+	err := os.WriteFile("aetherpak.yaml", yamlData, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	resetCmd := func() {
+		viper.Reset()
+		initConfig()
+		logger.Init(false, false, true)
+		configGetAppID = ""
+		_ = configGetCmd.Flags().Set("app-id", "")
+		configGetCmd.Flags().Lookup("app-id").Changed = false
+	}
+
+	t.Run("numeric leading app-id matches candidate instead of numeric index", func(t *testing.T) {
+		resetCmd()
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"apps.1.App.manifest"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "apps/1.App.json" {
+			t.Errorf("expected 'apps/1.App.json', got %q", got)
+		}
+	})
+}
+
+func TestConfigGetDottedBranch(t *testing.T) {
+	yamlData := []byte(`
+apps:
+  - id: org.example.App
+    manifest: apps/org.example.App.json
+    branch: 25.08
+  - id: org.example.Other
+    manifest: apps/org.example.Other.json
+    branch: beta.experimental
+`)
+	err := os.WriteFile("aetherpak.yaml", yamlData, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	resetCmd := func() {
+		viper.Reset()
+		initConfig()
+		logger.Init(false, false, true)
+		configGetAppID = ""
+		_ = configGetCmd.Flags().Set("app-id", "")
+		configGetCmd.Flags().Lookup("app-id").Changed = false
+	}
+
+	t.Run("dotted numeric branch in path lookup", func(t *testing.T) {
+		resetCmd()
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"apps.org.example.App//25.08.manifest"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "apps/org.example.App.json" {
+			t.Errorf("expected 'apps/org.example.App.json', got %q", got)
+		}
+	})
+
+	t.Run("dotted numeric branch full app path lookup", func(t *testing.T) {
+		resetCmd()
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"apps.org.example.App//25.08"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := buf.String()
+		if !strings.Contains(got, "25.08") || !strings.Contains(got, "org.example.App") {
+			t.Errorf("expected full app YAML with 25.08 branch, got %q", got)
+		}
+	})
+
+	t.Run("dotted text branch in flag lookup", func(t *testing.T) {
+		resetCmd()
+		_ = configGetCmd.Flags().Set("app-id", "org.example.Other//beta.experimental")
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"manifest"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "apps/org.example.Other.json" {
+			t.Errorf("expected 'apps/org.example.Other.json', got %q", got)
+		}
+	})
+
+	t.Run("dotted text branch full key in flag lookup", func(t *testing.T) {
+		resetCmd()
+		_ = configGetCmd.Flags().Set("app-id", "org.example.Other")
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"apps.org.example.Other//beta.experimental.manifest"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "apps/org.example.Other.json" {
+			t.Errorf("expected 'apps/org.example.Other.json', got %q", got)
+		}
+	})
+}
+
+func TestConfigGetUnmappedNestedFields(t *testing.T) {
+	yamlData := []byte(`
+apps:
+  - id: org.example.App
+    branch: stable
+    runtime: org.gnome.Platform//45
+    sources:
+      desktop: data/app.desktop
+      custom_plugin: "my-custom-value"
+`)
+	err := os.WriteFile("aetherpak.yaml", yamlData, 0644)
+	if err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	defer os.Remove("aetherpak.yaml")
+
+	resetCmd := func() {
+		viper.Reset()
+		initConfig()
+		logger.Init(false, false, true)
+		configGetAppID = ""
+		_ = configGetCmd.Flags().Set("app-id", "")
+		configGetCmd.Flags().Lookup("app-id").Changed = false
+	}
+
+	t.Run("unmapped nested field via path", func(t *testing.T) {
+		resetCmd()
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"apps.org.example.App.sources.custom_plugin"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "my-custom-value" {
+			t.Errorf("expected 'my-custom-value', got %q", got)
+		}
+	})
+
+	t.Run("unmapped nested field via flag", func(t *testing.T) {
+		resetCmd()
+		_ = configGetCmd.Flags().Set("app-id", "org.example.App")
+		buf := new(bytes.Buffer)
+		configGetCmd.SetOut(buf)
+		err := configGetCmd.RunE(configGetCmd, []string{"sources.custom_plugin"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := strings.TrimSpace(buf.String())
+		if got != "my-custom-value" {
+			t.Errorf("expected 'my-custom-value', got %q", got)
+		}
+	})
+}
+
+func TestConfigGetArgsValidator(t *testing.T) {
+	resetCmd := func() {
+		viper.Reset()
+		initConfig()
+		configGetAppID = ""
+		_ = configGetCmd.Flags().Set("app-id", "")
+		configGetCmd.Flags().Lookup("app-id").Changed = false
+		os.Unsetenv("AETHERPAK_APP_ID")
+		os.Unsetenv("AETHERPAK_APP")
+	}
+
+	t.Run("rejects 0 args when no app-id", func(t *testing.T) {
+		resetCmd()
+		err := configGetCmd.Args(configGetCmd, []string{})
+		if err == nil {
+			t.Fatal("expected error with 0 args and no app-id, got nil")
+		}
+		if !strings.Contains(err.Error(), "accepts 1 arg(s), received 0") {
+			t.Errorf("expected 'accepts 1 arg(s), received 0', got %v", err)
+		}
+	})
+
+	t.Run("accepts 0 args when flag set", func(t *testing.T) {
+		resetCmd()
+		_ = configGetCmd.Flags().Set("app-id", "org.example.App")
+		err := configGetCmd.Args(configGetCmd, []string{})
+		if err != nil {
+			t.Fatalf("expected nil error with flag set, got %v", err)
+		}
+	})
+
+	t.Run("accepts 0 args when env var set", func(t *testing.T) {
+		resetCmd()
+		os.Setenv("AETHERPAK_APP_ID", "org.example.App")
+		defer os.Unsetenv("AETHERPAK_APP_ID")
+		err := configGetCmd.Args(configGetCmd, []string{})
+		if err != nil {
+			t.Fatalf("expected nil error with env var set, got %v", err)
+		}
+	})
+
+	t.Run("accepts 1 arg without app-id", func(t *testing.T) {
+		resetCmd()
+		err := configGetCmd.Args(configGetCmd, []string{"registry"})
+		if err != nil {
+			t.Fatalf("expected nil error with 1 arg, got %v", err)
+		}
+	})
+
+	t.Run("rejects > 1 args", func(t *testing.T) {
+		resetCmd()
+		err := configGetCmd.Args(configGetCmd, []string{"arg1", "arg2"})
+		if err == nil {
+			t.Fatal("expected error with 2 args, got nil")
+		}
+		if !strings.Contains(err.Error(), "accepts at most 1 arg(s), received 2") {
+			t.Errorf("expected 'accepts at most 1 arg(s), received 2', got %v", err)
+		}
+	})
+}

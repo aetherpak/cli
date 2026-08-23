@@ -44,6 +44,22 @@ func findAppInConfig(cfg *config.Config, appID string) (*config.App, int) {
 	return nil, -1
 }
 
+// mergeMaps recursively merges src map into dst map for unmapped keys.
+func mergeMaps(dst, src map[string]interface{}) {
+	for k, srcVal := range src {
+		dstVal, exists := dst[k]
+		if !exists {
+			dst[k] = srcVal
+			continue
+		}
+		dstMap, dstOk := dstVal.(map[string]interface{})
+		srcMap, srcOk := srcVal.(map[string]interface{})
+		if dstOk && srcOk {
+			mergeMaps(dstMap, srcMap)
+		}
+	}
+}
+
 // appToMap converts a config.App struct to a generic map for property traversal.
 func appToMap(app *config.App, appIndex int) map[string]interface{} {
 	if app == nil {
@@ -61,14 +77,10 @@ func appToMap(app *config.App, appIndex int) map[string]interface{} {
 		m = make(map[string]interface{})
 	}
 
-	// Merge with raw map in Viper if available (to retain any raw unmapped custom fields)
+	// Merge with raw map in Viper if available (to retain any raw unmapped custom fields and nested values)
 	if appsSlice, ok := viper.Get("apps").([]interface{}); ok && appIndex >= 0 && appIndex < len(appsSlice) {
 		if rawMap, ok := appsSlice[appIndex].(map[string]interface{}); ok {
-			for k, v := range rawMap {
-				if _, exists := m[k]; !exists {
-					m[k] = v
-				}
-			}
+			mergeMaps(m, rawMap)
 		}
 	}
 
@@ -80,6 +92,37 @@ func appToMap(app *config.App, appIndex int) map[string]interface{} {
 	}
 
 	return m
+}
+
+// resolveBranchAndSubPath resolves branch channel references and nested properties
+// supporting branch names containing dots (e.g. 25.08 or beta.experimental).
+func resolveBranchAndSubPath(app *config.App, appMap map[string]interface{}, remAfterBranch string) interface{} {
+	if remAfterBranch == "" {
+		return appMap
+	}
+	// If configured app branch matches prefix:
+	if app != nil && app.Branch != "" {
+		if remAfterBranch == app.Branch {
+			return appMap
+		}
+		if strings.HasPrefix(remAfterBranch, app.Branch+".") {
+			subPath := strings.TrimPrefix(remAfterBranch, app.Branch+".")
+			return lookupInMap(appMap, strings.Split(subPath, "."))
+		}
+	}
+
+	// Try splitting by dots from right to left to find property in appMap
+	parts := strings.Split(remAfterBranch, ".")
+	if len(parts) == 1 {
+		return appMap
+	}
+	for i := 1; i < len(parts); i++ {
+		candidateSubPath := parts[i:]
+		if val := lookupInMap(appMap, candidateSubPath); val != nil {
+			return val
+		}
+	}
+	return appMap
 }
 
 // lookupInMap traverses a nested map / slice using dot-separated path segments with
@@ -180,11 +223,7 @@ func resolveConfigGet(cfg *config.Config, appID string, key string) interface{} 
 				subKey = strings.TrimPrefix(subKey, cleanID+".")
 			} else if strings.HasPrefix(subKey, cleanID+"//") {
 				remAfterBranch := strings.TrimPrefix(subKey, cleanID+"//")
-				if idx := strings.Index(remAfterBranch, "."); idx != -1 {
-					subKey = remAfterBranch[idx+1:]
-				} else {
-					subKey = ""
-				}
+				return resolveBranchAndSubPath(app, appMap, remAfterBranch)
 			} else if subKey == cleanID {
 				subKey = ""
 			}
@@ -211,23 +250,7 @@ func resolveConfigGet(cfg *config.Config, appID string, key string) interface{} 
 			return nil
 		}
 
-		parts := strings.Split(afterApps, ".")
-		// Check for numeric index: apps.0.manifest
-		if idx, err := strconv.Atoi(parts[0]); err == nil {
-			if val := viper.Get(key); val != nil {
-				return val
-			}
-			if cfg != nil && idx >= 0 && idx < len(cfg.Apps) {
-				appMap := appToMap(&cfg.Apps[idx], idx)
-				if len(parts) == 1 {
-					return appMap
-				}
-				return lookupInMap(appMap, parts[1:])
-			}
-			return nil
-		}
-
-		// App ID lookup: match candidate app IDs from cfg.Apps
+		// 1. App ID candidate lookup: match configured app IDs from cfg.Apps before numeric indexing
 		if cfg != nil && len(cfg.Apps) > 0 {
 			type appMatch struct {
 				app *config.App
@@ -262,13 +285,25 @@ func resolveConfigGet(cfg *config.Config, appID string, key string) interface{} 
 				if strings.HasPrefix(afterApps, c.id+"//") {
 					remAfterBranch := strings.TrimPrefix(afterApps, c.id+"//")
 					appMap := appToMap(c.app, c.idx)
-					if idx := strings.Index(remAfterBranch, "."); idx != -1 {
-						subPath := remAfterBranch[idx+1:]
-						return lookupInMap(appMap, strings.Split(subPath, "."))
-					}
-					return appMap
+					return resolveBranchAndSubPath(c.app, appMap, remAfterBranch)
 				}
 			}
+		}
+
+		// 2. Numeric index fallback: apps.0.manifest or apps.0
+		parts := strings.Split(afterApps, ".")
+		if idx, err := strconv.Atoi(parts[0]); err == nil {
+			if val := viper.Get(key); val != nil {
+				return val
+			}
+			if cfg != nil && idx >= 0 && idx < len(cfg.Apps) {
+				appMap := appToMap(&cfg.Apps[idx], idx)
+				if len(parts) == 1 {
+					return appMap
+				}
+				return lookupInMap(appMap, parts[1:])
+			}
+			return nil
 		}
 
 		return viper.Get(key)
@@ -287,17 +322,34 @@ func resolveConfigGet(cfg *config.Config, appID string, key string) interface{} 
 	return nil
 }
 
+// getActiveAppID resolves the application ID from CLI flags, environment variables, or viper.
+func getActiveAppID(cmd *cobra.Command) string {
+	appID := configGetAppID
+	if appID == "" && cmd.Flags().Changed("app-id") {
+		appID, _ = cmd.Flags().GetString("app-id")
+	}
+	if appID == "" && cmd.Flags().Changed("app") {
+		appID, _ = cmd.Flags().GetString("app")
+	}
+	if appID == "" {
+		if envVal := os.Getenv("AETHERPAK_APP_ID"); envVal != "" {
+			appID = envVal
+		} else if envVal := os.Getenv("AETHERPAK_APP"); envVal != "" {
+			appID = envVal
+		} else if viper.IsSet("app_id") {
+			appID = viper.GetString("app_id")
+		} else if viper.IsSet("app-id") {
+			appID = viper.GetString("app-id")
+		}
+	}
+	return appID
+}
+
 var configGetCmd = &cobra.Command{
 	Use:   "get [key]",
 	Short: "Get a configuration value",
 	Args: func(cmd *cobra.Command, args []string) error {
-		appID := configGetAppID
-		if appID == "" && cmd.Flags().Changed("app-id") {
-			appID, _ = cmd.Flags().GetString("app-id")
-		}
-		if appID == "" && cmd.Flags().Changed("app") {
-			appID, _ = cmd.Flags().GetString("app")
-		}
+		appID := getActiveAppID(cmd)
 		if len(args) == 0 && appID == "" {
 			return fmt.Errorf("accepts 1 arg(s), received 0")
 		}
@@ -313,13 +365,7 @@ var configGetCmd = &cobra.Command{
 			return NewCmdErrorf(2, "Configuration error: %w", err)
 		}
 
-		appID := configGetAppID
-		if appID == "" && cmd.Flags().Changed("app-id") {
-			appID, _ = cmd.Flags().GetString("app-id")
-		}
-		if appID == "" && cmd.Flags().Changed("app") {
-			appID, _ = cmd.Flags().GetString("app")
-		}
+		appID := getActiveAppID(cmd)
 
 		var key string
 		if len(args) > 0 {

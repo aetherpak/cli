@@ -82,7 +82,7 @@ runs:
         context: .
         containerfiles: ./Containerfile
         platforms: ${{ inputs.platform }}
-        image: ghcr.io/aetherpak/cli
+        image: aetherpak/cli
         tags: ${{ steps.prep.outputs.cli-tags }}
         extra-args: --target cli
         build-args: |
@@ -98,7 +98,7 @@ runs:
         context: .
         containerfiles: ./Containerfile
         platforms: ${{ inputs.platform }}
-        image: ghcr.io/aetherpak/cli
+        image: aetherpak/cli
         tags: ${{ steps.prep.outputs.builder-tags }}
         extra-args: --target cli-builder
         build-args: |

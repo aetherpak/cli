@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.2](https://github.com/aetherpak/cli/compare/v0.33.1...v0.33.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* **builder:** fix linter exception loading and sandbox file access ([#159](https://github.com/aetherpak/cli/issues/159)) ([50c118d](https://github.com/aetherpak/cli/commit/50c118dcea0b1ad633b7e4d33188d9ce0b166e31))
+
 ## [0.33.1](https://github.com/aetherpak/cli/compare/v0.33.0...v0.33.1) (2026-08-23)
 
 

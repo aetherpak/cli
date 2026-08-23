@@ -112,8 +112,8 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if appConfig == nil {
 			return NewCmdErrorf(1, "app %q not found in config", buildAppID)
 		}
-		if appConfig.Manifest == "" {
-			return NewCmdErrorf(1, "app %q has no manifest configured", buildAppID)
+		if appConfig.Manifest == "" && appConfig.Sources == nil {
+			return NewCmdErrorf(1, "app %q has neither manifest nor sources configured", buildAppID)
 		}
 		jobs = append(jobs, buildJob{
 			appID:     appConfig.ID,
@@ -126,9 +126,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		if !hasConfig {
 			return NewCmdError(2, fmt.Errorf("no manifest provided and no configuration file found"))
 		}
-		// Gather all apps with manifests
+		// Gather all apps with manifests or sources
 		for i := range cfg.Apps {
-			if cfg.Apps[i].Manifest != "" {
+			if cfg.Apps[i].Manifest != "" || cfg.Apps[i].Sources != nil {
 				jobs = append(jobs, buildJob{
 					appID:     cfg.Apps[i].ID,
 					manifest:  cfg.Apps[i].Manifest,
@@ -138,7 +138,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if len(jobs) == 0 {
-			return NewCmdError(2, fmt.Errorf("no applications with manifest configurations found in configuration file"))
+			return NewCmdError(2, fmt.Errorf("no applications with manifest or sources configurations found in configuration file"))
 		}
 	}
 

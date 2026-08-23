@@ -362,3 +362,47 @@ func TestComputePlanManifestBranchFromManifest(t *testing.T) {
 		t.Errorf("Branch = %q, want 25.08 resolved from manifest file", row.Branch)
 	}
 }
+
+func TestComputePlanZeroManifest(t *testing.T) {
+	zeroYAML := `
+app_id: ai.lemonade_server.Lemonade
+runtime: org.gnome.Platform//49
+sources:
+  binaries:
+    build/lemond: /app/bin/lemond
+    build/lemonade: /app/bin/lemonade
+  desktop: data/lemonade-app.desktop
+  metainfo: data/ai.lemonade_server.Lemonade.metainfo.xml
+  icons: src/app/src-tauri/icons/
+`
+	var cfg config.Config
+	if err := yaml.Unmarshal([]byte(zeroYAML), &cfg); err != nil {
+		t.Fatalf("failed to unmarshal yaml: %v", err)
+	}
+
+	res, err := ComputePlan(&cfg, "aetherpak.yaml", "", "all", "")
+	if err != nil {
+		t.Fatalf("ComputePlan failed: %v", err)
+	}
+
+	if res.Count != 1 || res.CountManifest != 1 || res.CountBundle != 0 {
+		t.Fatalf("expected 1 manifest row for zero-manifest app, got total=%d manifest=%d bundle=%d", res.Count, res.CountManifest, res.CountBundle)
+	}
+
+	row := res.MatrixManifest[0]
+	if row.AppID != "ai.lemonade_server.Lemonade" {
+		t.Errorf("expected AppID ai.lemonade_server.Lemonade, got %q", row.AppID)
+	}
+	if row.Runtime != "org.gnome.Platform" {
+		t.Errorf("expected Runtime org.gnome.Platform, got %q", row.Runtime)
+	}
+	if row.RuntimeVersion != "49" {
+		t.Errorf("expected RuntimeVersion 49, got %q", row.RuntimeVersion)
+	}
+	if row.Arch != "x86_64" {
+		t.Errorf("expected Arch x86_64, got %q", row.Arch)
+	}
+	if row.Source != "manifest" {
+		t.Errorf("expected Source manifest, got %q", row.Source)
+	}
+}

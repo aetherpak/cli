@@ -278,6 +278,24 @@ func resolveBuildOptions(
 		buildBundle, _ = cmd.Flags().GetBool("bundle")
 	}
 
+	var appSources *config.SourcesConfig
+	var appRuntime string
+	var appRuntimeVersion string
+	var appSDK string
+	var appSDKVersion string
+	var appCommand string
+	var appFinishArgs []string
+
+	if appConfig != nil {
+		appSources = appConfig.Sources
+		appRuntime = appConfig.Runtime
+		appRuntimeVersion = appConfig.RuntimeVersion
+		appSDK = appConfig.SDK
+		appSDKVersion = appConfig.SDKVersion
+		appCommand = appConfig.Command
+		appFinishArgs = appConfig.FinishArgs
+	}
+
 	opts := builder.BuildOptions{
 		AppID:                appID,
 		Manifest:             manifest,
@@ -299,6 +317,13 @@ func resolveBuildOptions(
 		Bundle:               buildBundle,
 		NoInstallDeps:        appNoInstallDeps,
 		NoFlathub:            appNoFlathub,
+		Sources:              appSources,
+		Runtime:              appRuntime,
+		RuntimeVersion:       appRuntimeVersion,
+		SDK:                  appSDK,
+		SDKVersion:           appSDKVersion,
+		Command:              appCommand,
+		FinishArgs:           appFinishArgs,
 	}
 
 	return opts, nil

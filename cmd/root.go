@@ -185,6 +185,9 @@ func LoadConfig() (*config.Config, error) {
 					mapstructure.StringToTimeDurationHookFunc(),
 					mapstructure.StringToSliceHookFunc(","),
 					config.RemoteConfigDecodeHook(),
+					config.SourcesConfigDecodeHook(),
+					config.BinarySourceDecodeHook(),
+					config.FileSourceDecodeHook(),
 				),
 			)); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)
@@ -216,6 +219,9 @@ func LoadConfig() (*config.Config, error) {
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.StringToSliceHookFunc(","),
 			config.RemoteConfigDecodeHook(),
+			config.SourcesConfigDecodeHook(),
+			config.BinarySourceDecodeHook(),
+			config.FileSourceDecodeHook(),
 		),
 	)); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config via viper: %w", err)

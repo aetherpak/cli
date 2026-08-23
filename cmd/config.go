@@ -432,6 +432,8 @@ var configShowCmd = &cobra.Command{
 					fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("manifest:"), valStyle.Render(app.Manifest))
 				} else if len(app.Bundles) > 0 {
 					fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("bundles:"), dimmedStyle.Render(fmt.Sprintf("(%d bundle architectures)", len(app.Bundles))))
+				} else if app.Sources != nil {
+					fmt.Fprintf(w, "    %-16s %s\n", dimmedStyle.Render("sources:"), dimmedStyle.Render(fmt.Sprintf("(%d binaries, %s)", len(app.Sources.Binaries), app.Runtime)))
 				}
 
 				var ccacheStr string

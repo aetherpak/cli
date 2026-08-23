@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/aetherpak/cli/compare/v0.33.0...v0.33.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **appstream:** isolate CI env vars in resolver tests ([#157](https://github.com/aetherpak/cli/issues/157)) ([9a23e73](https://github.com/aetherpak/cli/commit/9a23e736c4b3e7153f8361b71a4ef8ffda0a02f3))
+
 ## [0.33.0](https://github.com/aetherpak/cli/compare/v0.32.0...v0.33.0) (2026-08-23)
 
 

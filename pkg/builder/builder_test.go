@@ -628,6 +628,95 @@ func TestBuildLinterExceptionsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildLinterExceptionsInfersAppIDFromManifest(t *testing.T) {
+	mockExec := executil.NewMockExecutor()
+	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"
+
+	manifestContent := `{
+		"id": "org.inferred.App",
+		"runtime": "org.freedesktop.Platform",
+		"runtime-version": "23.08",
+		"sdk": "org.freedesktop.Sdk",
+		"command": "true",
+		"modules": []
+	}`
+	tempDir := t.TempDir()
+	manifestPath := filepath.Join(tempDir, "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	exceptionsFileContent := `{
+		"org.inferred.App": ["inferred-rule-1"],
+		"*": ["wildcard-rule-1"]
+	}`
+	exceptionsPath := filepath.Join(tempDir, "exceptions.json")
+	if err := os.WriteFile(exceptionsPath, []byte(exceptionsFileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var exceptionsData []byte
+	mockExec.OnCommand = func(cmd *executil.MockCommand) {
+		if cmd.Name == "flatpak-builder-lint" {
+			for i, arg := range cmd.Args {
+				if arg == "--user-exceptions" && i+1 < len(cmd.Args) {
+					path := cmd.Args[i+1]
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Errorf("failed to read linter exceptions file: %v", err)
+						return
+					}
+					exceptionsData = data
+				}
+			}
+		}
+	}
+
+	opts := BuildOptions{
+		AppID:                "", // empty, should be inferred from manifest
+		Manifest:             manifestPath,
+		Arch:                 "x86_64",
+		Branch:               "stable",
+		StateDir:             filepath.Join(tempDir, ".state"),
+		RepoPath:             filepath.Join(tempDir, "repo"),
+		RunLinter:            true,
+		LinterExceptionsFile: exceptionsPath,
+		Executor:             mockExec,
+	}
+
+	if err := Build(opts); err != nil {
+		t.Fatalf("expected build to succeed, got %v", err)
+	}
+
+	if len(exceptionsData) == 0 {
+		t.Fatal("expected exceptions data to be generated and captured")
+	}
+
+	var parsed map[string][]string
+	if err := json.Unmarshal(exceptionsData, &parsed); err != nil {
+		t.Fatalf("failed to parse exceptions JSON: %v", err)
+	}
+
+	rulesForApp, exists := parsed["org.inferred.App"]
+	if !exists {
+		t.Fatalf("expected key 'org.inferred.App' in parsed exceptions: %+v", parsed)
+	}
+
+	hasInferred := false
+	hasWildcard := false
+	for _, r := range rulesForApp {
+		if r == "inferred-rule-1" {
+			hasInferred = true
+		}
+		if r == "wildcard-rule-1" {
+			hasWildcard = true
+		}
+	}
+	if !hasInferred || !hasWildcard {
+		t.Errorf("expected rules to contain inferred-rule-1 and wildcard-rule-1, got %v", rulesForApp)
+	}
+}
+
 func TestBuildLinterDefaultsOnly(t *testing.T) {
 	mockExec := executil.NewMockExecutor()
 	mockExec.PathMap["flatpak-builder-lint"] = "/usr/bin/flatpak-builder-lint"

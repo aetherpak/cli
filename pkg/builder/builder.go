@@ -146,6 +146,11 @@ func Build(opts BuildOptions) error {
 	}
 
 	if opts.Manifest != "" {
+		if opts.AppID == "" {
+			if m, err := manifest.ParseManifest(opts.Manifest); err == nil && m.ID != "" {
+				opts.AppID = m.ID
+			}
+		}
 		if err := checkSubmodules(opts.Manifest); err != nil {
 			return err
 		}
@@ -322,9 +327,20 @@ func Build(opts BuildOptions) error {
 		}
 	}
 
+	if stateDir == "" {
+		stateDir = ".state"
+	}
+
 	var tempPath string
 	if len(ignoreRules) > 0 {
-		tempFile, err := os.CreateTemp(logger.TempDir(), "aetherpak-linter-*.json")
+		if err := os.MkdirAll(stateDir, 0755); err != nil {
+			return fmt.Errorf("failed to create state directory for linter exceptions: %w", err)
+		}
+		absStateDir, err := filepath.Abs(stateDir)
+		if err != nil {
+			absStateDir = stateDir
+		}
+		tempFile, err := os.CreateTemp(absStateDir, "aetherpak-linter-*.json")
 		if err != nil {
 			return fmt.Errorf("failed to create temp file for linter exceptions: %w", err)
 		}
@@ -332,12 +348,11 @@ func Build(opts BuildOptions) error {
 		defer tempFile.Close()
 		tempPath = tempFile.Name()
 
-		appKey := opts.AppID
-		if appKey == "" {
-			appKey = "*"
-		}
-		exceptions := map[string][]string{
-			appKey: ignoreRules,
+		exceptions := make(map[string][]string)
+		if opts.AppID != "" {
+			exceptions[opts.AppID] = ignoreRules
+		} else {
+			exceptions["*"] = ignoreRules
 		}
 
 		jsonData, err := json.Marshal(exceptions)

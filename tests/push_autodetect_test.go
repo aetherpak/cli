@@ -197,8 +197,8 @@ func TestPushOCIRefAutoDetection(t *testing.T) {
 		}
 
 		// Verify that records exist for both resolved targets
-		rec1 := filepath.Join(recordsDir, "org.example.App1-x86_64", "record.json")
-		rec2 := filepath.Join(recordsDir, "org.example.App2-x86_64", "record.json")
+		rec1 := filepath.Join(recordsDir, "org.example.App1-stable-x86_64", "record.json")
+		rec2 := filepath.Join(recordsDir, "org.example.App2-beta-x86_64", "record.json")
 
 		if _, err := os.Stat(rec1); os.IsNotExist(err) {
 			t.Errorf("Expected record for App1 to exist: %s", rec1)
@@ -288,8 +288,8 @@ apps:
 		}
 
 		// Verify only RepoApp was pushed
-		recRepoApp := filepath.Join(recordsDir, "org.example.RepoApp-x86_64", "record.json")
-		recConfigApp := filepath.Join(recordsDir, "org.example.ConfigApp-x86_64", "record.json")
+		recRepoApp := filepath.Join(recordsDir, "org.example.RepoApp-stable-x86_64", "record.json")
+		recConfigApp := filepath.Join(recordsDir, "org.example.ConfigApp-stable-x86_64", "record.json")
 
 		if _, err := os.Stat(recRepoApp); os.IsNotExist(err) {
 			t.Errorf("Expected RepoApp to be pushed and record to exist: %s", recRepoApp)
@@ -387,14 +387,18 @@ apps:
 			}
 
 			// Verify only aarch64 was pushed
-			recAarch64 := filepath.Join(recordsDir, "org.example.App1-aarch64", "record.json")
-			recX86_64 := filepath.Join(recordsDir, "org.example.App1-x86_64", "record.json")
+			recAarch64 := filepath.Join(recordsDir, "org.example.App1-stable-aarch64", "record.json")
+			recX86_64 := filepath.Join(recordsDir, "org.example.App1-stable-x86_64", "record.json")
+			recX86_64Beta := filepath.Join(recordsDir, "org.example.App1-beta-x86_64", "record.json")
 
 			if _, err := os.Stat(recAarch64); os.IsNotExist(err) {
 				t.Errorf("Expected aarch64 record to exist: %s", recAarch64)
 			}
 			if _, err := os.Stat(recX86_64); err == nil {
 				t.Errorf("Expected x86_64 record NOT to exist: %s", recX86_64)
+			}
+			if _, err := os.Stat(recX86_64Beta); err == nil {
+				t.Errorf("Expected x86_64 beta record NOT to exist: %s", recX86_64Beta)
 			}
 		}
 
@@ -418,8 +422,8 @@ apps:
 			}
 
 			// Verify only beta was pushed (which is on x86_64)
-			recBeta := filepath.Join(recordsDir, "org.example.App1-x86_64", "record.json")
-			recAarch64 := filepath.Join(recordsDir, "org.example.App1-aarch64", "record.json")
+			recBeta := filepath.Join(recordsDir, "org.example.App1-beta-x86_64", "record.json")
+			recAarch64 := filepath.Join(recordsDir, "org.example.App1-stable-aarch64", "record.json")
 
 			if _, err := os.Stat(recBeta); os.IsNotExist(err) {
 				t.Errorf("Expected x86_64 (beta) record to exist: %s", recBeta)
@@ -450,8 +454,8 @@ apps:
 			}
 
 			// Verify only aarch64 stable was pushed
-			recAarch64 := filepath.Join(recordsDir, "org.example.App1-aarch64", "record.json")
-			recX86_64 := filepath.Join(recordsDir, "org.example.App1-x86_64", "record.json")
+			recAarch64 := filepath.Join(recordsDir, "org.example.App1-stable-aarch64", "record.json")
+			recX86_64 := filepath.Join(recordsDir, "org.example.App1-stable-x86_64", "record.json")
 
 			if _, err := os.Stat(recAarch64); os.IsNotExist(err) {
 				t.Errorf("Expected aarch64 record to exist: %s", recAarch64)
@@ -495,7 +499,7 @@ apps:
 		}
 
 		// Verify that a record exists under the actual built branch 'stable' rather than 'beta'
-		rec := filepath.Join(recordsDir, "org.example.AppFallback-x86_64", "record.json")
+		rec := filepath.Join(recordsDir, "org.example.AppFallback-stable-x86_64", "record.json")
 		if _, err := os.Stat(rec); os.IsNotExist(err) {
 			t.Fatalf("Expected record for AppFallback to exist: %s", rec)
 		}
@@ -540,7 +544,7 @@ apps:
 		}
 
 		// Verify record exists and has runtime ref
-		rec := filepath.Join(recordsDir, "org.freedesktop.Sdk.Extension.mock-x86_64", "record.json")
+		rec := filepath.Join(recordsDir, "org.freedesktop.Sdk.Extension.mock-stable-x86_64", "record.json")
 		if _, err := os.Stat(rec); os.IsNotExist(err) {
 			t.Fatalf("Expected record for runtime to exist: %s", rec)
 		}

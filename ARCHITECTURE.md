@@ -161,7 +161,7 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 * Bundles OSTree repositories into OCI images using `flatpak build-bundle`.
 * Interacts with container registries using the `go-containerregistry` library.
 * Generates an image manifest index and signs the manifest payload. Supports bypassing GPG signing when `no_sign` is set to `true`. When `no_sign` is `false`, it enforces that a GPG key must be provided, failing the push unless `allow_unsigned` is explicitly enabled.
-* Writes a uniform execution record (`record.json`) under `<records-dir>/<app-id>-<arch>/` tracking the OCI digest, registry, and label metadata.
+* Writes a uniform execution record (`record.json`) under `<records-dir>/<app-id>-<branch>-<arch>/` tracking the OCI digest, registry, and label metadata. Records written without a branch fall back to `<records-dir>/<app-id>-<arch>/`.
 
 ### `pkg/site`
 * Assembles the static repository landing page.

@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	appIDRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`)
-	archRegexp  = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	appIDRegexp  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`)
+	archRegexp   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	branchRegexp = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 )
 
-// Record is an immutable snapshot of one published (app, arch) cell.
+// Record is an immutable snapshot of one published (app, arch, branch) cell.
 type Record struct {
 	AppID    string `json:"app-id"`
 	Arch     string `json:"arch"`
@@ -47,15 +48,26 @@ func (r Record) Validate() error {
 		return fmt.Errorf("Record arch %q is invalid (must match %s)", r.Arch, archRegexp.String())
 	}
 
+	// Records written before the branch became part of the cell path carry no
+	// branch, so only validate it when set.
+	if r.Branch != "" && !branchRegexp.MatchString(r.Branch) {
+		return fmt.Errorf("Record branch %q is invalid (must match %s)", r.Branch, branchRegexp.String())
+	}
+
 	return nil
 }
 
-// CellDir resolves the cell directory path under root.
+// CellDir resolves the cell directory path under root. The branch is part of
+// the path so that publishing several branches of one app and arch in a single
+// execution does not have each push overwrite the last one's record.
 func (r Record) CellDir(root string) (string, error) {
 	if err := r.Validate(); err != nil {
 		return "", err
 	}
-	return filepath.Join(root, fmt.Sprintf("%s-%s", r.AppID, r.Arch)), nil
+	if r.Branch == "" {
+		return filepath.Join(root, fmt.Sprintf("%s-%s", r.AppID, r.Arch)), nil
+	}
+	return filepath.Join(root, fmt.Sprintf("%s-%s-%s", r.AppID, r.Branch, r.Arch)), nil
 }
 
 // WriteRecord writes the record and labels into a cell directory under root.

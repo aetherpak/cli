@@ -58,6 +58,24 @@ func TestRecordValidation(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "valid branch",
+			rec: Record{
+				AppID:  "org.example.App",
+				Arch:   "x86_64",
+				Branch: "2.54",
+			},
+			wantErr: false,
+		},
+		{
+			name: "path traversal in branch",
+			rec: Record{
+				AppID:  "org.example.App",
+				Arch:   "x86_64",
+				Branch: "../escaped",
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -138,11 +156,11 @@ func TestWriteAndIterRecords(t *testing.T) {
 	}
 
 	// Iterate should return sorted by cell directory name:
-	// AetherPak directory name for rec1: org.example.AppA-x86_64
-	// AetherPak directory name for rec2: org.example.AppB-aarch64
+	// AetherPak directory name for rec1: org.example.AppA-stable-x86_64
+	// AetherPak directory name for rec2: org.example.AppB-beta-aarch64
 	// Sorted:
-	// 1st: org.example.AppA-x86_64 (rec1)
-	// 2nd: org.example.AppB-aarch64 (rec2)
+	// 1st: org.example.AppA-stable-x86_64 (rec1)
+	// 2nd: org.example.AppB-beta-aarch64 (rec2)
 	if records[0].Record.AppID != "org.example.AppA" {
 		t.Errorf("expected first sorted record to be org.example.AppA, got %s", records[0].Record.AppID)
 	}
@@ -238,5 +256,58 @@ func TestIterRecordsRecursive(t *testing.T) {
 	}
 	if records[1].Path != cellBDir {
 		t.Errorf("expected path to be %s, got %s", cellBDir, records[1].Path)
+	}
+}
+
+func TestWriteRecordSeparatesBranches(t *testing.T) {
+	tempDir := t.TempDir()
+
+	rec := Record{
+		AppID:    "org.example.App",
+		Arch:     "x86_64",
+		Name:     "my-org/my-app",
+		Registry: "ghcr.io",
+	}
+
+	stable := rec
+	stable.Branch = "master"
+	stable.Digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	stable.Ref = "app/org.example.App/x86_64/master"
+
+	release := rec
+	release.Branch = "2.54"
+	release.Digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+	release.Ref = "app/org.example.App/x86_64/2.54"
+
+	stableCell, err := WriteRecord(tempDir, stable, map[string]string{"org.flatpak.ref": stable.Ref})
+	if err != nil {
+		t.Fatalf("failed to write master record: %v", err)
+	}
+	releaseCell, err := WriteRecord(tempDir, release, map[string]string{"org.flatpak.ref": release.Ref})
+	if err != nil {
+		t.Fatalf("failed to write 2.54 record: %v", err)
+	}
+
+	if stableCell == releaseCell {
+		t.Fatalf("expected distinct cells for two branches of one app and arch, got %q for both", stableCell)
+	}
+
+	records, err := IterRecords(tempDir)
+	if err != nil {
+		t.Fatalf("failed to iter records: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+
+	digests := map[string]string{}
+	for _, rwl := range records {
+		digests[rwl.Record.Branch] = rwl.Record.Digest
+	}
+	if digests["master"] != stable.Digest {
+		t.Errorf("master record digest = %q, want %q", digests["master"], stable.Digest)
+	}
+	if digests["2.54"] != release.Digest {
+		t.Errorf("2.54 record digest = %q, want %q", digests["2.54"], release.Digest)
 	}
 }

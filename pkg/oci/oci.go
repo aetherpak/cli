@@ -65,10 +65,10 @@ func Push(opts PushOptions) (PushResult, error) {
 	}
 	logger.Info("Pushing application to OCI: %s/%s (arch: %s, branch: %s)", opts.Registry, opts.OCIRepository, opts.Arch, opts.Branch)
 
-	// Format OCI tag as <app-id>-<branch>-<arch>, converting '.' to '_' in app-id to prevent
-	// signature tag strip mismatch problems (see architectural invariants).
-	safeAppID := strings.ReplaceAll(opts.AppID, ".", "_")
-	tag := fmt.Sprintf("%s-%s-%s", safeAppID, opts.Branch, opts.Arch)
+	// Format OCI tag as <app-id>-<branch>-<arch>, converting '.' to '_' throughout
+	// to prevent signature tag strip mismatch problems (see architectural
+	// invariants). A branch like 2.54 needs this as much as the app ID does.
+	tag := CleanTag(fmt.Sprintf("%s-%s-%s", opts.AppID, opts.Branch, opts.Arch))
 	logger.Debug("Target OCI image tag resolved to: %s", tag)
 
 	refType := opts.RefType

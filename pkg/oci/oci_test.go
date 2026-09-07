@@ -203,6 +203,31 @@ func TestCleanTag(t *testing.T) {
 	}
 }
 
+// A dot anywhere in the tag makes flatpak's docker-reference parser fail to
+// strip it, and the signature identity check then rejects the image.
+func TestTagHasNoDots(t *testing.T) {
+	tests := []struct {
+		appID    string
+		branch   string
+		arch     string
+		expected string
+	}{
+		{"org.example.App", "master", "x86_64", "org_example_App-master-x86_64"},
+		{"org.example.App", "2.54", "x86_64", "org_example_App-2_54-x86_64"},
+		{"org.example.App.Extension", "2.54", "aarch64", "org_example_App_Extension-2_54-aarch64"},
+	}
+
+	for _, tt := range tests {
+		actual := CleanTag(fmt.Sprintf("%s-%s-%s", tt.appID, tt.branch, tt.arch))
+		if actual != tt.expected {
+			t.Errorf("tag for %s//%s (%s) = %q; expected %q", tt.appID, tt.branch, tt.arch, actual, tt.expected)
+		}
+		if strings.Contains(actual, ".") {
+			t.Errorf("tag %q still contains a dot", actual)
+		}
+	}
+}
+
 func TestPushSigned(t *testing.T) {
 	// Generate GPG Key
 	entity, err := openpgp.NewEntity("AetherPak Test", "Test key", "test@aetherpak.local", nil)

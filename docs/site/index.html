@@ -202,7 +202,7 @@
         <h2>What it is</h2>
         <p class="lead">AetherPak CLI is a Go-compiled tool that fully automates local compilation, signature backfilling, registry distribution, and index generation. It acts as the core engine that powers AetherPak GitHub Actions, but can also run independently on any developer machine or non-containerized CI runner.</p>
         <ul class="points">
-          <li><strong>Zero Dependencies:</strong> Single compiled binary needing only local system tools (flatpak, ostree, and gpg).</li>
+          <li><strong>Zero Dependencies:</strong> Single compiled binary needing only local system tools (flatpak and ostree).</li>
           <li><strong>Integrated Linter:</strong> Automatically hooks <code>flatpak-builder-lint</code> check points into compilation.</li>
           <li><strong>CI-Agnostic Output:</strong> Dotenv format files capture resolved build coordinates easily.</li>
         </ul>
@@ -245,6 +245,60 @@
         </div>
 
         <p class="caption">Real execution logs simulation displaying AetherPak release stages.</p>
+      </section>
+
+      <section>
+        <h2>Installation</h2>
+        <p>AetherPak CLI ships as a single Go binary, as buildable source, and as a container image with the Flatpak toolchain pre-baked. The build and publish commands also expect <code>flatpak</code> and <code>ostree</code>, plus <code>flatpak-builder</code> for manifest builds and optionally <code>flatpak-builder-lint</code>, on the host. Signing uses in-process OpenPGP from armored key material, so no <code>gpg</code> binary is required.</p>
+
+        <div class="card" style="margin-top: 1rem;">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" data-tab="install-binary" aria-selected="true">Prebuilt binary</button>
+            <button class="tab" role="tab" data-tab="install-go" aria-selected="false">Build from source</button>
+            <button class="tab" role="tab" data-tab="install-container" aria-selected="false">Container</button>
+          </div>
+
+          <div class="panel" data-tab="install-binary">
+            <p style="margin-bottom: 1rem;">Download the release archive for your architecture, extract it, and install the binary onto your <code>PATH</code>:</p>
+            <div class="code-block">
+              <pre><code># x86_64
+curl -LO https://github.com/aetherpak/cli/releases/latest/download/aetherpak-linux-amd64.tar.gz
+tar -xzf aetherpak-linux-amd64.tar.gz
+sudo install -Dm755 aetherpak-linux-amd64 /usr/local/bin/aetherpak
+
+# aarch64
+curl -LO https://github.com/aetherpak/cli/releases/latest/download/aetherpak-linux-arm64.tar.gz
+tar -xzf aetherpak-linux-arm64.tar.gz
+sudo install -Dm755 aetherpak-linux-arm64 /usr/local/bin/aetherpak</code></pre>
+              <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+            </div>
+          </div>
+
+          <div class="panel" data-tab="install-go" hidden>
+            <p style="margin-bottom: 1rem;">With Go 1.26.3 or newer, clone the repository and install from the checkout:</p>
+            <div class="code-block">
+              <pre><code>git clone https://github.com/aetherpak/cli.git
+cd cli
+go install .</code></pre>
+              <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+            </div>
+            <p class="hint">Installs to <code>$(go env GOPATH)/bin/aetherpak</code>; a source build reports its version as <code>dev</code>.</p>
+          </div>
+
+          <div class="panel" data-tab="install-container" hidden>
+            <p style="margin-bottom: 1rem;">The published image bakes in the Flatpak toolchain. Mount your repository into <code>/workspace</code>:</p>
+            <div class="code-block">
+              <pre><code># CLI image
+podman run --rm -v "$PWD:/workspace" ghcr.io/aetherpak/cli:latest aetherpak status
+
+# Builder image, with flatpak-builder available
+podman run --rm -v "$PWD:/workspace" ghcr.io/aetherpak/cli:latest-builder aetherpak build --app-id org.example.App</code></pre>
+              <button class="btn-copy" title="Copy" aria-label="Copy" onclick="copyBlock(this)"></button>
+            </div>
+          </div>
+        </div>
+
+        <p class="hint" style="margin-top: 1rem;">Verify the install with <code>aetherpak --version</code>, then <code>aetherpak status</code> to check system dependencies, configuration, and signing keys.</p>
       </section>
 
       <section>

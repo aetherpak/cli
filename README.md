@@ -4,6 +4,109 @@ A standalone, performance-focused Go command-line tool for orchestrating Flatpak
 
 ---
 
+## Installation
+
+AetherPak CLI is a single compiled Go binary. It has no runtime dependencies of its own, but the commands that compile, sign, and lint Flatpak applications expect the usual Flatpak toolchain on the host.
+
+### System Prerequisites
+
+* **flatpak** and **ostree**: required for repository, bundle, and ref operations.
+* **flatpak-builder**: required by `build`, `publish`, and `release` when compiling from a manifest.
+* **flatpak-builder-lint**: optional, used when `run_linter` is enabled.
+
+Signing does not shell out to `gpg`. Repositories and OCI images are signed in-process from armored GPG key material, so no `gpg` binary is needed. Disable signing with `no_sign: true` or `--no-sign`.
+
+Run `aetherpak status` after installing to see which of these are available.
+
+### Option 1: Prebuilt Binary
+
+Download the release archive for your architecture, extract it, and install the binary onto your `PATH`:
+
+```bash
+# x86_64
+curl -LO https://github.com/aetherpak/cli/releases/latest/download/aetherpak-linux-amd64.tar.gz
+tar -xzf aetherpak-linux-amd64.tar.gz
+sudo install -Dm755 aetherpak-linux-amd64 /usr/local/bin/aetherpak
+
+# aarch64
+curl -LO https://github.com/aetherpak/cli/releases/latest/download/aetherpak-linux-arm64.tar.gz
+tar -xzf aetherpak-linux-arm64.tar.gz
+sudo install -Dm755 aetherpak-linux-arm64 /usr/local/bin/aetherpak
+```
+
+### Option 2: Build from Source
+
+With Go 1.26.3 or newer, clone the repository and install the binary from the checkout:
+
+```bash
+git clone https://github.com/aetherpak/cli.git
+cd cli
+go install .
+```
+
+`go install .` writes the binary to `$(go env GOPATH)/bin/aetherpak`, so make sure that directory is on your `PATH`. A source build reports its version as `dev`, since the release version is stamped in at build time. For a version-stamped local build, `make build` writes the binary to `bin/aetherpak`.
+
+### Option 3: Container Image
+
+The published CLI image bakes in the Flatpak toolchain, so it needs no host setup. Mount the repository you want to build into `/workspace`:
+
+```bash
+# CLI image
+podman run --rm -v "$PWD:/workspace" ghcr.io/aetherpak/cli:latest aetherpak status
+
+# Builder image, with flatpak-builder available
+podman run --rm -v "$PWD:/workspace" ghcr.io/aetherpak/cli:latest-builder aetherpak build --app-id org.example.App
+```
+
+Replace `podman` with `docker` if you use that runtime.
+
+### Verify the Installation
+
+```bash
+aetherpak --version
+aetherpak status
+```
+
+`status` prints a per-dependency report and validates your configuration file and GPG keys.
+
+---
+
+## Quick Start
+
+AetherPak reads repository settings from `aetherpak.yaml` (or `aetherpak.yml`) in the working directory. A minimal single-app configuration looks like:
+
+```yaml
+app_id: org.example.App
+runtime: org.freedesktop.Platform//25.08
+manifest: apps/org.example.App/manifest.yaml
+```
+
+Then walk through a first build:
+
+```bash
+# Inspect the resolved configuration and active overrides
+aetherpak config show
+
+# Validate the local toolchain, config file, and signing setup
+aetherpak status
+
+# Build, push, and sign a single app end to end
+aetherpak publish --app-id org.example.App --registry ghcr.io
+
+# Or plan and release every app changed since a base commit
+aetherpak release --base-sha <git-sha>
+```
+
+If you would rather not write the configuration by hand, `aetherpak add` can bootstrap it from a local manifest, a bundle URL, or a git repository:
+
+```bash
+aetherpak add --manifest org.example.App.yaml
+```
+
+The full command surface, including the plumbing primitives and configuration schema, is documented under [Command Reference](#command-reference) below.
+
+---
+
 ## Architecture
 
 The CLI follows a **Plumbing vs. Porcelain** design:

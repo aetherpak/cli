@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.33.3](https://github.com/aetherpak/cli/compare/v0.33.2...v0.33.3) (2026-09-20)
+
+
+### Bug Fixes
+
+* **oci:** keep dots out of the whole image tag ([6f66c2e](https://github.com/aetherpak/cli/commit/6f66c2e8d3a7013db7019f26272c1ee9d0e09b87))
+* **record:** include branch in the cell directory path ([c7801cf](https://github.com/aetherpak/cli/commit/c7801cf6f7fc4d1e2881b5a78d8e3e7640eed689))
+* **record:** prefer branch-qualified cells over legacy cells ([ba2aaae](https://github.com/aetherpak/cli/commit/ba2aaaef965f65919c77b8ab7f540180d4a83095))
+
 ## [0.33.2](https://github.com/aetherpak/cli/compare/v0.33.1...v0.33.2) (2026-08-23)
 
 

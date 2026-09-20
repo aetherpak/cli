@@ -1,6 +1,7 @@
 package record
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -256,6 +257,141 @@ func TestIterRecordsRecursive(t *testing.T) {
 	}
 	if records[1].Path != cellBDir {
 		t.Errorf("expected path to be %s, got %s", cellBDir, records[1].Path)
+	}
+}
+
+// writeRawCell places a record and labels directly in cellDir, bypassing
+// WriteRecord, so a test can reproduce the legacy <app>-<arch> layout a
+// pre-branch version of this package produced.
+func writeRawCell(t *testing.T, cellDir string, rec Record, labels map[string]string) {
+	t.Helper()
+	if err := os.MkdirAll(cellDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	recBytes, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cellDir, "record.json"), recBytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+	lblBytes, err := json.Marshal(labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cellDir, "labels.json"), lblBytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const (
+	freshDigest  = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+	legacyDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+)
+
+// TestIterRecordsPrefersBranchQualifiedCell covers both lexical orders between
+// the legacy <app>-<arch> cell and the branch-qualified <app>-<branch>-<arch>
+// cell: only the architecture decides whether the legacy cell is seen before or
+// after its replacement, so both paths through the dedupe are exercised.
+func TestIterRecordsPrefersBranchQualifiedCell(t *testing.T) {
+	const appID = "org.example.App"
+	const branch = "stable"
+
+	for _, arch := range []string{"x86_64", "aarch64"} {
+		t.Run(arch, func(t *testing.T) {
+			tempDir := t.TempDir()
+			ref := "app/" + appID + "/" + arch + "/" + branch
+
+			// Fresh cell written by the current code: <app>-<branch>-<arch>.
+			fresh := Record{
+				AppID:    appID,
+				Arch:     arch,
+				Branch:   branch,
+				Name:     "my-org/my-app",
+				Registry: "ghcr.io",
+				Digest:   freshDigest,
+				Ref:      ref,
+				Tag:      "fresh",
+			}
+			freshLabels := map[string]string{
+				"org.flatpak.ref":    ref,
+				"org.flatpak.commit": "fresh",
+			}
+			freshCell, err := WriteRecord(tempDir, fresh, freshLabels)
+			if err != nil {
+				t.Fatalf("failed to write fresh record: %v", err)
+			}
+			if filepath.Base(freshCell) != appID+"-"+branch+"-"+arch {
+				t.Fatalf("fresh cell = %q, want branch-qualified directory", freshCell)
+			}
+
+			// Legacy cell for the same app/arch/branch, written to the pre-branch
+			// path.
+			legacy := fresh
+			legacy.Digest = legacyDigest
+			legacy.Tag = "legacy"
+			writeRawCell(t, filepath.Join(tempDir, appID+"-"+arch), legacy, map[string]string{
+				"org.flatpak.ref":    ref,
+				"org.flatpak.commit": "legacy",
+			})
+
+			records, err := IterRecords(tempDir)
+			if err != nil {
+				t.Fatalf("failed to iter records: %v", err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("expected the legacy cell to be dropped, got %d records: %+v", len(records), records)
+			}
+			if records[0].Path != freshCell {
+				t.Errorf("surviving cell path = %q, want %q", records[0].Path, freshCell)
+			}
+			if records[0].Record.Digest != freshDigest {
+				t.Errorf("surviving digest = %q, want %q", records[0].Record.Digest, freshDigest)
+			}
+			if records[0].Labels["org.flatpak.commit"] != "fresh" {
+				t.Errorf("surviving labels = %v, want the branch-qualified cell's", records[0].Labels)
+			}
+		})
+	}
+}
+
+func TestIterRecordsKeepsLegacyCellWithoutCounterpart(t *testing.T) {
+	tempDir := t.TempDir()
+
+	const appID = "org.example.App"
+	const arch = "x86_64"
+	const branch = "stable"
+	ref := "app/" + appID + "/" + arch + "/" + branch
+
+	// A legacy cell with no branch-qualified sibling is still the only record for
+	// its app/arch/branch, so it must keep loading (backward compatibility).
+	legacyCell := filepath.Join(tempDir, appID+"-"+arch)
+	writeRawCell(t, legacyCell, Record{
+		AppID:    appID,
+		Arch:     arch,
+		Branch:   branch,
+		Name:     "my-org/my-app",
+		Registry: "ghcr.io",
+		Digest:   legacyDigest,
+		Ref:      ref,
+		Tag:      "legacy",
+	}, map[string]string{
+		"org.flatpak.ref":    ref,
+		"org.flatpak.commit": "legacy",
+	})
+
+	records, err := IterRecords(tempDir)
+	if err != nil {
+		t.Fatalf("failed to iter records: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Path != legacyCell {
+		t.Errorf("surviving cell path = %q, want %q", records[0].Path, legacyCell)
+	}
+	if records[0].Record.Digest != legacyDigest {
+		t.Errorf("surviving digest = %q, want %q", records[0].Record.Digest, legacyDigest)
 	}
 }
 

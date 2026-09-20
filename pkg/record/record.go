@@ -65,9 +65,14 @@ func (r Record) CellDir(root string) (string, error) {
 		return "", err
 	}
 	if r.Branch == "" {
-		return filepath.Join(root, fmt.Sprintf("%s-%s", r.AppID, r.Arch)), nil
+		return filepath.Join(root, legacyCellName(r)), nil
 	}
 	return filepath.Join(root, fmt.Sprintf("%s-%s-%s", r.AppID, r.Branch, r.Arch)), nil
+}
+
+// legacyCellName is the pre-branch cell directory name (<app>-<arch>).
+func legacyCellName(r Record) string {
+	return fmt.Sprintf("%s-%s", r.AppID, r.Arch)
 }
 
 // WriteRecord writes the record and labels into a cell directory under root.
@@ -153,6 +158,11 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 	sort.Strings(cellDirs)
 
 	var results []RecordWithLabels
+	// seen maps a logical cell (app, arch, branch) to its index in results, so a
+	// legacy cell cannot shadow the branch-qualified cell that replaces it on
+	// disk. Both forms carry the same branch in JSON, so the directory shape is
+	// the only signal that tells them apart.
+	seen := make(map[cellKey]int, len(cellDirs))
 	for _, cellPath := range cellDirs {
 		recPath := filepath.Join(cellPath, "record.json")
 		lblPath := filepath.Join(cellPath, "labels.json")
@@ -179,14 +189,46 @@ func IterRecords(root string) ([]RecordWithLabels, error) {
 			return nil, fmt.Errorf("failed to parse labels JSON from %q: %w", lblPath, err)
 		}
 
-		results = append(results, RecordWithLabels{
+		rwl := RecordWithLabels{
 			Record: r,
 			Labels: labels,
 			Path:   cellPath,
-		})
+		}
+
+		key := cellKey{AppID: r.AppID, Arch: r.Arch, Branch: r.Branch}
+		if idx, ok := seen[key]; ok {
+			// Prefer the branch-qualified cell over the legacy <app>-<arch>
+			// form. On equal preference the first cell wins, which keeps the
+			// result deterministic.
+			if isLegacyCell(results[idx].Path, results[idx].Record) && !isLegacyCell(rwl.Path, rwl.Record) {
+				results[idx] = rwl
+			}
+			continue
+		}
+		seen[key] = len(results)
+		results = append(results, rwl)
 	}
 
 	return results, nil
+}
+
+// cellKey identifies the logical cell a record belongs to, independent of the
+// directory shape the writing version used.
+type cellKey struct {
+	AppID  string
+	Arch   string
+	Branch string
+}
+
+// isLegacyCell reports whether a cell was written to the pre-branch path form
+// (<app>-<arch>). Records written before the branch became part of the cell path
+// still carry a branch in JSON, so the directory name is the only reliable
+// signal.
+func isLegacyCell(cellPath string, r Record) bool {
+	if r.Branch == "" {
+		return false
+	}
+	return filepath.Base(cellPath) == legacyCellName(r)
 }
 
 func fileExists(path string) bool {

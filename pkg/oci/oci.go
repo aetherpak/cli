@@ -347,8 +347,10 @@ func CleanTag(tag string) string {
 // resolvePushAuth selects explicit credentials when supplied, otherwise the
 // environment/SCM conventions, and finally the local Docker keychain.
 func resolvePushAuth(opts PushOptions) remote.Option {
-	username := opts.OCIUsername
-	password := opts.OCIPassword
+	return resolveAuth(opts.OCIUsername, opts.OCIPassword)
+}
+
+func resolveAuth(username, password string) remote.Option {
 	if username == "" {
 		username = os.Getenv("OCI_USERNAME")
 	}

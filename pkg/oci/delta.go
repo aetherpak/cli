@@ -540,7 +540,7 @@ func publishImageDelta(repoRef name.Repository, authOpt remote.Option, d *imageD
 		return fmt.Errorf("failed to push delta manifest: %w", err)
 	}
 
-	if err := rebuildDeltaIndex(repoRef, authOpt, deltaManifestTag(d.targetDigest)); err != nil {
+	if err := rebuildDeltaIndex(repoRef, authOpt, deltaManifestTag(d.targetDigest), true, false); err != nil {
 		return err
 	}
 
@@ -658,7 +658,7 @@ func buildDeltaManifest(layers []v1.Descriptor, sources []v1.Hash, target v1.Has
 // writers converge: a lost update is repaired by the next writer. Steady-state
 // rebuilds reuse cached descriptors for tags that are not the required one, so
 // an externally moved non-required tag is picked up on a later full rebuild.
-func rebuildDeltaIndex(repoRef name.Repository, authOpt remote.Option, requiredTag string) error {
+func rebuildDeltaIndex(repoRef name.Repository, authOpt remote.Option, requiredTag string, preserveForeign, refresh bool) error {
 	indexRef := repoRef.Tag(deltaIndexTag)
 
 	for attempt := 1; attempt <= deltaIndexRetries; attempt++ {
@@ -686,7 +686,7 @@ func rebuildDeltaIndex(repoRef name.Repository, authOpt remote.Option, requiredT
 			continue
 		}
 
-		descriptors, err := deltaDescriptors(repoRef, tags, existing, requiredTag, authOpt)
+		descriptors, err := deltaDescriptors(repoRef, tags, existing, requiredTag, refresh, authOpt)
 		if err != nil {
 			if attempt == deltaIndexRetries {
 				return err
@@ -699,7 +699,7 @@ func rebuildDeltaIndex(repoRef name.Repository, authOpt remote.Option, requiredT
 		for _, tag := range tags {
 			tagTargets["sha256:"+strings.TrimPrefix(tag, deltaTagPrefix)] = true
 		}
-		merged := mergeDeltaDescriptors(descriptors, existing, tagTargets)
+		merged := mergeDeltaDescriptors(descriptors, existing, tagTargets, preserveForeign)
 		if current, err := loadDeltaIndex(indexRef, authOpt); err == nil && current != nil && descriptorsEqual(current.Manifests, merged) {
 			return nil
 		}
@@ -769,7 +769,7 @@ func listDeltaTags(repoRef name.Repository, authOpt remote.Option) ([]string, er
 // once. The required tag is always re-read so this push cannot silently omit
 // its own delta. Tag names are trusted to describe their manifest's target;
 // only aetherpak and explicitly foreign tags are expected here.
-func deltaDescriptors(repoRef name.Repository, tags []string, existing *v1.IndexManifest, requiredTag string, authOpt remote.Option) ([]v1.Descriptor, error) {
+func deltaDescriptors(repoRef name.Repository, tags []string, existing *v1.IndexManifest, requiredTag string, refresh bool, authOpt remote.Option) ([]v1.Descriptor, error) {
 	existingByTarget := make(map[string]v1.Descriptor, len(tags))
 	if existing != nil {
 		for _, d := range existing.Manifests {
@@ -787,7 +787,7 @@ func deltaDescriptors(repoRef name.Repository, tags []string, existing *v1.Index
 			continue
 		}
 		isRequired := target.String() == requiredTarget
-		if !isRequired {
+		if !refresh && !isRequired {
 			if cached, ok := existingByTarget[target.String()]; ok {
 				descriptors = append(descriptors, cached)
 				continue
@@ -832,9 +832,9 @@ func deltaDescriptors(repoRef name.Repository, tags []string, existing *v1.Index
 // entries for targets that do have a _delta-* tag. Foreign entries are
 // best-effort: a third-party writer can still race this read-modify-write, but
 // aetherpak owns the index in the repositories it targets.
-func mergeDeltaDescriptors(ours []v1.Descriptor, existing *v1.IndexManifest, tagTargets map[string]bool) []v1.Descriptor {
+func mergeDeltaDescriptors(ours []v1.Descriptor, existing *v1.IndexManifest, tagTargets map[string]bool, preserveForeign bool) []v1.Descriptor {
 	merged := append([]v1.Descriptor(nil), ours...)
-	if existing != nil {
+	if preserveForeign && existing != nil {
 		for _, d := range existing.Manifests {
 			target := d.Annotations[deltaTargetAnnotation]
 			if target == "" || !tagTargets[target] {
@@ -849,6 +849,9 @@ func mergeDeltaDescriptors(ours []v1.Descriptor, existing *v1.IndexManifest, tag
 }
 
 func buildDeltaIndex(descriptors []v1.Descriptor) ([]byte, v1.Hash, int64, error) {
+	if descriptors == nil {
+		descriptors = []v1.Descriptor{}
+	}
 	manifest := v1.IndexManifest{
 		SchemaVersion: 2,
 		MediaType:     types.OCIImageIndex,

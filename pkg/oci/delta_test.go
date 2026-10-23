@@ -621,7 +621,7 @@ func TestRebuildDeltaIndexConcurrent(t *testing.T) {
 				errs <- err
 				return
 			}
-			if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(target)); err != nil {
+			if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(target), true, false); err != nil {
 				errs <- err
 			}
 		}(i)
@@ -739,7 +739,7 @@ func TestRebuildDeltaIndexPreservesForeignEntries(t *testing.T) {
 
 	ownTarget, _ := v1.NewHash("sha256:" + sha256Hex([]byte("own-target")))
 	pushDeltaTag(t, repoRef, ownTarget, auth)
-	if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(ownTarget)); err != nil {
+	if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(ownTarget), true, false); err != nil {
 		t.Fatalf("rebuild failed: %v", err)
 	}
 
@@ -786,7 +786,7 @@ func TestRebuildDeltaIndexFailsWhenRequiredTagIsUnreadable(t *testing.T) {
 	target, _ := v1.NewHash("sha256:" + sha256Hex([]byte("phantom-target")))
 	pushDeltaTag(t, repoRef, target, auth)
 
-	if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(target)); err == nil {
+	if err := rebuildDeltaIndex(repoRef, auth, deltaManifestTag(target), true, false); err == nil {
 		t.Fatalf("expected rebuild to fail while the required manifest is unreadable")
 	}
 	if _, err := remote.Index(repoRef.Tag(deltaIndexTag), auth); err == nil {

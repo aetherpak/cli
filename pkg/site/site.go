@@ -57,6 +57,68 @@ type SiteOptions struct {
 	DryRun              bool
 }
 
+// activeExtensionIDs returns the extension IDs declared by the metadata of the
+// active apps. The metadata labels come from the published images, so a
+// reconcile run does not need the app manifests on disk.
+func (opts SiteOptions) activeExtensionIDs(index FlatpakIndex) []string {
+	if len(opts.ActiveAppIDs) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			// Read extension points from the active app's own image. A
+			// configured app may be published as a runtime bundle, so both
+			// ref kinds count; the exact id match scopes it.
+			parts := strings.Split(img.Labels["org.flatpak.ref"], "/")
+			if len(parts) < 4 || !opts.isActiveAppID(parts[1]) {
+				continue
+			}
+			for _, id := range extensionIDsFromMetadata(img.Labels["org.flatpak.metadata"]) {
+				seen[id] = true
+			}
+		}
+	}
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (opts SiteOptions) isActiveAppID(appID string) bool {
+	for _, id := range opts.ActiveAppIDs {
+		if id == appID {
+			return true
+		}
+	}
+	return false
+}
+
+// extensionIDsFromMetadata reads the extension IDs an app declares as
+// [Extension <id>] sections of its Flatpak metadata. A name@tag suffix on the
+// section names an extension point, and the tag is not part of the ref.
+func extensionIDsFromMetadata(metadata string) []string {
+	var ids []string
+	for _, line := range strings.Split(metadata, "\n") {
+		line = strings.TrimSpace(line)
+		id, ok := strings.CutPrefix(line, "[Extension ")
+		if !ok {
+			continue
+		}
+		id, ok = strings.CutSuffix(id, "]")
+		if !ok {
+			continue
+		}
+		id, _, _ = strings.Cut(id, "@")
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // FlatpakIndex represents the JSON model of the Flatpak index/static.
 type FlatpakIndex struct {
 	Registry string               `json:"Registry"`
@@ -233,6 +295,7 @@ func BuildSite(opts SiteOptions) error {
 	if opts.Reconcile && len(index.Results) > 0 {
 		logger.Info("Reconciling index: validating OCI repository images.")
 		var reconciledResults []IndexResultPackage
+		activeExtensionIDs := opts.activeExtensionIDs(index)
 
 		for _, pkg := range index.Results {
 			// If active OCI repository is specified, prune packages from different repositories
@@ -251,8 +314,8 @@ func BuildSite(opts SiteOptions) error {
 
 			for _, img := range pkg.Images {
 				// Filter by active apps if configured. Companion refs
-				// (.Debug, .Locale, .Sources) belong to the app they extend,
-				// so they stay while their parent app is active.
+				// (.Debug, .Locale, .Sources) belong to the app or extension
+				// they extend, so they stay while that parent is active.
 				if len(opts.ActiveAppIDs) > 0 {
 					refVal := img.Labels["org.flatpak.ref"]
 					parts := strings.Split(refVal, "/")
@@ -260,7 +323,7 @@ func BuildSite(opts SiteOptions) error {
 						appID := parts[1]
 						isActive := false
 						for _, activeID := range opts.ActiveAppIDs {
-							if manifest.IsRefRelated(appID, activeID, nil) {
+							if manifest.IsRefRelated(appID, activeID, activeExtensionIDs) {
 								isActive = true
 								break
 							}

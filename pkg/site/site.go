@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aetherpak/aetherpak/pkg/logger"
+	"github.com/aetherpak/aetherpak/pkg/manifest"
 	"github.com/aetherpak/aetherpak/pkg/record"
 	"github.com/aetherpak/aetherpak/pkg/signing"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -249,7 +250,9 @@ func BuildSite(opts SiteOptions) error {
 			var reconciledImages []IndexImage
 
 			for _, img := range pkg.Images {
-				// Filter by active apps if configured
+				// Filter by active apps if configured. Companion refs
+				// (.Debug, .Locale, .Sources) belong to the app they extend,
+				// so they stay while their parent app is active.
 				if len(opts.ActiveAppIDs) > 0 {
 					refVal := img.Labels["org.flatpak.ref"]
 					parts := strings.Split(refVal, "/")
@@ -257,7 +260,7 @@ func BuildSite(opts SiteOptions) error {
 						appID := parts[1]
 						isActive := false
 						for _, activeID := range opts.ActiveAppIDs {
-							if activeID == appID {
+							if manifest.IsRefRelated(appID, activeID, nil) {
 								isActive = true
 								break
 							}

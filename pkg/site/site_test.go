@@ -1,10 +1,13 @@
 package site
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -901,6 +904,71 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 		t.Fatalf("failed to write record 2: %v", err)
 	}
 
+	// Debug, Locale and Sources companions of App 1. Their parent is active,
+	// so they must survive reconcile even though their own app ids are not
+	// configured.
+	companions := []struct {
+		appID  string
+		digest string
+		ref    string
+	}{
+		{"org.example.app1.Debug", "sha256:3333333333333333333333333333333333333333333333333333333333333333", "runtime/org.example.app1.Debug/x86_64/stable"},
+		{"org.example.app1.Locale", "sha256:4444444444444444444444444444444444444444444444444444444444444444", "runtime/org.example.app1.Locale/x86_64/stable"},
+		{"org.example.app1.Sources", "sha256:7777777777777777777777777777777777777777777777777777777777777777", "runtime/org.example.app1.Sources/x86_64/stable"},
+	}
+	for _, companion := range companions {
+		rec := record.Record{
+			AppID:    companion.appID,
+			Arch:     "x86_64",
+			Branch:   "stable",
+			Name:     "example/app1",
+			Registry: server.URL,
+			Digest:   companion.digest,
+		}
+		labels := map[string]string{
+			"org.flatpak.ref":      companion.ref,
+			"org.flatpak.metadata": "[Runtime]\nname=" + companion.appID + "\nparent=org.example.app1/x86_64/stable",
+		}
+		if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+			t.Fatalf("failed to write companion record %s: %v", companion.appID, err)
+		}
+	}
+
+	// Debug companion of App 2, which is not configured.
+	rec2Debug := record.Record{
+		AppID:    "org.example.app2.Debug",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app2",
+		Registry: server.URL,
+		Digest:   "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+	}
+	labels2Debug := map[string]string{
+		"org.flatpak.ref":      "runtime/org.example.app2.Debug/x86_64/stable",
+		"org.flatpak.metadata": "[Runtime]\nname=org.example.app2.Debug\nparent=org.example.app2/x86_64/stable",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec2Debug, labels2Debug); err != nil {
+		t.Fatalf("failed to write app2 debug record: %v", err)
+	}
+
+	// App id sharing App 1's prefix but unrelated to it. Matching must not keep
+	// it just because the active id is a prefix.
+	rec1Extra := record.Record{
+		AppID:    "org.example.app1extra",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app1extra",
+		Registry: server.URL,
+		Digest:   "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+	}
+	labels1Extra := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app1extra/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1extra",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec1Extra, labels1Extra); err != nil {
+		t.Fatalf("failed to write lookalike app record: %v", err)
+	}
+
 	opts := SiteOptions{
 		RecordsDir:    recordsDir,
 		SiteDir:       siteDir,
@@ -914,18 +982,32 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 		t.Fatalf("BuildSite failed with reconcile=true and ActiveAppIDs: %v", err)
 	}
 
-	// Verify that index/static file was written and only contains app1, NOT app2!
+	// Verify that index/static holds App 1 and its companions, and nothing
+	// belonging to an unconfigured app.
 	indexPath := filepath.Join(siteDir, "index", "static")
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		t.Fatalf("failed to read index static: %v", err)
 	}
-	content := string(data)
-	if !strings.Contains(content, "org.example.app1") {
-		t.Error("expected index to contain app1")
+	var index FlatpakIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatalf("failed to parse index static: %v", err)
 	}
-	if strings.Contains(content, "org.example.app2") {
-		t.Error("expected index to NOT contain app2 since it is not in ActiveAppIDs")
+	var refs []string
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			refs = append(refs, img.Labels["org.flatpak.ref"])
+		}
+	}
+	sort.Strings(refs)
+	want := []string{
+		"app/org.example.app1/x86_64/stable",
+		"runtime/org.example.app1.Debug/x86_64/stable",
+		"runtime/org.example.app1.Locale/x86_64/stable",
+		"runtime/org.example.app1.Sources/x86_64/stable",
+	}
+	if !slices.Equal(refs, want) {
+		t.Errorf("index refs = %v, want %v", refs, want)
 	}
 }
 

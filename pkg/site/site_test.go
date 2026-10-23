@@ -881,7 +881,7 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 	}
 	labels1 := map[string]string{
 		"org.flatpak.ref":      "app/org.example.app1/x86_64/stable",
-		"org.flatpak.metadata": "[Application]\nname=org.example.app1",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app1\n[Extension org.example.app1.Plugin]\ndirectory=extensions/plugin",
 	}
 	if _, err := record.WriteRecord(recordsDir, rec1, labels1); err != nil {
 		t.Fatalf("failed to write record 1: %v", err)
@@ -898,7 +898,7 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 	}
 	labels2 := map[string]string{
 		"org.flatpak.ref":      "app/org.example.app2/x86_64/stable",
-		"org.flatpak.metadata": "[Application]\nname=org.example.app2",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app2\n[Extension org.example.app2.Plugin]\ndirectory=extensions/plugin",
 	}
 	if _, err := record.WriteRecord(recordsDir, rec2, labels2); err != nil {
 		t.Fatalf("failed to write record 2: %v", err)
@@ -969,6 +969,36 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 		t.Fatalf("failed to write lookalike app record: %v", err)
 	}
 
+	// Extension refs declared in App 1's metadata, plus the locale of one of
+	// them. An extension of App 2 is not declared by an active app.
+	extensions := []struct {
+		appID  string
+		name   string
+		ref    string
+		digest string
+	}{
+		{"org.example.app1.Plugin", "example/app1", "runtime/org.example.app1.Plugin/x86_64/stable", "sha256:" + strings.Repeat("8", 64)},
+		{"org.example.app1.Plugin.Locale", "example/app1", "runtime/org.example.app1.Plugin.Locale/x86_64/stable", "sha256:" + strings.Repeat("9", 64)},
+		{"org.example.app2.Plugin", "example/app2", "runtime/org.example.app2.Plugin/x86_64/stable", "sha256:" + strings.Repeat("a", 64)},
+	}
+	for _, extension := range extensions {
+		rec := record.Record{
+			AppID:    extension.appID,
+			Arch:     "x86_64",
+			Branch:   "stable",
+			Name:     extension.name,
+			Registry: server.URL,
+			Digest:   extension.digest,
+		}
+		labels := map[string]string{
+			"org.flatpak.ref":      extension.ref,
+			"org.flatpak.metadata": "[Runtime]\nname=" + extension.appID,
+		}
+		if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+			t.Fatalf("failed to write extension record %s: %v", extension.appID, err)
+		}
+	}
+
 	opts := SiteOptions{
 		RecordsDir:    recordsDir,
 		SiteDir:       siteDir,
@@ -1004,7 +1034,99 @@ func TestBuildSiteReconcileActiveApps(t *testing.T) {
 		"app/org.example.app1/x86_64/stable",
 		"runtime/org.example.app1.Debug/x86_64/stable",
 		"runtime/org.example.app1.Locale/x86_64/stable",
+		"runtime/org.example.app1.Plugin.Locale/x86_64/stable",
+		"runtime/org.example.app1.Plugin/x86_64/stable",
 		"runtime/org.example.app1.Sources/x86_64/stable",
+	}
+	sort.Strings(want)
+	if !slices.Equal(refs, want) {
+		t.Errorf("index refs = %v, want %v", refs, want)
+	}
+}
+
+func TestBuildSiteReconcileSeededIndexKeepsExtensions(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records") // absent: reconcile-only run
+	siteDir := filepath.Join(tempDir, "site")
+
+	seeded := FlatpakIndex{
+		Results: []IndexResultPackage{{
+			Name: "example/app",
+			Images: []IndexImage{
+				{
+					Digest:       "sha256:" + strings.Repeat("1", 64),
+					Architecture: "amd64",
+					Labels: map[string]string{
+						"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+						"org.flatpak.metadata": "[Application]\nname=org.example.app\n[Extension org.example.app.Plugin]\ndirectory=extensions/plugin",
+					},
+				},
+				{
+					Digest:       "sha256:" + strings.Repeat("2", 64),
+					Architecture: "amd64",
+					Labels: map[string]string{
+						"org.flatpak.ref":      "runtime/org.example.app.Plugin/x86_64/stable",
+						"org.flatpak.metadata": "[Runtime]\nname=org.example.app.Plugin",
+					},
+				},
+				{
+					Digest:       "sha256:" + strings.Repeat("3", 64),
+					Architecture: "amd64",
+					Labels: map[string]string{
+						"org.flatpak.ref":      "runtime/org.example.app.Plugin.Locale/x86_64/stable",
+						"org.flatpak.metadata": "[Runtime]\nname=org.example.app.Plugin.Locale",
+					},
+				},
+			},
+		}},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/index/static":
+			_ = json.NewEncoder(w).Encode(seeded)
+		case strings.HasPrefix(r.URL.Path, "/sigs/"):
+			// No signature lookaside in this fixture.
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+	seeded.Registry = server.URL
+
+	opts := SiteOptions{
+		PagesURL:      server.URL,
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		Reconcile:     true,
+		ActiveAppIDs:  []string{"org.example.app"},
+		Insecure:      true,
+		AllowUnsigned: true,
+	}
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed for a seeded index: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(siteDir, "index", "static"))
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	var index FlatpakIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatalf("failed to parse index static: %v", err)
+	}
+	var refs []string
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			refs = append(refs, img.Labels["org.flatpak.ref"])
+		}
+	}
+	sort.Strings(refs)
+	want := []string{
+		"app/org.example.app/x86_64/stable",
+		"runtime/org.example.app.Plugin.Locale/x86_64/stable",
+		"runtime/org.example.app.Plugin/x86_64/stable",
 	}
 	if !slices.Equal(refs, want) {
 		t.Errorf("index refs = %v, want %v", refs, want)
@@ -1533,5 +1655,92 @@ App: {{.Name}} ({{.ID}})
 	expectedLocaleLine := "  - Companion: org.example.app.Locale Type: Locale Arches: x86_64 Install: flatpak install --user myremote org.example.app.Locale//stable Ref: refs/org.example.app.Locale-stable.flatpakref"
 	if !strings.Contains(output, expectedLocaleLine) {
 		t.Errorf("expected output to contain locale companion details: %q", expectedLocaleLine)
+	}
+}
+
+func TestExtensionIDsFromMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata string
+		want     []string
+	}{
+		{
+			name:     "empty metadata",
+			metadata: "",
+			want:     nil,
+		},
+		{
+			name:     "application without extensions",
+			metadata: "[Application]\nname=org.example.App",
+			want:     nil,
+		},
+		{
+			name: "declared extensions",
+			metadata: "[Application]\nname=org.example.App\n" +
+				"[Extension org.example.App.Plugin]\ndirectory=extensions/plugin\n" +
+				"[Extension org.example.App.Plugin.Locale]\ndirectory=extensions/plugin/locale",
+			want: []string{"org.example.App.Plugin", "org.example.App.Plugin.Locale"},
+		},
+		{
+			name:     "tagged extension point drops the tag",
+			metadata: "[Application]\nname=org.example.App\n[Extension org.example.App.Plugin@stable]\ndirectory=extensions/plugin",
+			want:     []string{"org.example.App.Plugin"},
+		},
+		{
+			name:     "crlf and whitespace",
+			metadata: "[Application]\r\nname=org.example.App\r\n  [Extension org.example.App.Plugin]  \r\n",
+			want:     []string{"org.example.App.Plugin"},
+		},
+		{
+			name:     "other extension headers are ignored",
+			metadata: "[Extension]\nname=org.example.Sdk.Extension.xrt\n[ExtensionOf]\nref=app/org.example.App/x86_64/stable\n[ExtensionFoo]",
+			want:     nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extensionIDsFromMetadata(tt.metadata); !slices.Equal(got, tt.want) {
+				t.Errorf("extensionIDsFromMetadata() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestActiveExtensionIDs(t *testing.T) {
+	index := FlatpakIndex{Results: []IndexResultPackage{{
+		Name: "example/app",
+		Images: []IndexImage{
+			{Labels: map[string]string{
+				"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+				"org.flatpak.metadata": "[Application]\n[Extension org.example.app.Plugin]\n[Extension org.example.app.Plugin@stable]",
+			}},
+			{Labels: map[string]string{
+				"org.flatpak.ref":      "app/org.example.app/aarch64/stable",
+				"org.flatpak.metadata": "[Application]\n[Extension org.example.app.Plugin]\n[Extension org.example.app.Arm]",
+			}},
+			{Labels: map[string]string{
+				"org.flatpak.ref":      "app/org.example.other/x86_64/stable",
+				"org.flatpak.metadata": "[Application]\n[Extension org.example.other.Plugin]",
+			}},
+			{Labels: map[string]string{
+				"org.flatpak.ref":      "runtime/org.example.app.Plugin/x86_64/stable",
+				"org.flatpak.metadata": "[Runtime]\n[Extension org.example.app.Plugin.Inner]",
+			}},
+			// A configured app can be published as a runtime bundle.
+			{Labels: map[string]string{
+				"org.flatpak.ref":      "runtime/org.example.app/x86_64/stable",
+				"org.flatpak.metadata": "[Runtime]\n[Extension org.example.app.Runtime]",
+			}},
+		},
+	}}}
+
+	opts := SiteOptions{ActiveAppIDs: []string{"org.example.app"}}
+	want := []string{"org.example.app.Arm", "org.example.app.Plugin", "org.example.app.Runtime"}
+	if got := opts.activeExtensionIDs(index); !slices.Equal(got, want) {
+		t.Errorf("activeExtensionIDs() = %v, want %v", got, want)
+	}
+
+	if got := (SiteOptions{}).activeExtensionIDs(index); got != nil {
+		t.Errorf("activeExtensionIDs() with no active apps = %v, want nil", got)
 	}
 }

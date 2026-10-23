@@ -170,7 +170,7 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 * Assembles the static repository landing page.
 * Fetches the current production index from the active Pages hosting to seed the update.
 * Merges execution records from parallel runner cells, preferring a branch-qualified cell over a legacy `<app-id>-<arch>` cell for the same app, architecture, and branch, so a stale legacy record cannot shadow a fresh one.
-* Reconciles the index by validating digest existence via registry `HEAD` checks (pruning entries only on definitive 404s). When a config declares active apps, refs for other app ids are pruned, while the standard `.Debug`/`.Locale`/`.Sources` companions of an active app are kept.
+* Reconciles the index by validating digest existence via registry `HEAD` checks (pruning entries only on definitive 404s). When a config declares active apps, refs for other app ids are pruned, while the standard `.Debug`/`.Locale`/`.Sources` companions and the extension points declared in an active app's own metadata are kept. The metadata labels travel with the published images, so a reconcile run needs no manifest or checkout; an active app whose image or metadata is absent loses its extension refs with it.
 * Generates GPG public key material (`key.asc`), signing manifests (`signing.json`), `.flatpakrepo` configurations, and one-click `.flatpakref` installer files. Bypasses key export and GPG validation checks when `no_sign` is set to `true`, and enforces GPG key existence unless `allow_unsigned` is explicitly enabled.
 
 ### `pkg/plan`

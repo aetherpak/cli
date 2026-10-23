@@ -2,5 +2,6 @@ bin/
 dist/
 .ccache/
 .state/
+.aetherpak-work/
 *.exe
 .idea/

@@ -31,6 +31,8 @@ var (
 	pushNoSign              bool
 	pushAllowUnsigned       bool
 	pushDryRun              bool
+	pushImageDeltas         bool
+	pushNoImageDeltas       bool
 	pushAutoReleaseMetadata bool
 	pushReleaseVersion      string
 	pushReleaseDate         string
@@ -50,6 +52,10 @@ var pushOCICmd = &cobra.Command{
 		}
 		if viper.ConfigFileUsed() == "" {
 			hasConfig = false
+		}
+
+		if cmd.Flags().Changed("image-deltas") && cmd.Flags().Changed("no-image-deltas") && pushImageDeltas && pushNoImageDeltas {
+			return NewCmdError(2, fmt.Errorf("--image-deltas and --no-image-deltas are mutually exclusive"))
 		}
 
 		if pushArch == "" {
@@ -294,6 +300,14 @@ var pushOCICmd = &cobra.Command{
 				autoRel = *cfg.Defaults.AutoReleaseMetadata
 			}
 
+			imageDeltas := cfg.ResolveImageDeltas(target.AppID, target.Branch)
+			if cmd.Flags().Changed("image-deltas") {
+				imageDeltas = pushImageDeltas
+			}
+			if cmd.Flags().Changed("no-image-deltas") && pushNoImageDeltas {
+				imageDeltas = false
+			}
+
 			opts := oci.PushOptions{
 				AppID:               target.AppID,
 				Arch:                target.Arch,
@@ -311,6 +325,7 @@ var pushOCICmd = &cobra.Command{
 				AllowUnsigned:       allowUnsigned,
 				RefType:             target.RefType,
 				DryRun:              pushDryRun,
+				ImageDeltas:         imageDeltas,
 				AutoReleaseMetadata: autoRel,
 				ReleaseVersion:      pushReleaseVersion,
 				ReleaseDate:         pushReleaseDate,
@@ -364,6 +379,8 @@ func init() {
 	pushOCICmd.Flags().BoolVar(&pushNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	pushOCICmd.Flags().BoolVar(&pushAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
 	pushOCICmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "simulate pushing OCI image without writing to remote registry or records")
+	pushOCICmd.Flags().BoolVar(&pushImageDeltas, "image-deltas", false, "publish an OCI image delta from the previous release")
+	pushOCICmd.Flags().BoolVar(&pushNoImageDeltas, "no-image-deltas", false, "disable OCI image delta publishing")
 	pushOCICmd.Flags().BoolVar(&pushAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
 	pushOCICmd.Flags().StringVar(&pushReleaseVersion, "release-version", "", "explicit release version override")
 	pushOCICmd.Flags().StringVar(&pushReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")

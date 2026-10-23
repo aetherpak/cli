@@ -258,6 +258,7 @@ func runRelease(cmd *cobra.Command, args []string) error {
 							AllowUnsigned:       allowUnsigned,
 							Executor:            executor,
 							DryRun:              relDryRun,
+							ImageDeltas:         cfg.ResolveImageDeltas(row.AppID, row.Branch),
 							AutoReleaseMetadata: autoRel,
 							ReleaseVersion:      relReleaseVersion,
 							ReleaseDate:         relReleaseDate,

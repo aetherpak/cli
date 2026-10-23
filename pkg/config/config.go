@@ -33,6 +33,7 @@ type Config struct {
 	OCIRepository   string            `yaml:"oci_repository" json:"oci_repository" mapstructure:"oci_repository"`
 	RemoteName      string            `yaml:"remote_name" json:"remote_name" mapstructure:"remote_name"`
 	NoSign          bool              `yaml:"no_sign" json:"no_sign" mapstructure:"no_sign"`
+	ImageDeltas     *bool             `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
 	RepoTitle       string            `yaml:"repo_title" json:"repo_title" mapstructure:"repo_title"`
 	RepoHomepage    string            `yaml:"repo_homepage" json:"repo_homepage" mapstructure:"repo_homepage"`
 	RuntimeRepo     string            `yaml:"runtime_repo" json:"runtime_repo" mapstructure:"runtime_repo"`
@@ -99,6 +100,7 @@ type DefaultsConfig struct {
 	NoFlathub                *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
 	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
+	ImageDeltas              *bool                   `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
 }
 
 // SourcesConfig defines zero-manifest precompiled binary and artifact packaging.
@@ -160,6 +162,7 @@ type App struct {
 	NoFlathub                *bool                   `yaml:"no_flathub,omitempty" json:"no_flathub,omitempty" mapstructure:"no_flathub"`
 	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
 	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
+	ImageDeltas              *bool                   `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -782,6 +785,16 @@ func (cfg *Config) Normalize() {
 			app.AutoReleaseMetadata = &val
 		}
 
+		// Image delta publishing resolves app > defaults > global.
+		if app.ImageDeltas == nil && cfg.Defaults.ImageDeltas != nil {
+			val := *cfg.Defaults.ImageDeltas
+			app.ImageDeltas = &val
+		}
+		if app.ImageDeltas == nil && cfg.ImageDeltas != nil {
+			val := *cfg.ImageDeltas
+			app.ImageDeltas = &val
+		}
+
 		if app.CCacheDir == "" {
 			if cfg.Defaults.CCacheDir != "" {
 				app.CCacheDir = cfg.Defaults.CCacheDir
@@ -1025,6 +1038,32 @@ func (app *App) ResolveAutoReleaseMetadata(defaults *DefaultsConfig) bool {
 	return false
 }
 
+// ResolveImageDeltas reports whether OCI image delta generation is enabled for
+// the given app and branch. Precedence is app > defaults > global.
+func (cfg *Config) ResolveImageDeltas(appID, branch string) bool {
+	if cfg == nil {
+		return false
+	}
+	for i := range cfg.Apps {
+		if cfg.Apps[i].ID != appID {
+			continue
+		}
+		if branch != "" && cfg.Apps[i].Branch != branch {
+			continue
+		}
+		if cfg.Apps[i].ImageDeltas != nil {
+			return *cfg.Apps[i].ImageDeltas
+		}
+	}
+	if cfg.Defaults != nil && cfg.Defaults.ImageDeltas != nil {
+		return *cfg.Defaults.ImageDeltas
+	}
+	if cfg.ImageDeltas != nil {
+		return *cfg.ImageDeltas
+	}
+	return false
+}
+
 // ValidateBasic validates basic metadata (ID, branch, runtime, and arches) without path checks.
 func (app *App) ValidateBasic() error {
 	if app.ID == "" {
@@ -1264,6 +1303,13 @@ func (app App) Equal(other App) bool {
 		return false
 	}
 	if app.AutoReleaseMetadata != nil && *app.AutoReleaseMetadata != *other.AutoReleaseMetadata {
+		return false
+	}
+
+	if (app.ImageDeltas == nil) != (other.ImageDeltas == nil) {
+		return false
+	}
+	if app.ImageDeltas != nil && *app.ImageDeltas != *other.ImageDeltas {
 		return false
 	}
 

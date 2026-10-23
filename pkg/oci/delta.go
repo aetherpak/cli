@@ -267,7 +267,7 @@ func containsHash(values []v1.Hash, want v1.Hash) bool {
 
 // prepareImageDeltas generates one delta layer per source. It returns nil when
 // no delta is smaller than the full layer.
-func prepareImageDeltas(repoRef name.Repository, sources []deltaSource, arch string, newImg v1.Image, newDigest v1.Hash, authOpt remote.Option, workDir string) (*imageDelta, error) {
+func prepareImageDeltas(repoRef name.Repository, sources []deltaSource, arch string, newImg v1.Image, newDigest v1.Hash, authOpt remote.Option, workDir string, retainSources bool) (*imageDelta, error) {
 	newCfg, err := newImg.ConfigFile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read target image config: %w", err)
@@ -333,8 +333,10 @@ func prepareImageDeltas(repoRef name.Repository, sources []deltaSource, arch str
 			logger.Warn("WARNING: failed to read delta source %s: %v", source.desc.Digest, err)
 			continue
 		}
-		if err := retainDeltaSource(repoRef, oldImg, source.desc.Digest, authOpt); err != nil {
-			logger.Warn("WARNING: could not retain delta source %s: %v", source.desc.Digest, err)
+		if retainSources {
+			if err := retainDeltaSource(repoRef, oldImg, source.desc.Digest, authOpt); err != nil {
+				logger.Warn("WARNING: could not retain delta source %s: %v", source.desc.Digest, err)
+			}
 		}
 		oldCfg, err := oldImg.ConfigFile()
 		if err != nil {

@@ -200,7 +200,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, resolvedAppID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir, passphrase, buildOpts.AutoReleaseMetadata, cfg.ResolveImageDeltas(ref.AppID, ref.Branch)); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, pubRegistry, pubOCIRepo, repoPath, recordsDir, passphrase, buildOpts.AutoReleaseMetadata, cfg.ResolveImageDeltas(ref.AppID, ref.Branch), cfg.ResolveDeltaBack(ref.AppID, ref.Branch)); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -377,7 +377,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 			// Push to registry
 			for _, ra := range resolvedApps {
-				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir, passphrase, pubAutoReleaseMetadata, cfg.ResolveImageDeltas(ra.AppID, ra.Branch)); err != nil {
+				if err := pushAndEmit(ra.AppID, ra.Arch, ra.Branch, pubRegistry, pubOCIRepo, destRepo, recordsDir, passphrase, pubAutoReleaseMetadata, cfg.ResolveImageDeltas(ra.AppID, ra.Branch), cfg.ResolveDeltaBack(ra.AppID, ra.Branch)); err != nil {
 					return err
 				}
 			}
@@ -557,7 +557,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			var pushedAny bool
 			for _, ref := range refs {
 				if manifest.IsRefRelated(ref.AppID, targetApp.ID, extensionIDs) {
-					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel, cfg.ResolveImageDeltas(ref.AppID, ref.Branch)); err != nil {
+					if err := pushAndEmit(ref.AppID, ref.Arch, ref.Branch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel, cfg.ResolveImageDeltas(ref.AppID, ref.Branch), cfg.ResolveDeltaBack(ref.AppID, ref.Branch)); err != nil {
 						return err
 					}
 					pushedAny = true
@@ -571,7 +571,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("auto-release-metadata") {
 				autoRel = pubAutoReleaseMetadata
 			}
-			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel, cfg.ResolveImageDeltas(targetApp.ID, appBranch)); err != nil {
+			if err := pushAndEmit(targetApp.ID, pubArch, appBranch, appRegistry, appOCIRepo, repoPath, recordsDir, passphrase, autoRel, cfg.ResolveImageDeltas(targetApp.ID, appBranch), cfg.ResolveDeltaBack(targetApp.ID, appBranch)); err != nil {
 				return err
 			}
 		}
@@ -580,7 +580,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string, passphrase []byte, autoRel, imageDeltas bool) error {
+func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir string, passphrase []byte, autoRel, imageDeltas bool, deltaBack int) error {
 	// Load GPG keys from files if passed (keys will already contain GPG keys from flag or env var)
 	keys := pubGPGKeys
 
@@ -602,6 +602,7 @@ func pushAndEmit(appID, arch, branch, registry, ociRepo, repoPath, recordsDir st
 		AllowUnsigned:       pubAllowUnsigned,
 		DryRun:              pubDryRun,
 		ImageDeltas:         imageDeltas,
+		DeltaBack:           deltaBack,
 		AutoReleaseMetadata: autoRel,
 		ReleaseVersion:      pubReleaseVersion,
 		ReleaseDate:         pubReleaseDate,

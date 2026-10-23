@@ -73,7 +73,8 @@ Plumbing commands are designed to be run programmatically (e.g., inside CI matri
 * **`aetherpak build-site`**: Reads a tree of cell execution records, fetches the active landing page index, merges new records, and writes static Pages assets.
 * **`aetherpak plan`**: Analyzes repository git differences since a base commit and expands the `aetherpak.yaml` configuration into a parallelizable build/publish matrix.
 * **`aetherpak inspect-repo`**: Resolves information (commits, metadata, refs) directly from a local OSTree repository.
-* **`aetherpak deltas prune`**: Deletes `_delta-*` and `_deltasrc-*` tags whose manifest returns a definitive 404 and rebuilds `_deltaindex` from the remaining tags. Transient errors leave tags untouched.
+* **`aetherpak deltas prune`**: Deletes `_delta-*` tags whose target image is gone and `_deltasrc-*` tags no surviving delta or application tag references, then rebuilds `_deltaindex`. Transient errors leave tags untouched.
+* **`aetherpak deltas backfill`**: Generates delta layers between existing image digests and republishes the delta manifest and index entry without pushing the images again.
 
 ---
 

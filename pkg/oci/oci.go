@@ -324,7 +324,7 @@ func Push(opts PushOptions) (PushResult, error) {
 	// 6. Publish the optional delta only after the image and its record are
 	// durable. A slow or failed delta must never block the release contract.
 	if opts.ImageDeltas && len(deltaSources) > 0 {
-		delta, derr := prepareImageDeltas(repoRef, deltaSources, configFile.Architecture, img, digest, authOpt, opts.RecordsDir)
+		delta, derr := prepareImageDeltas(repoRef, deltaSources, configFile.Architecture, img, digest, authOpt, opts.RecordsDir, true)
 		if derr != nil {
 			logger.Warn("WARNING: failed to prepare image delta: %v (clients will download the full layer).", derr)
 		} else if delta != nil {

@@ -229,6 +229,7 @@ How it behaves:
 * Current limitation: only single-layer images are supported. Multi-layer images are skipped. Extension refs (for example `.Locale`) are not listed as apps and therefore inherit `defaults`/global rather than the base app's value.
 * `_deltaindex` is eventually consistent during a parallel release. If a delta publish is interrupted, the delta can be missing for that release and is repaired by a later push; the image and its record are written before any delta work starts.
 * Prune stale tags with `aetherpak deltas prune --dry-run`, then without `--dry-run`. It removes `_delta-*` tags whose target image is gone, and `_deltasrc-*` tags no surviving delta or application tag references, then rebuilds `_deltaindex` from the remaining tags. Auth, network, and other transient errors leave tags untouched. It needs registry write credentials (`--dry-run` only needs read access) and should run as a serialized maintenance step, not from parallel push jobs.
+* Repair a missing or lost delta with `aetherpak deltas backfill --to-digest <target> --from-digest <source>` (repeat `--from-digest` for multiple sources). It generates the layers from existing images and republishes the delta manifest and index entry without pushing the images again.
 
 Requirements: a Flatpak build with OCI remote support and zstd (validated with Flatpak 1.18.x). Older clients, or clients on releases older than the configured `delta_back` window, simply download the full layer.
 
@@ -561,6 +562,20 @@ Options:
 * `--output-file <path>`: Write `delta-tags`, `source-tags`, and `index-rebuilt` as dotenv output.
 
 Run it as a serialized maintenance step with registry write credentials. It only removes tags whose manifest is definitively gone or whose source is no longer referenced; transient errors leave them in place.
+
+#### `deltas backfill`
+Generates and publishes deltas for an existing target image from existing sources:
+```bash
+aetherpak deltas backfill --registry ghcr.io --oci-repository my-org/my-app \
+  --to-digest sha256:<target> --from-digest sha256:<source>
+```
+Options:
+* `--registry <host>`, `--oci-repository <path>`: Target registry and repository. Default to configuration or the SCM convention.
+* `--to-digest <digest>`: Target image manifest digest. Required.
+* `--from-digest <digest>`: Source image manifest digest. Repeat for multiple sources.
+* `--insecure`: Allow an HTTP registry connection.
+* `--dry-run`: Generate the delta but do not publish it or retain source tags.
+* `--output-file <path>`: Write `target-digest`, `layers`, `smallest-bytes`, and `published` as dotenv output.
 
 #### `build-site`
 Downloads old static index, merges recent cell records, and regenerates index listings:

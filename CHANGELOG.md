@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.34.0](https://github.com/aetherpak/cli/compare/v0.33.3...v0.34.0) (2026-10-23)
+
+
+### Features
+
+* **oci:** backfill image deltas from digests ([4f3684e](https://github.com/aetherpak/cli/commit/4f3684e85b209ae4d8b310287deae90d1a284a8b))
+* **oci:** prune stale image delta tags ([bdfb644](https://github.com/aetherpak/cli/commit/bdfb6448f4dda8a2fac311f050122702270a04b9))
+* **oci:** publish Flatpak image deltas ([449e9fe](https://github.com/aetherpak/cli/commit/449e9fe3e7a68c5dba6eda0b6e398391c7edbbd0))
+* **oci:** support deltas from earlier releases ([0d5564e](https://github.com/aetherpak/cli/commit/0d5564e3ae0e83da834c2ebcec755a241d180626))
+
+
+### Bug Fixes
+
+* **site:** keep companions of active apps ([c3128fa](https://github.com/aetherpak/cli/commit/c3128facac338d776136df6c7955d3bb5be458cd))
+* **site:** keep extension refs of active apps ([30b8772](https://github.com/aetherpak/cli/commit/30b8772ced382e0eb8d498f9c507b9c53edf0460))
+
 ## [0.33.3](https://github.com/aetherpak/cli/compare/v0.33.2...v0.33.3) (2026-09-20)
 
 

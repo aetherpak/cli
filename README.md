@@ -140,7 +140,8 @@ The CLI parses settings from a configuration file, looking for `aetherpak.yaml` 
 * **`remote_name`** (string): The repository name configured in user Flatpak clients (defaults to `<owner>-<repo>`). Historically used for OCI registry pushes; now acts as a fallback for `oci_repository` (deprecated for registry pushes).
 * **`output_dir`** (string): Base directory for all output assets (state, records, site, ccache, repo) unless overridden.
 * **`no_sign`** (boolean): Set to `true` to disable GPG signing of repositories and OCI images entirely (defaults to `false`).
-* **`image_deltas`** (boolean): Set to `true` to publish OCI image deltas, so clients on the previous release can update by downloading only the changed layer data (defaults to `false`). See [Image Deltas](#image-deltas).
+* **`image_deltas`** (boolean): Set to `true` to publish OCI image deltas, so clients on a previous release can update by downloading only the changed layer data (defaults to `false`). See [Image Deltas](#image-deltas).
+* **`delta_back`** (integer): How many previous releases to diff against when image deltas are enabled (1-10, defaults to `1`; values below 1 are treated as 1).
 * **`repo_title`** (string): Customized title shown on the landing page and `.flatpakrepo` metadata (defaults to the value of `remote_name`, which defaults to `"aetherpak"`).
 * **`repo_homepage`** (string): URL link for repository homepage metadata.
 * **`runtime_repo`** (string): Fallback `.flatpakrepo` URL used to resolve dependencies (defaults to Flathub).
@@ -169,6 +170,7 @@ Fallback build configurations applied when individual application settings are o
 * **`run_linter`** (boolean): Set to `true` to run linter checks on manifests and built repositories.
 * **`auto_release_metadata`** (boolean): Set to `true` to automatically stamp the current git tag/release version and date into AppStream metadata without modifying source files.
 * **`image_deltas`** (boolean): Enable OCI image delta publishing for every app unless the app overrides it. Overrides the top-level value.
+* **`delta_back`** (integer): Override the number of previous releases used as delta sources (1-10).
 * **`builder_args`** (list[string]): Additional command-line flags to pass directly to `flatpak-builder`.
 * **`no_install_deps`** (boolean): Disable automatic injection of `--install-deps-from` flags when running `flatpak-builder` (defaults to `false`).
 * **`no_flathub`** (boolean): Disable automatic injection of the `flathub` remote as a dependency source (defaults to `false`).
@@ -198,6 +200,7 @@ Each entry in `apps` (or top-level single-app settings) supports:
 * **`run-linter`** (boolean): Local toggle to execute linter validation checks.
 * **`auto_release_metadata`** (boolean): Application-specific toggle to enable automatic AppStream release metadata synchronization.
 * **`image_deltas`** (boolean): Application-specific toggle for OCI image delta publishing, overriding `defaults.image_deltas`.
+* **`delta_back`** (integer): Application-specific number of previous releases used as delta sources, overriding `defaults.delta_back` (1-10).
 * **`linter`** (block): Override block for linter strictness, ignore rules, and exceptions. Supports `strict` (boolean), `ignore_rules` (list[string]), `exceptions` (list[string]), and `exceptions_file` (string).
 * **`ccache`** / **`ccache_dir`** / **`state_dir`** / **`builder_args`** / **`no_install_deps`** / **`no_flathub`**: Application-specific overrides for compilation parameters.
 * **`remotes`** / **`flatpaks`**: Application-specific overrides/merges for Flatpak remotes and dependencies.
@@ -214,18 +217,19 @@ Enable it globally, under `defaults`, or per app:
 image_deltas: true
 ```
 
-`aetherpak push-oci` also accepts `--image-deltas` and `--no-image-deltas`; the flag overrides configuration.
+`aetherpak push-oci` also accepts `--image-deltas`, `--no-image-deltas`, and `--delta-back`; the flags override configuration.
 
 How it behaves:
 
-* The previous image's concrete manifest digest is resolved before the app/branch/arch tag is updated, so the delta still works on registries that drop untagged indexes; the diff and upload happen after the new image and its record are written. The first push therefore has no delta, and only clients on the immediately previous release benefit.
-* Deltas are published to the same OCI repository under the standard `_deltaindex` tag. Each delta manifest is also kept under a `_delta-<target-digest>` tag so it survives registry garbage collection and the index can be rebuilt from the tag set. Flatpak verifies the rebuilt layer against the diffID declared in the target image's signed manifest; deltas do not need a separate signature.
+* The previous image's concrete manifest digest is resolved before the app/branch/arch tag is updated, so the delta still works on registries that drop untagged indexes; the diff and upload happen after the new image and its record are written. The first push therefore has no delta.
+* `delta_back` controls how many previous releases become delta sources (1-10). The default of `1` covers clients on the immediately previous release; higher values add up to one delta layer per earlier release. A source whose diff would not be smaller, or whose history was not recorded by a previous delta-enabled release, is omitted. Each extra source costs one layer download, one diff, and its retained delta blob.
+* Deltas are published to the same OCI repository under the standard `_deltaindex` tag. Each delta manifest is kept under a `_delta-<target-digest>` tag, and each source image under a `_deltasrc-<digest>` tag, so both survive registry garbage collection and the index can be rebuilt from the tag set. Flatpak verifies the rebuilt layer against the diffID declared in the target image's signed manifest; deltas do not need a separate signature.
 * Delta generation is best-effort at publish time. If the previous image cannot be read, the layers are not single-layer, the diff would not be smaller than the full layer, or the delta cannot be published, the image push still succeeds and no delta is advertised. Once Flatpak has selected a published delta, a verification failure fails that pull; it does not silently retry the full layer.
-* Push jobs get slower and the registry stores the delta blobs, because the previous layer is downloaded and diffed. The `_deltaindex` grows by one small entry per release; stale entries are not pruned yet. Leave `image_deltas` off if that trade-off does not suit the project.
-* Current limitation: only single-layer images and deltas from the immediately previous release are supported. Multi-layer images are skipped. Extension refs (for example `.Locale`) are not listed as apps and therefore inherit `defaults`/global rather than the base app's value.
+* Push jobs get slower and the registry stores the delta blobs, because each previous layer is downloaded and diffed. `_deltaindex`, `_delta-*`, and `_deltasrc-*` grow with releases; stale entries are not pruned yet. Leave `image_deltas` off if that trade-off does not suit the project.
+* Current limitation: only single-layer images are supported. Multi-layer images are skipped. Extension refs (for example `.Locale`) are not listed as apps and therefore inherit `defaults`/global rather than the base app's value.
 * `_deltaindex` is eventually consistent during a parallel release. If a delta publish is interrupted, the delta can be missing for that release and is repaired by a later push; the image and its record are written before any delta work starts.
 
-Requirements: a Flatpak build with OCI remote support and zstd (validated with Flatpak 1.18.x). Older clients, or clients on releases older than the previous one, simply download the full layer.
+Requirements: a Flatpak build with OCI remote support and zstd (validated with Flatpak 1.18.x). Older clients, or clients on releases older than the configured `delta_back` window, simply download the full layer.
 
 ---
 

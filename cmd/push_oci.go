@@ -33,6 +33,7 @@ var (
 	pushDryRun              bool
 	pushImageDeltas         bool
 	pushNoImageDeltas       bool
+	pushDeltaBack           int
 	pushAutoReleaseMetadata bool
 	pushReleaseVersion      string
 	pushReleaseDate         string
@@ -307,6 +308,13 @@ var pushOCICmd = &cobra.Command{
 			if cmd.Flags().Changed("no-image-deltas") && pushNoImageDeltas {
 				imageDeltas = false
 			}
+			deltaBack := cfg.ResolveDeltaBack(target.AppID, target.Branch)
+			if cmd.Flags().Changed("delta-back") {
+				if pushDeltaBack < 1 || pushDeltaBack > 10 {
+					return NewCmdError(2, fmt.Errorf("--delta-back must be between 1 and 10"))
+				}
+				deltaBack = pushDeltaBack
+			}
 
 			opts := oci.PushOptions{
 				AppID:               target.AppID,
@@ -326,6 +334,7 @@ var pushOCICmd = &cobra.Command{
 				RefType:             target.RefType,
 				DryRun:              pushDryRun,
 				ImageDeltas:         imageDeltas,
+				DeltaBack:           deltaBack,
 				AutoReleaseMetadata: autoRel,
 				ReleaseVersion:      pushReleaseVersion,
 				ReleaseDate:         pushReleaseDate,
@@ -381,6 +390,7 @@ func init() {
 	pushOCICmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "simulate pushing OCI image without writing to remote registry or records")
 	pushOCICmd.Flags().BoolVar(&pushImageDeltas, "image-deltas", false, "publish an OCI image delta from the previous release")
 	pushOCICmd.Flags().BoolVar(&pushNoImageDeltas, "no-image-deltas", false, "disable OCI image delta publishing")
+	pushOCICmd.Flags().IntVar(&pushDeltaBack, "delta-back", 0, "number of previous releases to generate deltas from (1-10, default 1)")
 	pushOCICmd.Flags().BoolVar(&pushAutoReleaseMetadata, "auto-release-metadata", false, "dynamically stamp active release tag/date into AppStream catalog")
 	pushOCICmd.Flags().StringVar(&pushReleaseVersion, "release-version", "", "explicit release version override")
 	pushOCICmd.Flags().StringVar(&pushReleaseDate, "release-date", "", "explicit release date override (YYYY-MM-DD)")

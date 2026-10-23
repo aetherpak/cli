@@ -1095,3 +1095,67 @@ func TestAppEqual_ImageDeltas(t *testing.T) {
 		t.Errorf("expected app1 and app4 not to be equal")
 	}
 }
+
+func TestConfigResolveDeltaBack(t *testing.T) {
+	one := 1
+	two := 2
+	three := 3
+	zero := 0
+	huge := 99
+
+	cfg := Config{
+		DeltaBack: &three,
+		Defaults:  &DefaultsConfig{DeltaBack: &two},
+		Apps: []App{
+			{ID: "org.example.Inherits"},
+			{ID: "org.example.One", DeltaBack: &one},
+			{ID: "org.example.Zero", DeltaBack: &zero},
+			{ID: "org.example.Huge", DeltaBack: &huge},
+			{ID: "org.example.Same", Branch: "stable", DeltaBack: &one},
+			{ID: "org.example.Same", Branch: "beta", DeltaBack: &two},
+		},
+	}
+	cfg.Normalize()
+
+	if got := cfg.ResolveDeltaBack("org.example.Inherits", ""); got != 2 {
+		t.Errorf("expected defaults to resolve to 2, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.One", ""); got != 1 {
+		t.Errorf("expected app value 1, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.Zero", ""); got != 1 {
+		t.Errorf("expected zero to clamp to 1, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.Huge", ""); got != 10 {
+		t.Errorf("expected the upper clamp to 10, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.Same", "stable"); got != 1 {
+		t.Errorf("expected stable branch 1, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.Same", "beta"); got != 2 {
+		t.Errorf("expected beta branch 2, got %d", got)
+	}
+	if got := cfg.ResolveDeltaBack("org.example.Unknown", ""); got != 2 {
+		t.Errorf("expected defaults for an unknown app, got %d", got)
+	}
+}
+
+func TestAppEqual_DeltaBack(t *testing.T) {
+	one := 1
+	two := 2
+
+	app1 := App{ID: "org.example.App", DeltaBack: &one}
+	app2 := App{ID: "org.example.App", DeltaBack: &one}
+	app3 := App{ID: "org.example.App", DeltaBack: &two}
+	app4 := App{ID: "org.example.App", DeltaBack: nil}
+
+	if !app1.Equal(app2) {
+		t.Errorf("expected app1 and app2 to be equal")
+	}
+	if app1.Equal(app3) {
+		t.Errorf("expected app1 and app3 not to be equal")
+	}
+	if app1.Equal(app4) {
+		t.Errorf("expected app1 and app4 not to be equal")
+	}
+}

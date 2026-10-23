@@ -149,6 +149,10 @@ func setupMockPushExecutorWithLayer(content string, big bool) executil.Executor 
 }
 
 func pushTestImage(t *testing.T, host, repo, recordsDir, content string, deltas, big bool) PushResult {
+	return pushTestImageBack(t, host, repo, recordsDir, content, deltas, big, 0)
+}
+
+func pushTestImageBack(t *testing.T, host, repo, recordsDir, content string, deltas, big bool, deltaBack int) PushResult {
 	t.Helper()
 	opts := PushOptions{
 		AppID:         "org.example.App",
@@ -162,6 +166,7 @@ func pushTestImage(t *testing.T, host, repo, recordsDir, content string, deltas,
 		Executor:      setupMockPushExecutorWithLayer(content, big),
 		AllowUnsigned: true,
 		ImageDeltas:   deltas,
+		DeltaBack:     deltaBack,
 	}
 	res, err := Push(opts)
 	if err != nil {
@@ -349,6 +354,211 @@ func TestPushImageDeltaMergesExistingEntries(t *testing.T) {
 	if len(im.Manifests) != 2 {
 		t.Fatalf("expected two delta entries, got %d", len(im.Manifests))
 	}
+}
+
+func TestPushPublishesDeltasFromEarlierReleases(t *testing.T) {
+	regServer := httptest.NewServer(registry.New())
+	defer regServer.Close()
+	host := strings.TrimPrefix(regServer.URL, "http://")
+	recordsDir := t.TempDir()
+
+	res1 := pushTestImageBack(t, host, "org.example.app", recordsDir, "version one", false, true, 1)
+	res2 := pushTestImageBack(t, host, "org.example.app", recordsDir, "version two", true, true, 1)
+	res3 := pushTestImageBack(t, host, "org.example.app", recordsDir, "version three", true, true, 2)
+	res4 := pushTestImageBack(t, host, "org.example.app", recordsDir, "version four", true, true, 2)
+
+	repoRef, err := name.NewRepository(host+"/org.example.app", name.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := remote.WithAuth(authn.Anonymous)
+
+	v3Manifest := fetchDeltaManifest(t, repoRef, res3.Digest, auth)
+	assertDeltaSources(t, v3Manifest, res2.Digest, res1.Digest)
+
+	v4Manifest := fetchDeltaManifest(t, repoRef, res4.Digest, auth)
+	assertDeltaSources(t, v4Manifest, res3.Digest, res2.Digest)
+	if len(v4Manifest.Layers) != 2 {
+		t.Fatalf("expected two v4 delta layers, got %d", len(v4Manifest.Layers))
+	}
+
+	diffIDs := map[string]string{
+		res1.Digest: diffIDForDigest(t, repoRef, res1.Digest),
+		res2.Digest: diffIDForDigest(t, repoRef, res2.Digest),
+		res3.Digest: diffIDForDigest(t, repoRef, res3.Digest),
+		res4.Digest: diffIDForDigest(t, repoRef, res4.Digest),
+	}
+	for _, layer := range v4Manifest.Layers {
+		fromImage := layer.Annotations[deltaFromImageAnnotation]
+		if fromImage != res2.Digest && fromImage != res3.Digest {
+			t.Fatalf("v4 layer source = %q, want v3 or v2", fromImage)
+		}
+		if got := layer.Annotations[deltaFromAnnotation]; got != diffIDs[fromImage] {
+			t.Fatalf("v4 layer from = %q, want %q for source %s", got, diffIDs[fromImage], fromImage)
+		}
+		if got := layer.Annotations[deltaToAnnotation]; got != diffIDs[res4.Digest] {
+			t.Fatalf("v4 layer to = %q, want %q", got, diffIDs[res4.Digest])
+		}
+	}
+
+	for _, source := range []string{res1.Digest, res2.Digest, res3.Digest} {
+		if _, err := remote.Head(repoRef.Tag(deltaSourceTag(mustHash(t, source))), auth); err != nil {
+			t.Fatalf("expected retained source tag for %s: %v", source, err)
+		}
+	}
+
+	index, err := remote.Index(repoRef.Tag(deltaIndexTag), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	im, err := index.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]int{}
+	for _, m := range im.Manifests {
+		targets[m.Annotations[deltaTargetAnnotation]]++
+	}
+	if targets[res4.Digest] != 1 {
+		t.Fatalf("expected exactly one index entry for v4, got %d", targets[res4.Digest])
+	}
+}
+
+func TestDeltaSourceImagesPrefersOrderedAnnotation(t *testing.T) {
+	regServer := httptest.NewServer(registry.New())
+	defer regServer.Close()
+	host := strings.TrimPrefix(regServer.URL, "http://")
+	repoRef, err := name.NewRepository(host+"/org.example.app", name.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := remote.WithAuth(authn.Anonymous)
+
+	target, _ := v1.NewHash("sha256:" + sha256Hex([]byte("target")))
+	older, _ := v1.NewHash("sha256:" + sha256Hex([]byte("older")))
+	immediate, _ := v1.NewHash("sha256:" + sha256Hex([]byte("immediate")))
+
+	layers := []v1.Descriptor{
+		{MediaType: deltaLayerMediaType, Size: 1, Digest: older, Annotations: map[string]string{deltaFromImageAnnotation: older.String()}},
+		{MediaType: deltaLayerMediaType, Size: 1, Digest: immediate, Annotations: map[string]string{deltaFromImageAnnotation: immediate.String()}},
+	}
+	sourcesJSON, _ := json.Marshal([]string{immediate.String(), older.String()})
+	manifest := v1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIManifestSchema1,
+		Config:        v1.Descriptor{MediaType: deltaConfigMediaType, Size: 2, Digest: mustHash(t, "sha256:"+sha256Hex([]byte("{}")))},
+		Layers:        layers,
+		Annotations: map[string]string{
+			deltaTargetAnnotation:  target.String(),
+			deltaSourcesAnnotation: string(sourcesJSON),
+		},
+	}
+	body, _ := json.Marshal(manifest)
+	digest, size, _ := v1.SHA256(bytes.NewReader(body))
+	if err := putManifest(repoRef.Tag(deltaManifestTag(target)), body, digest, size, auth); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := deltaSourceImages(repoRef, target, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != immediate || got[1] != older {
+		t.Fatalf("ordered sources = %v, want [%s %s]", got, immediate, older)
+	}
+
+	// A manifest without the ordered annotation falls back to layer order.
+	delete(manifest.Annotations, deltaSourcesAnnotation)
+	body, _ = json.Marshal(manifest)
+	digest, size, _ = v1.SHA256(bytes.NewReader(body))
+	if err := putManifest(repoRef.Tag(deltaManifestTag(target)), body, digest, size, auth); err != nil {
+		t.Fatal(err)
+	}
+	got, err = deltaSourceImages(repoRef, target, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != older || got[1] != immediate {
+		t.Fatalf("fallback sources = %v, want layer order [%s %s]", got, older, immediate)
+	}
+}
+
+func TestDeltaSourceImagesFromChainOnlyManifest(t *testing.T) {
+	regServer := httptest.NewServer(registry.New())
+	defer regServer.Close()
+	host := strings.TrimPrefix(regServer.URL, "http://")
+	repoRef, err := name.NewRepository(host+"/org.example.app", name.Insecure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := remote.WithAuth(authn.Anonymous)
+
+	target, _ := v1.NewHash("sha256:" + sha256Hex([]byte("target")))
+	older, _ := v1.NewHash("sha256:" + sha256Hex([]byte("older")))
+	immediate, _ := v1.NewHash("sha256:" + sha256Hex([]byte("immediate")))
+	body, digest, size, err := buildDeltaManifest(nil, []v1.Hash{immediate, older}, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := putManifest(repoRef.Tag(deltaManifestTag(target)), body, digest, size, auth); err != nil {
+		t.Fatal(err)
+	}
+	got, err := deltaSourceImages(repoRef, target, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != immediate || got[1] != older {
+		t.Fatalf("chain-only sources = %v, want [%s %s]", got, immediate, older)
+	}
+}
+
+func assertDeltaSources(t *testing.T, manifest v1.Manifest, want ...string) {
+	t.Helper()
+	raw := manifest.Annotations[deltaSourcesAnnotation]
+	if raw == "" {
+		t.Fatalf("delta manifest is missing the source list annotation")
+	}
+	var got []string
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("failed to parse source list: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("source list = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("source list = %v, want %v", got, want)
+		}
+	}
+}
+
+func diffIDForDigest(t *testing.T, repoRef name.Repository, digest string) string {
+	t.Helper()
+	img, err := remote.Image(repoRef.Digest(digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := img.ConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.RootFS.DiffIDs) != 1 {
+		t.Fatalf("expected one diffID for %s, got %d", digest, len(cfg.RootFS.DiffIDs))
+	}
+	return cfg.RootFS.DiffIDs[0].String()
+}
+
+func fetchDeltaManifest(t *testing.T, repoRef name.Repository, target string, auth remote.Option) v1.Manifest {
+	t.Helper()
+	desc, err := remote.Get(repoRef.Tag(deltaManifestTag(mustHash(t, target))), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest v1.Manifest
+	if err := json.Unmarshal(desc.Manifest, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	return manifest
 }
 
 func TestPushImageDeltaSkipsIdenticalLayer(t *testing.T) {

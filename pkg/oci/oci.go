@@ -19,7 +19,6 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/signing"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
@@ -44,6 +43,7 @@ type PushOptions struct {
 	RefType             string // "app" or "runtime"; defaults to "app"
 	DryRun              bool
 	ImageDeltas         bool   // publish a delta from the currently tagged image to the new image
+	DeltaBack           int    // number of previous releases to diff against (default 1)
 	AutoReleaseMetadata bool   // dynamically stamp active release tag/date into AppStream catalog
 	ReleaseVersion      string // explicit release version override
 	ReleaseDate         string // explicit release date override (YYYY-MM-DD)
@@ -260,13 +260,19 @@ func Push(opts PushOptions) (PushResult, error) {
 		return PushResult{Digest: digest.String(), Tag: tag, CellDir: ""}, nil
 	}
 
-	var oldDeltaRef name.Reference
-	var oldDeltaDesc *v1.Descriptor
+	var deltaSources []deltaSource
 	if opts.ImageDeltas {
-		oldDeltaRef, oldDeltaDesc, err = resolveDeltaSource(repoRef, tag, configFile.Architecture, authOpt)
+		deltaBack := opts.DeltaBack
+		if deltaBack < 1 {
+			deltaBack = 1
+		}
+		if deltaBack > maxDeltaBack {
+			deltaBack = maxDeltaBack
+		}
+		deltaSources, err = resolveDeltaSources(repoRef, tag, configFile.Architecture, ref, deltaBack, authOpt)
 		if err != nil {
-			logger.Warn("WARNING: failed to resolve the previous image for an image delta: %v", err)
-			oldDeltaRef, oldDeltaDesc = nil, nil
+			logger.Warn("WARNING: failed to resolve previous images for an image delta: %v", err)
+			deltaSources = nil
 		}
 	}
 
@@ -317,8 +323,8 @@ func Push(opts PushOptions) (PushResult, error) {
 
 	// 6. Publish the optional delta only after the image and its record are
 	// durable. A slow or failed delta must never block the release contract.
-	if opts.ImageDeltas && oldDeltaDesc != nil {
-		delta, derr := prepareImageDelta(oldDeltaRef, oldDeltaDesc, configFile.Architecture, img, digest, authOpt, opts.RecordsDir)
+	if opts.ImageDeltas && len(deltaSources) > 0 {
+		delta, derr := prepareImageDeltas(repoRef, deltaSources, configFile.Architecture, img, digest, authOpt, opts.RecordsDir)
 		if derr != nil {
 			logger.Warn("WARNING: failed to prepare image delta: %v (clients will download the full layer).", derr)
 		} else if delta != nil {

@@ -34,33 +34,50 @@ const (
 	deltaLayerMediaType  = types.MediaType("application/vnd.tar-diff")
 	deltaConfigMediaType = types.MediaType("application/vnd.redhat.delta.config.v1+json")
 
-	deltaTargetAnnotation = "io.github.containers.delta.target"
-	deltaFromAnnotation   = "io.github.containers.delta.from"
-	deltaToAnnotation     = "io.github.containers.delta.to"
+	deltaTargetAnnotation    = "io.github.containers.delta.target"
+	deltaFromAnnotation      = "io.github.containers.delta.from"
+	deltaToAnnotation        = "io.github.containers.delta.to"
+	deltaFromImageAnnotation = "io.aetherpak.delta.from-image"
+	deltaSourcesAnnotation   = "io.aetherpak.delta.sources"
+	deltaSourceTagPrefix     = "_deltasrc-"
 
 	// deltaIndexRetries bounds the read-merge-write loop on the shared _deltaindex tag.
 	deltaIndexRetries = 6
 	// deltaMaxLayerSize keeps one release from staging multi-gigabyte layers in
 	// the workspace. Flatpak application layers are normally far below this.
 	deltaMaxLayerSize = int64(2 << 30)
+	deltaMaxWorkBytes = int64(4 << 30)
+	maxDeltaBack      = 10
 )
 
 // deltaConfig is the empty configuration object required by the delta image
 // manifest specification.
 var deltaConfig = []byte("{}")
 
+// deltaLayer is one generated tar-diff layer waiting to be uploaded.
+type deltaLayer struct {
+	path       string
+	digest     v1.Hash
+	size       int64
+	descriptor v1.Descriptor
+}
+
 // imageDelta holds the local artifacts needed to publish one delta after the
 // target image has been pushed.
 type imageDelta struct {
 	dir            string
-	blobPath       string
-	blobDigest     v1.Hash
-	blobSize       int64
+	layers         []deltaLayer
 	layerSize      int64
 	manifestBytes  []byte
 	manifestDigest v1.Hash
 	manifestSize   int64
 	targetDigest   v1.Hash
+}
+
+// deltaSource is a previous image used as a delta source.
+type deltaSource struct {
+	ref  name.Reference
+	desc *v1.Descriptor
 }
 
 // Close removes the temporary files backing the delta.
@@ -126,9 +143,131 @@ func chooseImageManifest(manifests []v1.Descriptor, arch string) (v1.Descriptor,
 	return v1.Descriptor{}, fmt.Errorf("previous image index has no manifest for architecture %q", arch)
 }
 
-// prepareImageDelta generates a delta from oldRef to newImg. It returns nil
-// when a delta would not be smaller than the full layer.
-func prepareImageDelta(oldRef name.Reference, oldDesc *v1.Descriptor, arch string, newImg v1.Image, newDigest v1.Hash, authOpt remote.Option, workDir string) (*imageDelta, error) {
+// resolveDeltaSources returns the immediate previous image plus older sources
+// reachable through the delta manifests published for it. delta_back limits
+// the total number of sources.
+func resolveDeltaSources(repoRef name.Repository, tag, arch, flatpakRef string, back int, authOpt remote.Option) ([]deltaSource, error) {
+	ref, desc, err := resolveDeltaSource(repoRef, tag, arch, authOpt)
+	if err != nil || desc == nil {
+		return nil, err
+	}
+	if back < 1 {
+		back = 1
+	}
+	sources := []deltaSource{{ref: ref, desc: desc}}
+	if back == 1 {
+		return sources, nil
+	}
+
+	seen := map[v1.Hash]bool{desc.Digest: true}
+	queue := []v1.Hash{desc.Digest}
+	for len(sources) < back && len(queue) > 0 {
+		target := queue[0]
+		queue = queue[1:]
+		fromImages, err := deltaSourceImages(repoRef, target, authOpt)
+		if err != nil {
+			logger.Warn("WARNING: could not read earlier delta sources for %s: %v", target, err)
+			continue
+		}
+		if len(fromImages) == 0 {
+			logger.Info("No older delta sources are recorded for %s.", target)
+		}
+		for _, sourceDigest := range fromImages {
+			if seen[sourceDigest] {
+				continue
+			}
+			seen[sourceDigest] = true
+			sourceRef := repoRef.Digest(sourceDigest.String())
+			img, err := remote.Image(sourceRef, authOpt)
+			if err != nil {
+				logger.Warn("WARNING: earlier delta source %s is unavailable: %v", sourceDigest, err)
+				continue
+			}
+			cfg, err := img.ConfigFile()
+			if err != nil {
+				logger.Warn("WARNING: could not read earlier delta source %s: %v", sourceDigest, err)
+				continue
+			}
+			if cfg.Architecture != "" && cfg.Architecture != arch {
+				continue
+			}
+			if got := cfg.Config.Labels["org.flatpak.ref"]; got != "" && got != flatpakRef {
+				continue
+			}
+			sources = append(sources, deltaSource{
+				ref:  sourceRef,
+				desc: &v1.Descriptor{MediaType: types.OCIManifestSchema1, Digest: sourceDigest},
+			})
+			if len(sources) >= back {
+				break
+			}
+			queue = append(queue, sourceDigest)
+		}
+	}
+	return sources, nil
+}
+
+// deltaSourceImages reads the source image digests recorded in the delta
+// manifest for target. Older manifests without the annotation stop the chain.
+func deltaSourceImages(repoRef name.Repository, target v1.Hash, authOpt remote.Option) ([]v1.Hash, error) {
+	ref := repoRef.Tag(deltaManifestTag(target))
+	desc, err := remote.Get(ref, authOpt)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read delta manifest for %s: %w", target, err)
+	}
+	var manifest v1.Manifest
+	if err := json.Unmarshal(desc.Manifest, &manifest); err != nil {
+		return nil, fmt.Errorf("failed to parse delta manifest for %s: %w", target, err)
+	}
+	if ordered := manifest.Annotations[deltaSourcesAnnotation]; ordered != "" {
+		var values []string
+		if err := json.Unmarshal([]byte(ordered), &values); err == nil {
+			out := make([]v1.Hash, 0, len(values))
+			for _, value := range values {
+				h, err := v1.NewHash(value)
+				if err != nil || containsHash(out, h) {
+					continue
+				}
+				out = append(out, h)
+			}
+			return out, nil
+		}
+	}
+
+	// Fall back to layer annotations for manifests written before the ordered
+	// source list was recorded.
+	var out []v1.Hash
+	for _, layer := range manifest.Layers {
+		value := layer.Annotations[deltaFromImageAnnotation]
+		if value == "" {
+			continue
+		}
+		h, err := v1.NewHash(value)
+		if err != nil {
+			continue
+		}
+		if !containsHash(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out, nil
+}
+
+func containsHash(values []v1.Hash, want v1.Hash) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
+// prepareImageDeltas generates one delta layer per source. It returns nil when
+// no delta is smaller than the full layer.
+func prepareImageDeltas(repoRef name.Repository, sources []deltaSource, arch string, newImg v1.Image, newDigest v1.Hash, authOpt remote.Option, workDir string) (*imageDelta, error) {
 	newCfg, err := newImg.ConfigFile()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read target image config: %w", err)
@@ -137,55 +276,26 @@ func prepareImageDelta(oldRef name.Reference, oldDesc *v1.Descriptor, arch strin
 	// delta source for every layer. Its OCI images are single-layer, so refuse
 	// to guess for multi-layer images.
 	if len(newCfg.RootFS.DiffIDs) != 1 {
-		logger.Info("Target image has %d layers; image deltas currently support single-layer images only. Skipping.", len(newCfg.RootFS.DiffIDs))
-		return nil, nil
+		logger.Info("Target image has %d layers; image deltas currently support single-layer images only. Recording the source chain without a usable delta.", len(newCfg.RootFS.DiffIDs))
+		return newChainDelta(sources, newDigest)
 	}
 	newDiffID := newCfg.RootFS.DiffIDs[0]
 
-	oldImg, err := imageForDelta(oldRef, oldDesc, arch, authOpt)
-	if err != nil {
-		return nil, err
-	}
-
-	oldCfg, err := oldImg.ConfigFile()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read previous image config: %w", err)
-	}
-	if len(oldCfg.RootFS.DiffIDs) != 1 {
-		logger.Info("Previous image has %d layers; image deltas currently support single-layer images only. Skipping.", len(oldCfg.RootFS.DiffIDs))
-		return nil, nil
-	}
-	oldDiffID := oldCfg.RootFS.DiffIDs[0]
-
-	if oldDiffID == newDiffID {
-		logger.Info("Previous and target layers are identical; skipping image delta.")
-		return nil, nil
-	}
-
-	oldLayers, err := oldImg.Layers()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read previous image layers: %w", err)
-	}
 	newLayers, err := newImg.Layers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read target image layers: %w", err)
 	}
-	if len(oldLayers) != 1 || len(newLayers) != 1 {
-		logger.Info("Image has %d old / %d new layers; image deltas currently support single-layer images only. Skipping.", len(oldLayers), len(newLayers))
-		return nil, nil
+	if len(newLayers) != 1 {
+		logger.Info("Target image has %d layers; image deltas currently support single-layer images only. Recording the source chain without a usable delta.", len(newLayers))
+		return newChainDelta(sources, newDigest)
 	}
-
 	newLayerSize, err := newLayers[0].Size()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read target layer size: %w", err)
 	}
-	oldLayerSize, err := oldLayers[0].Size()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read previous layer size: %w", err)
-	}
-	if newLayerSize > deltaMaxLayerSize || oldLayerSize > deltaMaxLayerSize {
-		logger.Info("Skipping image delta: layer exceeds the %d MiB work limit.", deltaMaxLayerSize/(1<<20))
-		return nil, nil
+	if newLayerSize > deltaMaxLayerSize {
+		logger.Info("Target layer exceeds the %d MiB work limit; recording the source chain without a usable delta.", deltaMaxLayerSize/(1<<20))
+		return newChainDelta(sources, newDigest)
 	}
 
 	workRoot, err := deltaWorkRoot(workDir)
@@ -203,29 +313,177 @@ func prepareImageDelta(oldRef name.Reference, oldDesc *v1.Descriptor, arch strin
 		}
 	}()
 
-	oldLayerPath, err := spoolLayer(oldLayers[0], dir, "old")
-	if err != nil {
-		return nil, fmt.Errorf("failed to stage previous layer: %w", err)
-	}
 	newLayerPath, err := spoolLayer(newLayers[0], dir, "new")
 	if err != nil {
 		return nil, fmt.Errorf("failed to stage target layer: %w", err)
 	}
 
-	deltaPath := filepath.Join(dir, "delta.tardiff")
-	oldFile, err := os.Open(oldLayerPath)
+	sourceDigests := make([]v1.Hash, len(sources))
+	for i := range sources {
+		sourceDigests[i] = sources[i].desc.Digest
+	}
+
+	var layers []deltaLayer
+	var totalSourceBytes int64
+	contentChanged := false
+	seenDiffIDs := make(map[v1.Hash]bool, len(sources))
+	for i, source := range sources {
+		oldImg, err := imageForDelta(source.ref, source.desc, arch, authOpt)
+		if err != nil {
+			logger.Warn("WARNING: failed to read delta source %s: %v", source.desc.Digest, err)
+			continue
+		}
+		if err := retainDeltaSource(repoRef, oldImg, source.desc.Digest, authOpt); err != nil {
+			logger.Warn("WARNING: could not retain delta source %s: %v", source.desc.Digest, err)
+		}
+		oldCfg, err := oldImg.ConfigFile()
+		if err != nil {
+			logger.Warn("WARNING: failed to read delta source config %s: %v", source.desc.Digest, err)
+			continue
+		}
+		if len(oldCfg.RootFS.DiffIDs) != 1 {
+			logger.Info("Delta source %s has %d layers; skipping it.", source.desc.Digest, len(oldCfg.RootFS.DiffIDs))
+			continue
+		}
+		oldDiffID := oldCfg.RootFS.DiffIDs[0]
+		if oldDiffID == newDiffID {
+			continue
+		}
+		contentChanged = true
+		if seenDiffIDs[oldDiffID] {
+			continue
+		}
+		seenDiffIDs[oldDiffID] = true
+
+		oldLayers, err := oldImg.Layers()
+		if err != nil {
+			logger.Warn("WARNING: failed to read delta source layers %s: %v", source.desc.Digest, err)
+			continue
+		}
+		if len(oldLayers) != 1 {
+			logger.Info("Delta source %s has %d layers; skipping it.", source.desc.Digest, len(oldLayers))
+			continue
+		}
+		oldLayerSize, err := oldLayers[0].Size()
+		if err != nil {
+			logger.Warn("WARNING: failed to read delta source layer size %s: %v", source.desc.Digest, err)
+			continue
+		}
+		if oldLayerSize > deltaMaxLayerSize {
+			logger.Info("Skipping delta source %s: layer exceeds the %d MiB work limit.", source.desc.Digest, deltaMaxLayerSize/(1<<20))
+			continue
+		}
+		if totalSourceBytes+oldLayerSize > deltaMaxWorkBytes {
+			logger.Info("Skipping delta source %s: total source budget exceeded.", source.desc.Digest)
+			continue
+		}
+		totalSourceBytes += oldLayerSize
+
+		oldLayerPath, err := spoolLayer(oldLayers[0], dir, fmt.Sprintf("old-%d", i))
+		if err != nil {
+			logger.Warn("WARNING: failed to stage delta source %s: %v", source.desc.Digest, err)
+			continue
+		}
+		deltaPath := filepath.Join(dir, fmt.Sprintf("delta-%d.tardiff", i))
+		deltaSize, err := generateDeltaFile(oldLayerPath, newLayerPath, deltaPath)
+		_ = os.Remove(oldLayerPath)
+		if err != nil {
+			_ = os.Remove(deltaPath)
+			logger.Warn("WARNING: failed to generate delta from %s: %v", source.desc.Digest, err)
+			continue
+		}
+		if deltaSize >= newLayerSize {
+			logger.Info("Delta from %s is not smaller than the full layer; skipping.", source.desc.Digest)
+			_ = os.Remove(deltaPath)
+			continue
+		}
+		deltaDigest, _, err := hashFile(deltaPath)
+		if err != nil {
+			_ = os.Remove(deltaPath)
+			logger.Warn("WARNING: failed to hash delta from %s: %v", source.desc.Digest, err)
+			continue
+		}
+		descriptor := v1.Descriptor{
+			MediaType: deltaLayerMediaType,
+			Size:      deltaSize,
+			Digest:    deltaDigest,
+			Annotations: map[string]string{
+				deltaFromAnnotation:      oldDiffID.String(),
+				deltaToAnnotation:        newDiffID.String(),
+				deltaFromImageAnnotation: source.desc.Digest.String(),
+			},
+		}
+		layers = append(layers, deltaLayer{
+			path:       deltaPath,
+			digest:     deltaDigest,
+			size:       deltaSize,
+			descriptor: descriptor,
+		})
+		logger.Info("Generated delta layer from %s: %d bytes.", source.desc.Digest, deltaSize)
+	}
+
+	if len(layers) == 0 {
+		if !contentChanged {
+			return nil, nil
+		}
+		logger.Info("No source produced a smaller delta; recording the source chain without a usable delta.")
+		return newChainDelta(sources, newDigest)
+	}
+	// Flatpak picks the first matching from/to layer, so keep the smallest
+	// delta first for clients that do not compare sizes.
+	sort.Slice(layers, func(i, j int) bool { return layers[i].size < layers[j].size })
+
+	descriptors := make([]v1.Descriptor, len(layers))
+	for i := range layers {
+		descriptors[i] = layers[i].descriptor
+	}
+	manifestBytes, manifestDigest, manifestSize, err := buildDeltaManifest(descriptors, sourceDigests, newDigest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open staged previous layer: %w", err)
+		return nil, err
+	}
+
+	logger.Info("Generated %d delta layer(s) from %d source(s).", len(layers), len(sources))
+	keep = true
+	return &imageDelta{
+		dir:            dir,
+		layers:         layers,
+		layerSize:      newLayerSize,
+		manifestBytes:  manifestBytes,
+		manifestDigest: manifestDigest,
+		manifestSize:   manifestSize,
+		targetDigest:   newDigest,
+	}, nil
+}
+
+// retainDeltaSource tags the source image manifest so registries with
+// aggressive untagged-manifest collection keep it for future delta chains.
+func retainDeltaSource(repoRef name.Repository, img v1.Image, digest v1.Hash, authOpt remote.Option) error {
+	body, err := img.RawManifest()
+	if err != nil {
+		return err
+	}
+	return putManifest(repoRef.Tag(deltaSourceTag(digest)), body, digest, int64(len(body)), authOpt)
+}
+
+func deltaSourceTag(digest v1.Hash) string {
+	return deltaSourceTagPrefix + digest.Hex
+}
+
+// generateDeltaFile runs tar-diff over one source layer and the target layer.
+func generateDeltaFile(oldPath, newPath, deltaPath string) (int64, error) {
+	oldFile, err := os.Open(oldPath)
+	if err != nil {
+		return 0, err
 	}
 	defer oldFile.Close()
-	newFile, err := os.Open(newLayerPath)
+	newFile, err := os.Open(newPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open staged target layer: %w", err)
+		return 0, err
 	}
 	defer newFile.Close()
 	deltaFile, err := os.Create(deltaPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create delta file: %w", err)
+		return 0, err
 	}
 
 	opts := tardiff.NewOptions()
@@ -233,58 +491,20 @@ func prepareImageDelta(oldRef name.Reference, oldDesc *v1.Descriptor, arch strin
 	// the generator on that path so deltas remain consumable by current clients.
 	opts.SetBinaryDiffMethod(tardiff.BinaryDiffBsdiff)
 	// Keep tar-diff's analysis scratch on the same disk-backed workspace.
-	opts.SetTmpDir(dir)
+	opts.SetTmpDir(filepath.Dir(deltaPath))
 
-	logger.Info("Generating image delta from %s to %s...", oldDiffID, newDiffID)
 	if err := tardiff.Diff([]io.ReadSeeker{oldFile}, newFile, deltaFile, opts); err != nil {
 		_ = deltaFile.Close()
-		return nil, fmt.Errorf("failed to generate image delta: %w", err)
+		return 0, err
 	}
 	if err := deltaFile.Close(); err != nil {
-		return nil, fmt.Errorf("failed to finalize delta file: %w", err)
+		return 0, err
 	}
-
-	deltaStat, err := os.Stat(deltaPath)
+	info, err := os.Stat(deltaPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat delta file: %w", err)
+		return 0, err
 	}
-	deltaSize := deltaStat.Size()
-	if deltaSize >= newLayerSize {
-		logger.Info("Delta is not smaller than the full layer (%d >= %d bytes); skipping image delta.", deltaSize, newLayerSize)
-		return nil, nil
-	}
-
-	deltaDigest, _, err := hashFile(deltaPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash delta: %w", err)
-	}
-
-	layerDesc := v1.Descriptor{
-		MediaType: deltaLayerMediaType,
-		Size:      deltaSize,
-		Digest:    deltaDigest,
-		Annotations: map[string]string{
-			deltaFromAnnotation: oldDiffID.String(),
-			deltaToAnnotation:   newDiffID.String(),
-		},
-	}
-	manifestBytes, manifestDigest, manifestSize, err := buildDeltaManifest(layerDesc, newDigest)
-	if err != nil {
-		return nil, err
-	}
-
-	keep = true
-	return &imageDelta{
-		dir:            dir,
-		blobPath:       deltaPath,
-		blobDigest:     deltaDigest,
-		blobSize:       deltaSize,
-		layerSize:      newLayerSize,
-		manifestBytes:  manifestBytes,
-		manifestDigest: manifestDigest,
-		manifestSize:   manifestSize,
-		targetDigest:   newDigest,
-	}, nil
+	return info.Size(), nil
 }
 
 // publishImageDelta uploads the delta blob and manifest, then rebuilds the
@@ -300,14 +520,16 @@ func publishImageDelta(repoRef name.Repository, authOpt remote.Option, d *imageD
 		return fmt.Errorf("failed to push delta config blob: %w", err)
 	}
 
-	blob := &fileLayer{
-		path:      d.blobPath,
-		digest:    d.blobDigest,
-		size:      d.blobSize,
-		mediaType: deltaLayerMediaType,
-	}
-	if err := remote.WriteLayer(repoRef, blob, authOpt); err != nil {
-		return fmt.Errorf("failed to push delta blob: %w", err)
+	for _, layer := range d.layers {
+		blob := &fileLayer{
+			path:      layer.path,
+			digest:    layer.digest,
+			size:      layer.size,
+			mediaType: deltaLayerMediaType,
+		}
+		if err := remote.WriteLayer(repoRef, blob, authOpt); err != nil {
+			return fmt.Errorf("failed to push delta blob: %w", err)
+		}
 	}
 
 	// Tagging the delta manifest keeps registries with garbage collection from
@@ -322,11 +544,16 @@ func publishImageDelta(repoRef name.Repository, authOpt remote.Option, d *imageD
 		return err
 	}
 
+	if len(d.layers) == 0 {
+		logger.Info("Published image delta chain marker: no usable delta for this release.")
+		return nil
+	}
+	smallest := d.layers[0].size // sorted ascending by prepareImageDeltas
 	pct := 0.0
 	if d.layerSize > 0 {
-		pct = 100 * float64(d.blobSize) / float64(d.layerSize)
+		pct = 100 * float64(smallest) / float64(d.layerSize)
 	}
-	logger.Info("Published image delta: %d bytes (%.1f%% of the full layer).", d.blobSize, pct)
+	logger.Info("Published image delta: %d layer(s), smallest %d bytes (%.1f%% of the full layer).", len(d.layers), smallest, pct)
 	return nil
 }
 
@@ -361,14 +588,46 @@ func imageForDelta(ref name.Reference, desc *v1.Descriptor, arch string, authOpt
 	}
 }
 
+// newChainDelta records the source chain for a target that has no usable
+// delta. Flatpak finds no matching layer and falls back to the full layer, but
+// the next release can still walk through the recorded sources.
+func newChainDelta(sources []deltaSource, target v1.Hash) (*imageDelta, error) {
+	sourceDigests := make([]v1.Hash, len(sources))
+	for i := range sources {
+		sourceDigests[i] = sources[i].desc.Digest
+	}
+	manifestBytes, manifestDigest, manifestSize, err := buildDeltaManifest(nil, sourceDigests, target)
+	if err != nil {
+		return nil, err
+	}
+	return &imageDelta{
+		layers:         nil,
+		manifestBytes:  manifestBytes,
+		manifestDigest: manifestDigest,
+		manifestSize:   manifestSize,
+		targetDigest:   target,
+	}, nil
+}
+
 // buildDeltaManifest serializes the manifest Flatpak resolves through
 // _deltaindex.
-func buildDeltaManifest(layer v1.Descriptor, target v1.Hash) ([]byte, v1.Hash, int64, error) {
+func buildDeltaManifest(layers []v1.Descriptor, sources []v1.Hash, target v1.Hash) ([]byte, v1.Hash, int64, error) {
+	sourceStrings := make([]string, len(sources))
+	for i := range sources {
+		sourceStrings[i] = sources[i].String()
+	}
+	sourcesJSON, err := json.Marshal(sourceStrings)
+	if err != nil {
+		return nil, v1.Hash{}, 0, fmt.Errorf("failed to marshal delta sources: %w", err)
+	}
 	configDigest, configSize, err := v1.SHA256(bytes.NewReader(deltaConfig))
 	if err != nil {
 		return nil, v1.Hash{}, 0, fmt.Errorf("failed to hash delta config: %w", err)
 	}
 
+	if layers == nil {
+		layers = []v1.Descriptor{}
+	}
 	manifest := v1.Manifest{
 		SchemaVersion: 2,
 		MediaType:     types.OCIManifestSchema1,
@@ -377,9 +636,10 @@ func buildDeltaManifest(layer v1.Descriptor, target v1.Hash) ([]byte, v1.Hash, i
 			Size:      configSize,
 			Digest:    configDigest,
 		},
-		Layers: []v1.Descriptor{layer},
+		Layers: layers,
 		Annotations: map[string]string{
-			deltaTargetAnnotation: target.String(),
+			deltaTargetAnnotation:  target.String(),
+			deltaSourcesAnnotation: string(sourcesJSON),
 		},
 	}
 	body, err := json.Marshal(manifest)

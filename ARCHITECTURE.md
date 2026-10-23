@@ -161,7 +161,7 @@ The `StreamWithPrefix` function reads output from subprocess pipes line-by-line 
 * Bundles OSTree repositories into OCI images using `flatpak build-bundle`.
 * Interacts with container registries using the `go-containerregistry` library.
 * Generates an image manifest index and signs the manifest payload. Supports bypassing GPG signing when `no_sign` is set to `true`. When `no_sign` is `false`, it enforces that a GPG key must be provided, failing the push unless `allow_unsigned` is explicitly enabled.
-* Optionally publishes Flatpak OCI image deltas: it diffs the previous layer against the new one with `tar-diff`, pushes the delta manifest under a `_delta-<target-digest>` tag, and rebuilds the repository's `_deltaindex` from the delta tag set. Delta failures are warnings and never abort the image push or the record write.
+* Optionally publishes Flatpak OCI image deltas: it diffs one or more previous layers against the new one with `tar-diff` (controlled by `delta_back`), pushes the delta manifest under a `_delta-<target-digest>` tag, and rebuilds the repository's `_deltaindex` from the delta tag set. Delta failures are warnings and never abort the image push or the record write.
 * Writes a uniform execution record (`record.json`) under `<records-dir>/<app-id>-<branch>-<arch>/` tracking the OCI digest, registry, and label metadata. Records written without a branch fall back to `<records-dir>/<app-id>-<arch>/`.
 
 ### `pkg/site`

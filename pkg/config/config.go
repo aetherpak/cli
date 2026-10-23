@@ -34,6 +34,7 @@ type Config struct {
 	RemoteName      string            `yaml:"remote_name" json:"remote_name" mapstructure:"remote_name"`
 	NoSign          bool              `yaml:"no_sign" json:"no_sign" mapstructure:"no_sign"`
 	ImageDeltas     *bool             `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
+	DeltaBack       *int              `yaml:"delta_back,omitempty" json:"delta_back,omitempty" mapstructure:"delta_back"`
 	RepoTitle       string            `yaml:"repo_title" json:"repo_title" mapstructure:"repo_title"`
 	RepoHomepage    string            `yaml:"repo_homepage" json:"repo_homepage" mapstructure:"repo_homepage"`
 	RuntimeRepo     string            `yaml:"runtime_repo" json:"runtime_repo" mapstructure:"runtime_repo"`
@@ -101,6 +102,7 @@ type DefaultsConfig struct {
 	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
 	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
 	ImageDeltas              *bool                   `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
+	DeltaBack                *int                    `yaml:"delta_back,omitempty" json:"delta_back,omitempty" mapstructure:"delta_back"`
 }
 
 // SourcesConfig defines zero-manifest precompiled binary and artifact packaging.
@@ -163,6 +165,7 @@ type App struct {
 	AutoReleaseMetadata      *bool                   `yaml:"auto_release_metadata,omitempty" json:"auto_release_metadata,omitempty" mapstructure:"auto_release_metadata"`
 	AutoReleaseMetadataKebab *bool                   `yaml:"auto-release-metadata,omitempty" json:"-" mapstructure:"auto-release-metadata"`
 	ImageDeltas              *bool                   `yaml:"image_deltas,omitempty" json:"image_deltas,omitempty" mapstructure:"image_deltas"`
+	DeltaBack                *int                    `yaml:"delta_back,omitempty" json:"delta_back,omitempty" mapstructure:"delta_back"`
 }
 
 // Bundle represents an architecture-specific prebuilt flatpak bundle config.
@@ -794,6 +797,14 @@ func (cfg *Config) Normalize() {
 			val := *cfg.ImageDeltas
 			app.ImageDeltas = &val
 		}
+		if app.DeltaBack == nil && cfg.Defaults.DeltaBack != nil {
+			val := *cfg.Defaults.DeltaBack
+			app.DeltaBack = &val
+		}
+		if app.DeltaBack == nil && cfg.DeltaBack != nil {
+			val := *cfg.DeltaBack
+			app.DeltaBack = &val
+		}
 
 		if app.CCacheDir == "" {
 			if cfg.Defaults.CCacheDir != "" {
@@ -1036,6 +1047,51 @@ func (app *App) ResolveAutoReleaseMetadata(defaults *DefaultsConfig) bool {
 		return *defaults.AutoReleaseMetadata
 	}
 	return false
+}
+
+// ResolveDeltaBack reports how many previous releases to consider for image
+// deltas. Precedence is app > defaults > global, defaulting to one.
+func (cfg *Config) ResolveDeltaBack(appID, branch string) int {
+	const (
+		defaultBack = 1
+		maxBack     = 10
+	)
+	if cfg == nil {
+		return defaultBack
+	}
+	resolve := func(v *int) (int, bool) {
+		if v == nil {
+			return 0, false
+		}
+		n := *v
+		if n < 1 {
+			n = 1
+		}
+		if n > maxBack {
+			n = maxBack
+		}
+		return n, true
+	}
+	for i := range cfg.Apps {
+		if cfg.Apps[i].ID != appID {
+			continue
+		}
+		if branch != "" && cfg.Apps[i].Branch != branch {
+			continue
+		}
+		if n, ok := resolve(cfg.Apps[i].DeltaBack); ok {
+			return n
+		}
+	}
+	if cfg.Defaults != nil {
+		if n, ok := resolve(cfg.Defaults.DeltaBack); ok {
+			return n
+		}
+	}
+	if n, ok := resolve(cfg.DeltaBack); ok {
+		return n
+	}
+	return defaultBack
 }
 
 // ResolveImageDeltas reports whether OCI image delta generation is enabled for
@@ -1310,6 +1366,13 @@ func (app App) Equal(other App) bool {
 		return false
 	}
 	if app.ImageDeltas != nil && *app.ImageDeltas != *other.ImageDeltas {
+		return false
+	}
+
+	if (app.DeltaBack == nil) != (other.DeltaBack == nil) {
+		return false
+	}
+	if app.DeltaBack != nil && *app.DeltaBack != *other.DeltaBack {
 		return false
 	}
 

@@ -19,6 +19,7 @@ import (
 	"github.com/aetherpak/aetherpak/pkg/signing"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 )
@@ -42,6 +43,7 @@ type PushOptions struct {
 	AllowUnsigned       bool
 	RefType             string // "app" or "runtime"; defaults to "app"
 	DryRun              bool
+	ImageDeltas         bool   // publish a delta from the currently tagged image to the new image
 	AutoReleaseMetadata bool   // dynamically stamp active release tag/date into AppStream catalog
 	ReleaseVersion      string // explicit release version override
 	ReleaseDate         string // explicit release date override (YYYY-MM-DD)
@@ -244,39 +246,28 @@ func Push(opts PushOptions) (PushResult, error) {
 	targetRef := repoRef.Tag(tag)
 
 	// Setup authentication options
-	var authOpt remote.Option
-	username := opts.OCIUsername
-	password := opts.OCIPassword
-	if username == "" {
-		username = os.Getenv("OCI_USERNAME")
-	}
-	if username == "" {
-		username = scm.Username()
-	}
-	if password == "" {
-		password = os.Getenv("OCI_PASSWORD")
-	}
-	if password == "" {
-		password = scm.Password()
-	}
-
-	if username != "" && password != "" {
-		authOpt = remote.WithAuth(&authn.Basic{
-			Username: username,
-			Password: password,
-		})
-	} else {
-		// Fallback to local Docker credentials config
-		authOpt = remote.WithAuthFromKeychain(authn.DefaultKeychain)
-	}
+	authOpt := resolvePushAuth(opts)
 
 	if opts.DryRun {
+		if opts.ImageDeltas {
+			logger.Info("[DRY RUN] Simulating generation of an image delta from the current tag.")
+		}
 		logger.Info("[DRY RUN] Simulating push of OCI index to remote registry: %s", targetRef.Name())
 		logger.Info("[DRY RUN] Simulating write of execution record to records directory: %s", opts.RecordsDir)
 		if len(signatures) > 0 {
 			logger.Info("[DRY RUN] Simulating write of %d GPG signature(s) to cell directory", len(signatures))
 		}
 		return PushResult{Digest: digest.String(), Tag: tag, CellDir: ""}, nil
+	}
+
+	var oldDeltaRef name.Reference
+	var oldDeltaDesc *v1.Descriptor
+	if opts.ImageDeltas {
+		oldDeltaRef, oldDeltaDesc, err = resolveDeltaSource(repoRef, tag, configFile.Architecture, authOpt)
+		if err != nil {
+			logger.Warn("WARNING: failed to resolve the previous image for an image delta: %v", err)
+			oldDeltaRef, oldDeltaDesc = nil, nil
+		}
 	}
 
 	logger.Info("Pushing OCI index to remote registry: %s", targetRef.Name())
@@ -324,6 +315,20 @@ func Push(opts PushOptions) (PushResult, error) {
 		}
 	}
 
+	// 6. Publish the optional delta only after the image and its record are
+	// durable. A slow or failed delta must never block the release contract.
+	if opts.ImageDeltas && oldDeltaDesc != nil {
+		delta, derr := prepareImageDelta(oldDeltaRef, oldDeltaDesc, configFile.Architecture, img, digest, authOpt, opts.RecordsDir)
+		if derr != nil {
+			logger.Warn("WARNING: failed to prepare image delta: %v (clients will download the full layer).", derr)
+		} else if delta != nil {
+			defer delta.Close()
+			if perr := publishImageDelta(repoRef, authOpt, delta); perr != nil {
+				logger.Warn("WARNING: failed to publish image delta: %v (clients will download the full layer).", perr)
+			}
+		}
+	}
+
 	return PushResult{Digest: digest.String(), Tag: tag, CellDir: cellDir}, nil
 }
 
@@ -331,4 +336,32 @@ func Push(opts PushOptions) (PushResult, error) {
 func CleanTag(tag string) string {
 	reg := regexp.MustCompile(`[^A-Za-z0-9_-]`)
 	return reg.ReplaceAllString(tag, "_")
+}
+
+// resolvePushAuth selects explicit credentials when supplied, otherwise the
+// environment/SCM conventions, and finally the local Docker keychain.
+func resolvePushAuth(opts PushOptions) remote.Option {
+	username := opts.OCIUsername
+	password := opts.OCIPassword
+	if username == "" {
+		username = os.Getenv("OCI_USERNAME")
+	}
+	if username == "" {
+		username = scm.Username()
+	}
+	if password == "" {
+		password = os.Getenv("OCI_PASSWORD")
+	}
+	if password == "" {
+		password = scm.Password()
+	}
+
+	if username != "" && password != "" {
+		return remote.WithAuth(&authn.Basic{
+			Username: username,
+			Password: password,
+		})
+	}
+	// Fallback to local Docker credentials config
+	return remote.WithAuthFromKeychain(authn.DefaultKeychain)
 }

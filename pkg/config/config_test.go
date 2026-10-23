@@ -1028,3 +1028,70 @@ func TestAppEqual_AutoReleaseMetadata(t *testing.T) {
 		t.Errorf("expected app4 and app1 not to be equal")
 	}
 }
+
+func TestConfigResolveImageDeltas(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	cfg := Config{
+		ImageDeltas: &trueVal,
+		Defaults:    &DefaultsConfig{ImageDeltas: &falseVal},
+		Apps: []App{
+			{ID: "org.example.InheritsDefaults"},
+			{ID: "org.example.Enabled", ImageDeltas: &trueVal},
+			{ID: "org.example.Disabled", ImageDeltas: &falseVal},
+			{ID: "org.example.Same", Branch: "stable", ImageDeltas: &trueVal},
+			{ID: "org.example.Same", Branch: "beta", ImageDeltas: &falseVal},
+		},
+	}
+	cfg.Normalize()
+
+	if cfg.ResolveImageDeltas("org.example.InheritsDefaults", "") {
+		t.Errorf("expected defaults (false) to override the global value")
+	}
+	if !cfg.ResolveImageDeltas("org.example.Enabled", "") {
+		t.Errorf("expected app-level true to win")
+	}
+	if cfg.ResolveImageDeltas("org.example.Disabled", "") {
+		t.Errorf("expected app-level false to win")
+	}
+
+	// Same app ID on two branches keeps branch-specific settings.
+	if !cfg.ResolveImageDeltas("org.example.Same", "stable") {
+		t.Errorf("expected the stable branch to be enabled")
+	}
+	if cfg.ResolveImageDeltas("org.example.Same", "beta") {
+		t.Errorf("expected the beta branch to be disabled")
+	}
+
+	// Without a matching app, defaults apply.
+	if cfg.ResolveImageDeltas("org.example.Unknown", "") {
+		t.Errorf("expected defaults to apply to an unknown app")
+	}
+
+	globalOnly := Config{ImageDeltas: &trueVal, Apps: []App{{ID: "org.example.Global"}}}
+	globalOnly.Normalize()
+	if !globalOnly.ResolveImageDeltas("org.example.Global", "") {
+		t.Errorf("expected the global value to reach an app when defaults are unset")
+	}
+}
+
+func TestAppEqual_ImageDeltas(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	app1 := App{ID: "org.example.App", ImageDeltas: &trueVal}
+	app2 := App{ID: "org.example.App", ImageDeltas: &trueVal}
+	app3 := App{ID: "org.example.App", ImageDeltas: &falseVal}
+	app4 := App{ID: "org.example.App", ImageDeltas: nil}
+
+	if !app1.Equal(app2) {
+		t.Errorf("expected app1 and app2 to be equal")
+	}
+	if app1.Equal(app3) {
+		t.Errorf("expected app1 and app3 not to be equal")
+	}
+	if app1.Equal(app4) {
+		t.Errorf("expected app1 and app4 not to be equal")
+	}
+}

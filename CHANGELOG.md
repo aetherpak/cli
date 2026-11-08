@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.35.0](https://github.com/aetherpak/cli/compare/v0.34.0...v0.35.0) (2026-11-08)
+
+
+### Features
+
+* **site:** seed index and signatures locally ([54ffc2b](https://github.com/aetherpak/cli/commit/54ffc2b669135abab185634074f18e04b184719f))
+
+
+### Bug Fixes
+
+* **site:** seed index from a local file ([1cf096b](https://github.com/aetherpak/cli/commit/1cf096b85de4cc27489f4afd36a2804738c3c925))
+
 ## [0.34.0](https://github.com/aetherpak/cli/compare/v0.33.3...v0.34.0) (2026-10-23)
 
 

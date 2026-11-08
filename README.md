@@ -578,14 +578,19 @@ Options:
 * `--output-file <path>`: Write `target-digest`, `layers`, `smallest-bytes`, and `published` as dotenv output.
 
 #### `build-site`
-Downloads old static index, merges recent cell records, and regenerates index listings:
+Seeds the static index from Pages or a local file, merges recent cell records, and regenerates index listings:
 ```bash
 aetherpak build-site --pages-url https://flatpak.my-org.com --site-dir _site --reconcile --index-template templates/custom_index.html
 ```
 Options:
+* `--index-file <path>`: Seed the index from a local `index/static` file instead of fetching `<pages-url>/index/static`. A missing or malformed file fails the build. Use this when the caller already has the published site checked out, especially for multi-channel repositories where a failed or stale Pages fetch would drop the other channels' refs.
 * `--gpg-key <path>`: Local path to GPG private key used to export GPG public keys.
 * `--no-sign`: Disable GPG signing and metadata export entirely.
 * `--allow-unsigned`: Allow building unsigned index if GPG keys are missing.
+
+If no `--index-file` is given and the Pages fetch fails, returns a non-200 status, or returns an unparseable or `Results`-less index, the build warns loudly and continues from local records only. Any refs that exist solely in the published index (for example, another channel) are then dropped.
+
+`--index-file` seeds only the index. Signature lookaside files are still fetched from `<pages-url>/sigs` when `pages-url` is set.
 
 #### `resolve-channel`
 Resolves the flatpak channel name from git ref metadata:

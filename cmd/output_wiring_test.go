@@ -42,6 +42,7 @@ func TestEnvBindings(t *testing.T) {
 		{"build-site", "records-dir", "AETHERPAK_RECORDS_DIR", "custom-site-records"},
 		{"build-site", "site-dir", "AETHERPAK_SITE_DIR", "custom-site-dir"},
 		{"build-site", "pages-url", "AETHERPAK_PAGES_URL", "http://custom-pages"},
+		{"build-site", "index-file", "AETHERPAK_INDEX_FILE", "/tmp/seed/index/static"},
 		{"build-site", "remote-name", "AETHERPAK_REMOTE_NAME", "custom-remote"},
 		{"publish", "app-id", "AETHERPAK_APP_ID", "custom-pub-appid"},
 		{"publish", "app", "AETHERPAK_APP", "custom-pub-app"},

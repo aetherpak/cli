@@ -14,6 +14,7 @@ import (
 
 var (
 	sitePagesURL      string
+	siteIndexFile     string
 	siteRecordsDir    string
 	siteDir           string
 	siteReconcile     bool
@@ -34,7 +35,7 @@ var (
 var buildSiteCmd = &cobra.Command{
 	Use:   "build-site",
 	Short: "Assembles site index and generates deployable assets",
-	Long:  `Downloads active static index from hosting pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
+	Long:  `Seeds the index from a local file or the active static index hosted on Pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := LoadConfig()
 		if err != nil {
@@ -121,6 +122,7 @@ var buildSiteCmd = &cobra.Command{
 
 		opts := site.SiteOptions{
 			PagesURL:            sitePagesURL,
+			IndexFile:           siteIndexFile,
 			RecordsDir:          recordsDir,
 			SiteDir:             siteDirVal,
 			Reconcile:           siteReconcile,
@@ -161,6 +163,7 @@ func init() {
 	RootCmd.AddCommand(buildSiteCmd)
 
 	buildSiteCmd.Flags().StringVar(&sitePagesURL, "pages-url", "", "URL of the target Pages server hosting the repository index")
+	buildSiteCmd.Flags().StringVar(&siteIndexFile, "index-file", "", "seed the index from a local index/static file instead of fetching it from pages-url")
 	buildSiteCmd.Flags().StringVar(&siteRecordsDir, "records-dir", "records", "directory containing parallel records")
 	buildSiteCmd.Flags().StringVar(&siteDir, "site-dir", "_site", "destination directory for static site assets")
 	buildSiteCmd.Flags().BoolVar(&siteReconcile, "reconcile", false, "verify OCI image tags and prune missing index listings")

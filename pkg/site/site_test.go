@@ -1133,6 +1133,308 @@ func TestBuildSiteReconcileSeededIndexKeepsExtensions(t *testing.T) {
 	}
 }
 
+func TestBuildSiteSeedsIndexFromLocalFile(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+
+	seeded := FlatpakIndex{
+		Registry: "ghcr.io",
+		Results: []IndexResultPackage{
+			{
+				Name: "example/app",
+				Images: []IndexImage{{
+					Digest:       "sha256:" + strings.Repeat("a", 64),
+					MediaType:    "application/vnd.oci.image.manifest.v1+json",
+					OS:           "linux",
+					Architecture: "amd64",
+					Tags:         []string{"stable"},
+					Labels: map[string]string{
+						"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+						"org.flatpak.metadata": "[Application]\nname=org.example.app",
+					},
+				}},
+			},
+			{
+				Name: "example/other",
+				Images: []IndexImage{{
+					Digest:       "sha256:" + strings.Repeat("b", 64),
+					MediaType:    "application/vnd.oci.image.manifest.v1+json",
+					OS:           "linux",
+					Architecture: "amd64",
+					Tags:         []string{"nightly"},
+					Labels: map[string]string{
+						"org.flatpak.ref":      "app/org.example.other/x86_64/nightly",
+						"org.flatpak.metadata": "[Application]\nname=org.example.other",
+					},
+				}},
+			},
+		},
+	}
+	seedPath := filepath.Join(tempDir, "seed", "index", "static")
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0755); err != nil {
+		t.Fatalf("failed to create seed index directory: %v", err)
+	}
+	seedData, err := json.Marshal(seeded)
+	if err != nil {
+		t.Fatalf("failed to marshal seed index: %v", err)
+	}
+	if err := os.WriteFile(seedPath, seedData, 0644); err != nil {
+		t.Fatalf("failed to write seed index: %v", err)
+	}
+
+	// This build only has a record for the stable channel of example/app.
+	rec := record.Record{
+		AppID:    "org.example.app",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "ghcr.io",
+		Digest:   "sha256:" + strings.Repeat("c", 64),
+		Ref:      "app/org.example.app/x86_64/stable",
+	}
+	labels := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app",
+	}
+	if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+		t.Fatalf("failed to write record: %v", err)
+	}
+
+	// The Pages index must not be consulted when a local seed is given.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/index/static" {
+			t.Error("index/static must not be fetched when --index-file is set")
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	opts := SiteOptions{
+		PagesURL:      server.URL,
+		IndexFile:     seedPath,
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		AllowUnsigned: true,
+	}
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with a local seed index: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(siteDir, "index", "static"))
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	var index FlatpakIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatalf("failed to parse index static: %v", err)
+	}
+
+	digests := make(map[string]string)
+	var refs []string
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			ref := img.Labels["org.flatpak.ref"]
+			refs = append(refs, ref)
+			digests[ref] = img.Digest
+		}
+	}
+	sort.Strings(refs)
+	want := []string{
+		"app/org.example.app/x86_64/stable",
+		"app/org.example.other/x86_64/nightly",
+	}
+	if !slices.Equal(refs, want) {
+		t.Errorf("index refs = %v, want %v", refs, want)
+	}
+	if got := digests["app/org.example.app/x86_64/stable"]; got != rec.Digest {
+		t.Errorf("stable ref digest = %q, want the current record digest %q", got, rec.Digest)
+	}
+}
+
+func TestBuildSiteIndexFileErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		write   bool
+		want    string
+	}{
+		{name: "missing file", want: "failed to read seed index"},
+		{name: "malformed json", content: "{not-json", write: true, want: "failed to parse seed index"},
+		{name: "missing results", content: `{"Registry":"ghcr.io"}`, write: true, want: "failed to parse seed index"},
+		{name: "null results", content: `{"Registry":"ghcr.io","Results":null}`, write: true, want: "failed to parse seed index"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			seedPath := filepath.Join(tempDir, "index", "static")
+			if tt.write {
+				if err := os.MkdirAll(filepath.Dir(seedPath), 0755); err != nil {
+					t.Fatalf("failed to create seed directory: %v", err)
+				}
+				if err := os.WriteFile(seedPath, []byte(tt.content), 0644); err != nil {
+					t.Fatalf("failed to write seed index: %v", err)
+				}
+			}
+
+			err := BuildSite(SiteOptions{
+				IndexFile:     seedPath,
+				RecordsDir:    filepath.Join(tempDir, "records"),
+				SiteDir:       filepath.Join(tempDir, "site"),
+				AllowUnsigned: true,
+			})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("BuildSite error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildSiteSeedFetchFailuresFallBackToRecords(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "server error", status: http.StatusInternalServerError, body: "boom"},
+		{name: "unparseable body", status: http.StatusOK, body: "not-json"},
+		{name: "missing results", status: http.StatusOK, body: `{"Registry":"ghcr.io"}`},
+		{name: "null results", status: http.StatusOK, body: `{"Registry":"ghcr.io","Results":null}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			recordsDir := filepath.Join(tempDir, "records")
+			siteDir := filepath.Join(tempDir, "site")
+
+			rec := record.Record{
+				AppID:    "org.example.app",
+				Arch:     "x86_64",
+				Branch:   "stable",
+				Name:     "example/app",
+				Registry: "ghcr.io",
+				Digest:   "sha256:" + strings.Repeat("c", 64),
+				Ref:      "app/org.example.app/x86_64/stable",
+			}
+			labels := map[string]string{
+				"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+				"org.flatpak.metadata": "[Application]\nname=org.example.app",
+			}
+			if _, err := record.WriteRecord(recordsDir, rec, labels); err != nil {
+				t.Fatalf("failed to write record: %v", err)
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/index/static" {
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(tt.body))
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer server.Close()
+
+			err := BuildSite(SiteOptions{
+				PagesURL:      server.URL,
+				RecordsDir:    recordsDir,
+				SiteDir:       siteDir,
+				AllowUnsigned: true,
+			})
+			if err != nil {
+				t.Fatalf("BuildSite should fall back to records, got error: %v", err)
+			}
+
+			data, err := os.ReadFile(filepath.Join(siteDir, "index", "static"))
+			if err != nil {
+				t.Fatalf("failed to read index static: %v", err)
+			}
+			var index FlatpakIndex
+			if err := json.Unmarshal(data, &index); err != nil {
+				t.Fatalf("failed to parse index static: %v", err)
+			}
+			var refs []string
+			for _, pkg := range index.Results {
+				for _, img := range pkg.Images {
+					refs = append(refs, img.Labels["org.flatpak.ref"])
+				}
+			}
+			if want := []string{"app/org.example.app/x86_64/stable"}; !slices.Equal(refs, want) {
+				t.Errorf("index refs = %v, want only the local record ref %v", refs, want)
+			}
+		})
+	}
+}
+
+func TestDecodeSeedIndex(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		wantErr bool
+	}{
+		{name: "valid", data: `{"Registry":"ghcr.io","Results":[]}`},
+		{name: "empty results", data: `{"Results":[]}`},
+		{name: "null document", data: `null`, wantErr: true},
+		{name: "array document", data: `[]`, wantErr: true},
+		{name: "missing results", data: `{"Registry":"ghcr.io"}`, wantErr: true},
+		{name: "null results", data: `{"Registry":"ghcr.io","Results":null}`, wantErr: true},
+		{name: "syntactically invalid", data: `{not-json`, wantErr: true},
+		{name: "trailing data", data: `{"Results":[]} trailing`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			index, err := decodeSeedIndex([]byte(tt.data))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("decodeSeedIndex(%q) error = %v, wantErr %v", tt.data, err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if index.Results == nil {
+				t.Error("decoded Results is nil, want an empty slice")
+			}
+		})
+	}
+}
+
+func TestLoadSeedIndexReportsUnavailableSeed(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "server error", status: http.StatusInternalServerError, body: "boom"},
+		{name: "unparseable body", status: http.StatusOK, body: "not-json"},
+		{name: "missing results", status: http.StatusOK, body: `{"Registry":"ghcr.io"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			index, warning, err := loadSeedIndex(SiteOptions{PagesURL: server.URL})
+			if err != nil {
+				t.Fatalf("loadSeedIndex returned an error for a Pages failure: %v", err)
+			}
+			if warning == "" {
+				t.Fatal("loadSeedIndex swallowed the Pages seed failure instead of reporting it")
+			}
+			if !strings.Contains(warning, "Could not seed index") {
+				t.Errorf("warning = %q, want it to name the failed seed", warning)
+			}
+			if len(index.Results) != 0 {
+				t.Errorf("index has %d results, want an empty fallback index", len(index.Results))
+			}
+		})
+	}
+}
+
 func TestBuildSiteReconcileActiveOCIRepository(t *testing.T) {
 	// Setup a mock HTTP registry that returns 200 OK for everything (both apps exist in registry)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -33,6 +33,7 @@ var indexHTMLTemplate string
 // SiteOptions configures the static index builder and page reconciler.
 type SiteOptions struct {
 	PagesURL            string
+	IndexFile           string // local index/static to seed from; replaces the index seed fetch
 	RecordsDir          string
 	SiteDir             string
 	Reconcile           bool
@@ -211,32 +212,13 @@ func BuildSite(opts SiteOptions) error {
 		gpgKeyBase64 = b64Key
 	}
 
-	// 2. Fetch active production index from Pages URL if available
-	var index FlatpakIndex
-	index.Results = []IndexResultPackage{}
-
-	if opts.PagesURL != "" {
-		url := strings.TrimSuffix(opts.PagesURL, "/") + "/index/static"
-		logger.Info("Fetching active production index from Pages: %s", url)
-
-		client := &http.Client{
-			Timeout: 10 * time.Second,
-		}
-		resp, err := client.Get(url)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				var fetched FlatpakIndex
-				if err := json.NewDecoder(resp.Body).Decode(&fetched); err == nil {
-					index = fetched
-					logger.Info("Successfully seeded index from active Pages site.")
-				}
-			} else {
-				logger.Debug("No active static index fetched or status is not OK (status: %d).", resp.StatusCode)
-			}
-		} else {
-			logger.Debug("Error fetching active production index: %v", err)
-		}
+	// 2. Seed the index from a local file or the active production index
+	index, warning, err := loadSeedIndex(opts)
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		logger.Warn("%s", warning)
 	}
 
 	// 3. Iterate and merge local record.json cells, and copy signatures
@@ -447,6 +429,87 @@ func BuildSite(opts SiteOptions) error {
 
 	logger.Info("Site aggregation completed successfully.")
 	return nil
+}
+
+// loadSeedIndex returns the published index the rebuild starts from. An
+// explicit local index file is authoritative: a missing or malformed file
+// fails the build instead of silently falling back to an empty index. The
+// Pages fetch stays best-effort, but its failures are reported loudly because
+// starting empty drops every ref this build has no record for (typically the
+// other channels of a multi-channel repository).
+func loadSeedIndex(opts SiteOptions) (FlatpakIndex, string, error) {
+	index := FlatpakIndex{Results: []IndexResultPackage{}}
+
+	if opts.IndexFile != "" {
+		data, err := os.ReadFile(opts.IndexFile)
+		if err != nil {
+			return index, "", fmt.Errorf("failed to read seed index %q: %w", opts.IndexFile, err)
+		}
+		decoded, err := decodeSeedIndex(data)
+		if err != nil {
+			return index, "", fmt.Errorf("failed to parse seed index %q: %w", opts.IndexFile, err)
+		}
+		logger.Info("Seeded index from local file: %s", opts.IndexFile)
+		return decoded, "", nil
+	}
+
+	if opts.PagesURL == "" {
+		return index, "", nil
+	}
+
+	url := strings.TrimSuffix(opts.PagesURL, "/") + "/index/static"
+	logger.Info("Fetching active production index from Pages: %s", url)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return index, seedUnavailableWarning(url, err.Error()), nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return index, seedUnavailableWarning(url, fmt.Sprintf("status %d", resp.StatusCode)), nil
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return index, seedUnavailableWarning(url, err.Error()), nil
+	}
+	fetched, err := decodeSeedIndex(data)
+	if err != nil {
+		return index, seedUnavailableWarning(url, err.Error()), nil
+	}
+	logger.Info("Successfully seeded index from active Pages site.")
+	return fetched, "", nil
+}
+
+// decodeSeedIndex rejects a document without a Results array. An error
+// envelope or non-index JSON served with HTTP 200 would otherwise look like a
+// valid empty seed, which is the silent-loss path this seeding exists to
+// close. A legitimate empty array is still accepted.
+func decodeSeedIndex(data []byte) (FlatpakIndex, error) {
+	var doc struct {
+		Registry string                `json:"Registry"`
+		Results  *[]IndexResultPackage `json:"Results"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return FlatpakIndex{}, err
+	}
+	if doc.Results == nil {
+		return FlatpakIndex{}, fmt.Errorf("missing Results array")
+	}
+
+	index := FlatpakIndex{Registry: doc.Registry, Results: *doc.Results}
+	if index.Results == nil {
+		index.Results = []IndexResultPackage{}
+	}
+	return index, nil
+}
+
+func seedUnavailableWarning(url, cause string) string {
+	return fmt.Sprintf("Could not seed index from %s: %s. Building from local records only; refs published by other channels may be dropped. Pass --index-file with the checked-out index/static to seed from local state.", url, cause)
 }
 
 func checkDigestExists(registry, repository, digest string, insecure bool) (bool, error) {

@@ -15,6 +15,7 @@ import (
 var (
 	sitePagesURL      string
 	siteIndexFile     string
+	siteSeedDir       string
 	siteRecordsDir    string
 	siteDir           string
 	siteReconcile     bool
@@ -35,8 +36,12 @@ var (
 var buildSiteCmd = &cobra.Command{
 	Use:   "build-site",
 	Short: "Assembles site index and generates deployable assets",
-	Long:  `Seeds the index from a local file or the active static index hosted on Pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
+	Long:  `Seeds the index from a local file, a local site directory, or the active static index hosted on Pages, merges recent OCI cell records, cleans up missing registry items, and writes flatpakrepo files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := validateSeedSource(siteIndexFile, siteSeedDir); err != nil {
+			return NewCmdError(2, err)
+		}
+
 		cfg, err := LoadConfig()
 		if err != nil {
 			return NewCmdErrorf(2, "Configuration error: %w", err)
@@ -123,6 +128,7 @@ var buildSiteCmd = &cobra.Command{
 		opts := site.SiteOptions{
 			PagesURL:            sitePagesURL,
 			IndexFile:           siteIndexFile,
+			SeedDir:             siteSeedDir,
 			RecordsDir:          recordsDir,
 			SiteDir:             siteDirVal,
 			Reconcile:           siteReconcile,
@@ -164,6 +170,7 @@ func init() {
 
 	buildSiteCmd.Flags().StringVar(&sitePagesURL, "pages-url", "", "URL of the target Pages server hosting the repository index")
 	buildSiteCmd.Flags().StringVar(&siteIndexFile, "index-file", "", "seed the index from a local index/static file instead of fetching it from pages-url")
+	buildSiteCmd.Flags().StringVar(&siteSeedDir, "seed-dir", "", "seed the index and signatures from a local site directory instead of fetching them from pages-url")
 	buildSiteCmd.Flags().StringVar(&siteRecordsDir, "records-dir", "records", "directory containing parallel records")
 	buildSiteCmd.Flags().StringVar(&siteDir, "site-dir", "_site", "destination directory for static site assets")
 	buildSiteCmd.Flags().BoolVar(&siteReconcile, "reconcile", false, "verify OCI image tags and prune missing index listings")
@@ -179,4 +186,11 @@ func init() {
 	buildSiteCmd.Flags().StringVar(&siteIndexTemplate, "index-template", "", "path to custom HTML repository index template")
 	buildSiteCmd.Flags().BoolVar(&siteNoSign, "no-sign", false, "disable GPG signing of repositories/images")
 	buildSiteCmd.Flags().BoolVar(&siteAllowUnsigned, "allow-unsigned", false, "allow publishing unsigned repository/images")
+}
+
+func validateSeedSource(indexFile, seedDir string) error {
+	if indexFile != "" && seedDir != "" {
+		return fmt.Errorf("--index-file and --seed-dir are mutually exclusive")
+	}
+	return nil
 }

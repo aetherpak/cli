@@ -34,6 +34,7 @@ var indexHTMLTemplate string
 type SiteOptions struct {
 	PagesURL            string
 	IndexFile           string // local index/static to seed from; replaces the index seed fetch
+	SeedDir             string // local site directory to seed the index and signatures from
 	RecordsDir          string
 	SiteDir             string
 	Reconcile           bool
@@ -140,9 +141,19 @@ type IndexImage struct {
 	Labels       map[string]string `json:"Labels"`
 }
 
-// BuildSite fetches the old index, merges new cell records, reconciles, and generates output files.
+// BuildSite seeds the old index, merges new cell records, reconciles, and generates output files.
 func BuildSite(opts SiteOptions) error {
 	logger.Info("Aggregating deployment files under site directory: %s", opts.SiteDir)
+
+	// Seed before touching the output directory so a missing or malformed
+	// local seed fails without leaving partial output.
+	index, warning, err := loadSeedIndex(opts)
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		logger.Warn("%s", warning)
+	}
 
 	if err := os.MkdirAll(opts.SiteDir, 0755); err != nil {
 		return fmt.Errorf("failed to create site directory: %w", err)
@@ -176,7 +187,16 @@ func BuildSite(opts SiteOptions) error {
 		}
 	}
 
-	if !opts.NoSign && len(filteredKeys) > 0 {
+	signed := !opts.NoSign && len(filteredKeys) > 0
+
+	// Copy the seeded signature lookaside before this build exports its key
+	// and copies record signatures, so the current build always wins. A dry
+	// run still validates the seed but writes nothing.
+	if err := seedSignatures(opts, sigDirName, !opts.DryRun); err != nil {
+		return err
+	}
+
+	if signed {
 		signer, err := signing.NewSigner(filteredKeys, opts.GPGPassphrase)
 		if err != nil {
 			return fmt.Errorf("failed to load GPG keys for public export: %w", err)
@@ -212,16 +232,7 @@ func BuildSite(opts SiteOptions) error {
 		gpgKeyBase64 = b64Key
 	}
 
-	// 2. Seed the index from a local file or the active production index
-	index, warning, err := loadSeedIndex(opts)
-	if err != nil {
-		return err
-	}
-	if warning != "" {
-		logger.Warn("%s", warning)
-	}
-
-	// 3. Iterate and merge local record.json cells, and copy signatures
+	// 2. Iterate and merge local record.json cells, and copy signatures
 	records, err := record.IterRecords(opts.RecordsDir)
 	if err != nil {
 		return fmt.Errorf("failed to load records: %w", err)
@@ -246,24 +257,7 @@ func BuildSite(opts SiteOptions) error {
 		if cellDir != "" {
 			cellSigs := filepath.Join(cellDir, "sigs")
 			if info, err := os.Stat(cellSigs); err == nil && info.IsDir() {
-				siteSigs := filepath.Join(opts.SiteDir, sigDirName)
-				err := filepath.Walk(cellSigs, func(path string, info os.FileInfo, err error) error {
-					if err != nil {
-						return err
-					}
-					if info.IsDir() {
-						return nil
-					}
-					relPath, err := filepath.Rel(cellSigs, path)
-					if err != nil {
-						return err
-					}
-					dstPath := filepath.Join(siteSigs, relPath)
-					if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-						return err
-					}
-					return copyFile(path, dstPath)
-				})
+				err := copyTree(cellSigs, filepath.Join(opts.SiteDir, sigDirName))
 				if err != nil {
 					logger.Error("Failed to copy signatures for %s: %v", rec.AppID, err)
 				} else {
@@ -273,7 +267,7 @@ func BuildSite(opts SiteOptions) error {
 		}
 	}
 
-	// 4. Reconcile missing OCI images (reconcile.py)
+	// 3. Reconcile missing OCI images (reconcile.py)
 	if opts.Reconcile && len(index.Results) > 0 {
 		logger.Info("Reconciling index: validating OCI repository images.")
 		var reconciledResults []IndexResultPackage
@@ -351,12 +345,20 @@ func BuildSite(opts SiteOptions) error {
 		index.Results = reconciledResults
 	}
 
-	// 5. Backfill GPG signatures from Pages URL
-	if err := backfillSignatures(opts, index, sigDirName); err != nil {
-		return fmt.Errorf("failed to backfill signatures: %w", err)
+	// 4. Backfill GPG signatures from Pages URL. A seeded site directory is
+	// authoritative for both the index and the lookaside, so it needs no
+	// network round trip.
+	if opts.SeedDir == "" {
+		if err := backfillSignatures(opts, index, sigDirName); err != nil {
+			return fmt.Errorf("failed to backfill signatures: %w", err)
+		}
+	} else if signed && !opts.DryRun {
+		if missing := missingSignatureRefs(index, opts.SiteDir, sigDirName); len(missing) > 0 {
+			logger.Warn("Seed site is missing signature files for %d ref(s); they will be published unverifiable: %s", len(missing), summarizeRefs(missing, 5))
+		}
 	}
 
-	// 6. Generate deployment directories and output files
+	// 5. Generate deployment directories and output files
 	if opts.DryRun {
 		logger.Info("[DRY RUN] Simulating site file generation: skipping write to %s", opts.SiteDir)
 		return nil
@@ -379,12 +381,12 @@ func BuildSite(opts SiteOptions) error {
 		return err
 	}
 
-	// 7. Write signing.json GPG manifest
+	// 6. Write signing.json GPG manifest
 	if err := writeSigningJSON(opts.SiteDir, sigDirName, fingerprint, opts); err != nil {
 		return err
 	}
 
-	// 8. Generate index.html landing page
+	// 7. Generate index.html landing page
 	if opts.LandingPage {
 		htmlText := indexHTMLTemplate
 		if opts.IndexTemplate != "" {
@@ -432,24 +434,32 @@ func BuildSite(opts SiteOptions) error {
 }
 
 // loadSeedIndex returns the published index the rebuild starts from. An
-// explicit local index file is authoritative: a missing or malformed file
-// fails the build instead of silently falling back to an empty index. The
-// Pages fetch stays best-effort, but its failures are reported loudly because
-// starting empty drops every ref this build has no record for (typically the
-// other channels of a multi-channel repository).
+// explicit local index file or seed directory is authoritative: a missing or
+// malformed index fails the build instead of silently falling back to an empty
+// index. The Pages fetch stays best-effort, but its failures are reported
+// loudly because starting empty drops every ref this build has no record for
+// (typically the other channels of a multi-channel repository).
 func loadSeedIndex(opts SiteOptions) (FlatpakIndex, string, error) {
 	index := FlatpakIndex{Results: []IndexResultPackage{}}
 
-	if opts.IndexFile != "" {
-		data, err := os.ReadFile(opts.IndexFile)
+	if opts.IndexFile != "" && opts.SeedDir != "" {
+		return index, "", fmt.Errorf("index file and seed directory are mutually exclusive")
+	}
+
+	indexFile := opts.IndexFile
+	if opts.SeedDir != "" {
+		indexFile = filepath.Join(opts.SeedDir, "index", "static")
+	}
+	if indexFile != "" {
+		data, err := os.ReadFile(indexFile)
 		if err != nil {
-			return index, "", fmt.Errorf("failed to read seed index %q: %w", opts.IndexFile, err)
+			return index, "", fmt.Errorf("failed to read seed index %q: %w", indexFile, err)
 		}
 		decoded, err := decodeSeedIndex(data)
 		if err != nil {
-			return index, "", fmt.Errorf("failed to parse seed index %q: %w", opts.IndexFile, err)
+			return index, "", fmt.Errorf("failed to parse seed index %q: %w", indexFile, err)
 		}
-		logger.Info("Seeded index from local file: %s", opts.IndexFile)
+		logger.Info("Seeded index from local path: %s", indexFile)
 		return decoded, "", nil
 	}
 
@@ -509,7 +519,7 @@ func decodeSeedIndex(data []byte) (FlatpakIndex, error) {
 }
 
 func seedUnavailableWarning(url, cause string) string {
-	return fmt.Sprintf("Could not seed index from %s: %s. Building from local records only; refs published by other channels may be dropped. Pass --index-file with the checked-out index/static to seed from local state.", url, cause)
+	return fmt.Sprintf("Could not seed index from %s: %s. Building from local records only; refs published by other channels may be dropped. Pass --index-file or --seed-dir to seed from local state.", url, cause)
 }
 
 func checkDigestExists(registry, repository, digest string, insecure bool) (bool, error) {
@@ -844,14 +854,7 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 					return nil
 				}
 
-				isHex := true
-				for _, r := range hexd {
-					if !((r >= 'a' && r <= 'f') || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'F')) {
-						isHex = false
-						break
-					}
-				}
-				if !isHex || len(hexd) == 0 {
+				if !isHexString(hexd) {
 					logger.Warn("site: skipped backfill for digest using non-hex string: %s", hexd)
 					return nil
 				}
@@ -931,12 +934,167 @@ func backfillSignatures(opts SiteOptions, index FlatpakIndex, sigDirName string)
 	return g.Wait()
 }
 
+// seedSignatures copies the per-image signature tree from a seeded site
+// directory. Lookaside metadata (key.asc, signing.json) is generated by this
+// build instead, and record signatures are copied afterwards, so the current
+// build always wins.
+func seedSignatures(opts SiteOptions, sigDirName string, copyLookaside bool) error {
+	if opts.SeedDir == "" {
+		return nil
+	}
+
+	resolvedSeed, err := filepath.EvalSymlinks(opts.SeedDir)
+	if err != nil {
+		return fmt.Errorf("failed to read seed site directory %q: %w", opts.SeedDir, err)
+	}
+	srcInfo, err := os.Stat(resolvedSeed)
+	if err != nil {
+		return fmt.Errorf("failed to read seed site directory %q: %w", opts.SeedDir, err)
+	}
+	dstInfo, err := os.Stat(opts.SiteDir)
+	if err != nil {
+		return fmt.Errorf("failed to read site directory %q: %w", opts.SiteDir, err)
+	}
+	if os.SameFile(srcInfo, dstInfo) {
+		return nil
+	}
+
+	srcSigs := filepath.Join(resolvedSeed, sigDirName)
+	resolved, err := filepath.EvalSymlinks(srcSigs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read seed signatures %q: %w", srcSigs, err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return fmt.Errorf("failed to read seed signatures %q: %w", srcSigs, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("seed signatures %q is not a directory", srcSigs)
+	}
+	if resolved == resolvedSeed {
+		return fmt.Errorf("seed signatures %q must not be the seed site root", srcSigs)
+	}
+	under, err := isUnderDir(resolvedSeed, resolved)
+	if err != nil {
+		return fmt.Errorf("failed to resolve seed signatures %q: %w", srcSigs, err)
+	}
+	if !under {
+		return fmt.Errorf("seed signatures %q escape the seed site directory", srcSigs)
+	}
+
+	if !copyLookaside {
+		return nil
+	}
+
+	// Only the per-image tree is lookaside; root files are build output.
+	skipRootFiles := func(relPath string) bool {
+		return !strings.ContainsRune(relPath, filepath.Separator)
+	}
+	if err := copyTreeFiltered(resolved, filepath.Join(opts.SiteDir, sigDirName), skipRootFiles, true); err != nil {
+		return fmt.Errorf("failed to copy seed signatures: %w", err)
+	}
+	logger.Info("Seeded signatures from local site: %s", srcSigs)
+	return nil
+}
+
+// missingSignatureRefs reports index images whose lookaside signature-1 file
+// is absent. Images without metadata are skipped, matching the backfill.
+func missingSignatureRefs(index FlatpakIndex, siteDir, sigDirName string) []string {
+	seen := make(map[string]bool)
+	var missing []string
+	add := func(ref string) {
+		if ref == "" || seen[ref] {
+			return
+		}
+		seen[ref] = true
+		missing = append(missing, ref)
+	}
+
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			if img.Labels["org.flatpak.metadata"] == "" {
+				continue
+			}
+			algo, hex, ok := strings.Cut(img.Digest, ":")
+			if !ok || (algo != "sha256" && algo != "sha512") || !isHexString(hex) {
+				logger.Debug("Skipping signature check for unsupported digest: %s", img.Digest)
+				continue
+			}
+			ref := img.Labels["org.flatpak.ref"]
+			if ref == "" {
+				ref = pkg.Name + "@" + img.Digest
+			}
+			relPath := filepath.Join(sigDirName, filepath.Clean(pkg.Name)+"@"+algo+"="+hex, "signature-1")
+			sigPath := filepath.Join(siteDir, relPath)
+			under, err := isUnderDir(siteDir, sigPath)
+			if err != nil || !under {
+				add(ref)
+				continue
+			}
+			if _, err := os.Stat(sigPath); os.IsNotExist(err) {
+				add(ref)
+			}
+		}
+	}
+	return missing
+}
+
+// copyTree copies every file under srcDir into dstDir, preserving the relative
+// layout and creating parent directories as needed. Non-regular entries are
+// skipped with a warning so one stray symlink cannot abort a cell's copy.
+func copyTree(srcDir, dstDir string) error {
+	return copyTreeFiltered(srcDir, dstDir, nil, false)
+}
+
+func copyTreeFiltered(srcDir, dstDir string, skip func(relPath string) bool, rejectNonRegular bool) error {
+	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			if rejectNonRegular {
+				return fmt.Errorf("refusing to copy non-regular file %q", path)
+			}
+			logger.Warn("Skipping non-regular file while copying signatures: %s", path)
+			return nil
+		}
+		relPath, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return err
+		}
+		if skip != nil && skip(relPath) {
+			return nil
+		}
+		dstPath := filepath.Join(dstDir, relPath)
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+			return err
+		}
+		return copyFile(path, dstPath)
+	})
+}
+
 func appTitle(appdataXML string, appID string) string {
 	name, _ := parseAppMetadata(appdataXML, appID)
 	return name
 }
 
 func copyFile(src, dst string) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	// A hardlinked or in-place destination shares the inode with the source;
+	// truncating it would erase the content mid-copy.
+	if dstInfo, err := os.Stat(dst); err == nil && os.SameFile(srcInfo, dstInfo) {
+		return nil
+	}
+
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -1454,6 +1612,25 @@ func formatDate(timestamp int64, layout string) string {
 		return ""
 	}
 	return time.Unix(timestamp, 0).UTC().Format(layout)
+}
+
+func summarizeRefs(refs []string, max int) string {
+	if len(refs) <= max {
+		return strings.Join(refs, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(refs[:max], ", "), len(refs)-max)
+}
+
+func isHexString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'f') || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func isUnderDir(dir, path string) (bool, error) {

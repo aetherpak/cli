@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aetherpak/aetherpak/pkg/logger"
 	"github.com/aetherpak/aetherpak/pkg/record"
 )
 
@@ -1288,6 +1289,577 @@ func TestBuildSiteIndexFileErrors(t *testing.T) {
 				t.Fatalf("BuildSite error = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildSiteSeedsIndexAndSignaturesFromSeedDir(t *testing.T) {
+	tempDir := t.TempDir()
+	recordsDir := filepath.Join(tempDir, "records")
+	siteDir := filepath.Join(tempDir, "site")
+	seedDir := filepath.Join(tempDir, "seed")
+
+	stableDigest := "sha256:" + strings.Repeat("a", 64)
+	recordDigest := "sha256:" + strings.Repeat("c", 64)
+	otherDigest := "sha256:" + strings.Repeat("b", 64)
+	recordSigRel := filepath.Join("example", "app@sha256="+strings.Repeat("c", 64), "signature-1")
+	otherSigRel := filepath.Join("example", "other@sha256="+strings.Repeat("b", 64), "signature-1")
+
+	seeded := FlatpakIndex{
+		Registry: "ghcr.io",
+		Results: []IndexResultPackage{
+			{
+				Name: "example/app",
+				Images: []IndexImage{{
+					Digest:       stableDigest,
+					Architecture: "amd64",
+					Labels: map[string]string{
+						"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+						"org.flatpak.metadata": "[Application]\nname=org.example.app",
+					},
+				}},
+			},
+			{
+				Name: "example/other",
+				Images: []IndexImage{{
+					Digest:       otherDigest,
+					Architecture: "amd64",
+					Labels: map[string]string{
+						"org.flatpak.ref":      "app/org.example.other/x86_64/nightly",
+						"org.flatpak.metadata": "[Application]\nname=org.example.other",
+					},
+				}},
+			},
+		},
+	}
+	seedPath := filepath.Join(seedDir, "index", "static")
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0755); err != nil {
+		t.Fatalf("failed to create seed index directory: %v", err)
+	}
+	seedData, err := json.Marshal(seeded)
+	if err != nil {
+		t.Fatalf("failed to marshal seed index: %v", err)
+	}
+	if err := os.WriteFile(seedPath, seedData, 0644); err != nil {
+		t.Fatalf("failed to write seed index: %v", err)
+	}
+
+	// Seed signatures include the other channel and a stale signature for the
+	// digest this build is about to replace.
+	seedSigs := map[string]string{
+		otherSigRel:    "other-signature",
+		recordSigRel:   "stale-seed-signature",
+		"key.asc":      "old-public-key",
+		"signing.json": `{"enabled":true}`,
+	}
+	for rel, content := range seedSigs {
+		path := filepath.Join(seedDir, "sigs", rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("failed to create seed signature directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write seed signature: %v", err)
+		}
+	}
+
+	rec := record.Record{
+		AppID:    "org.example.app",
+		Arch:     "x86_64",
+		Branch:   "stable",
+		Name:     "example/app",
+		Registry: "ghcr.io",
+		Digest:   recordDigest,
+		Ref:      "app/org.example.app/x86_64/stable",
+	}
+	labels := map[string]string{
+		"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+		"org.flatpak.metadata": "[Application]\nname=org.example.app",
+	}
+	cellDir, err := record.WriteRecord(recordsDir, rec, labels)
+	if err != nil {
+		t.Fatalf("failed to write record: %v", err)
+	}
+
+	// The current record signature must win over the seeded one.
+	recordSig := filepath.Join(cellDir, "sigs", recordSigRel)
+	if err := os.MkdirAll(filepath.Dir(recordSig), 0755); err != nil {
+		t.Fatalf("failed to create record signature directory: %v", err)
+	}
+	if err := os.WriteFile(recordSig, []byte("record-signature"), 0644); err != nil {
+		t.Fatalf("failed to write record signature: %v", err)
+	}
+
+	// A seeded site directory must not touch Pages for index or signatures.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected Pages request for %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	opts := SiteOptions{
+		PagesURL:      server.URL,
+		SeedDir:       seedDir,
+		RecordsDir:    recordsDir,
+		SiteDir:       siteDir,
+		AllowUnsigned: true,
+	}
+	if err := BuildSite(opts); err != nil {
+		t.Fatalf("BuildSite failed with a seed directory: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(siteDir, "index", "static"))
+	if err != nil {
+		t.Fatalf("failed to read index static: %v", err)
+	}
+	var index FlatpakIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		t.Fatalf("failed to parse index static: %v", err)
+	}
+	var refs []string
+	for _, pkg := range index.Results {
+		for _, img := range pkg.Images {
+			refs = append(refs, img.Labels["org.flatpak.ref"])
+		}
+	}
+	sort.Strings(refs)
+	wantRefs := []string{
+		"app/org.example.app/x86_64/stable",
+		"app/org.example.other/x86_64/nightly",
+	}
+	if !slices.Equal(refs, wantRefs) {
+		t.Errorf("index refs = %v, want %v", refs, wantRefs)
+	}
+
+	for rel, want := range map[string]string{
+		otherSigRel:  "other-signature",
+		recordSigRel: "record-signature",
+	} {
+		got, err := os.ReadFile(filepath.Join(siteDir, "sigs", rel))
+		if err != nil {
+			t.Fatalf("failed to read signature %s: %v", rel, err)
+		}
+		if string(got) != want {
+			t.Errorf("signature %s = %q, want %q", rel, got, want)
+		}
+	}
+
+	// Lookaside metadata from the seed must not leak into an unsigned rebuild.
+	if _, err := os.Stat(filepath.Join(siteDir, "sigs", "key.asc")); !os.IsNotExist(err) {
+		t.Errorf("seeded key.asc was copied into the output: %v", err)
+	}
+	signingJSON, err := os.ReadFile(filepath.Join(siteDir, "sigs", "signing.json"))
+	if err != nil {
+		t.Fatalf("failed to read signing.json: %v", err)
+	}
+	if strings.Contains(string(signingJSON), "old-public-key") || strings.Contains(string(signingJSON), `"enabled":true`) {
+		t.Errorf("seeded signing.json leaked into the output: %s", signingJSON)
+	}
+}
+
+func TestBuildSiteSeedDirSignedWarnsMissingSignatures(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	key, err := generateMockGPGKey()
+	if err != nil {
+		t.Fatalf("failed to generate mock GPG key: %v", err)
+	}
+	logPath := filepath.Join(tempDir, "build.log")
+	if err := logger.InitFileLogging(logPath); err != nil {
+		t.Fatalf("failed to start file logging: %v", err)
+	}
+	defer logger.CloseLogFile(false)
+
+	err = BuildSite(SiteOptions{
+		SeedDir:    seedDir,
+		RecordsDir: filepath.Join(tempDir, "records"),
+		SiteDir:    filepath.Join(tempDir, "site"),
+		GPGKeys:    []string{key},
+	})
+	if err != nil {
+		t.Fatalf("BuildSite failed for a signed seed without signatures: %v", err)
+	}
+	logger.CloseLogFile(false)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read build log: %v", err)
+	}
+	if !strings.Contains(string(data), "missing signature files for 1 ref(s)") {
+		t.Errorf("build log does not warn about the missing signature: %s", data)
+	}
+	if !strings.Contains(string(data), "app/org.example.app/x86_64/stable") {
+		t.Errorf("build log does not name the unverifiable ref: %s", data)
+	}
+}
+
+func TestBuildSiteSeedDirMissingIndex(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	if err := os.MkdirAll(seedDir, 0755); err != nil {
+		t.Fatalf("failed to create seed directory: %v", err)
+	}
+
+	siteDir := filepath.Join(tempDir, "site")
+	err := BuildSite(SiteOptions{
+		SeedDir:       seedDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		SiteDir:       siteDir,
+		AllowUnsigned: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed to read seed index") {
+		t.Fatalf("BuildSite error = %v, want a missing seed index error", err)
+	}
+	if _, statErr := os.Stat(siteDir); !os.IsNotExist(statErr) {
+		t.Errorf("failed seed left output at %s: %v", siteDir, statErr)
+	}
+}
+
+func TestBuildSiteSeedDirInPlace(t *testing.T) {
+	tempDir := t.TempDir()
+	siteDir := filepath.Join(tempDir, "site")
+	sigPath := filepath.Join(siteDir, "sigs", "example", "other@sha256="+strings.Repeat("b", 64), "signature-1")
+	if err := os.MkdirAll(filepath.Dir(sigPath), 0755); err != nil {
+		t.Fatalf("failed to create signature directory: %v", err)
+	}
+	if err := os.WriteFile(sigPath, []byte("existing-signature"), 0644); err != nil {
+		t.Fatalf("failed to write signature: %v", err)
+	}
+	seedPath := filepath.Join(siteDir, "index", "static")
+	if err := os.MkdirAll(filepath.Dir(seedPath), 0755); err != nil {
+		t.Fatalf("failed to create index directory: %v", err)
+	}
+	seedData, err := json.Marshal(FlatpakIndex{
+		Registry: "ghcr.io",
+		Results: []IndexResultPackage{{
+			Name: "example/other",
+			Images: []IndexImage{{
+				Digest:       "sha256:" + strings.Repeat("b", 64),
+				Architecture: "amd64",
+				Labels: map[string]string{
+					"org.flatpak.ref":      "app/org.example.other/x86_64/nightly",
+					"org.flatpak.metadata": "[Application]\nname=org.example.other",
+				},
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal seed index: %v", err)
+	}
+	if err := os.WriteFile(seedPath, seedData, 0644); err != nil {
+		t.Fatalf("failed to write seed index: %v", err)
+	}
+
+	err = BuildSite(SiteOptions{
+		SeedDir:       siteDir,
+		SiteDir:       siteDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		AllowUnsigned: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildSite failed for an in-place seed: %v", err)
+	}
+
+	got, err := os.ReadFile(sigPath)
+	if err != nil {
+		t.Fatalf("failed to read existing signature: %v", err)
+	}
+	if string(got) != "existing-signature" {
+		t.Errorf("in-place signature = %q, want it untouched", got)
+	}
+}
+
+func writeSeedIndex(t *testing.T, seedDir string, index FlatpakIndex) {
+	t.Helper()
+	path := filepath.Join(seedDir, "index", "static")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create seed index directory: %v", err)
+	}
+	data, err := json.Marshal(index)
+	if err != nil {
+		t.Fatalf("failed to marshal seed index: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("failed to write seed index: %v", err)
+	}
+}
+
+func singleImageSeed() FlatpakIndex {
+	return FlatpakIndex{
+		Registry: "ghcr.io",
+		Results: []IndexResultPackage{{
+			Name: "example/app",
+			Images: []IndexImage{{
+				Digest:       "sha256:" + strings.Repeat("a", 64),
+				Architecture: "amd64",
+				Labels: map[string]string{
+					"org.flatpak.ref":      "app/org.example.app/x86_64/stable",
+					"org.flatpak.metadata": "[Application]\nname=org.example.app",
+				},
+			}},
+		}},
+	}
+}
+
+func TestBuildSiteSeedDirUnsignedWithoutSignatures(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	siteDir := filepath.Join(tempDir, "site")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	err := BuildSite(SiteOptions{
+		SeedDir:       seedDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		SiteDir:       siteDir,
+		AllowUnsigned: true,
+	})
+	if err != nil {
+		t.Fatalf("BuildSite failed for an unsigned seed without signatures: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(siteDir, "index", "static")); err != nil {
+		t.Errorf("index was not written: %v", err)
+	}
+}
+
+func TestBuildSiteSeedDirSignedWithoutSignaturesProceeds(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	siteDir := filepath.Join(tempDir, "site")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	key, err := generateMockGPGKey()
+	if err != nil {
+		t.Fatalf("failed to generate mock GPG key: %v", err)
+	}
+	err = BuildSite(SiteOptions{
+		SeedDir:    seedDir,
+		RecordsDir: filepath.Join(tempDir, "records"),
+		SiteDir:    siteDir,
+		GPGKeys:    []string{key},
+	})
+	if err != nil {
+		t.Fatalf("BuildSite failed for a signed seed without signatures: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(siteDir, "index", "static")); err != nil {
+		t.Errorf("index was not written: %v", err)
+	}
+}
+
+func TestBuildSiteSeedDirDryRunWritesNoSignatures(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	siteDir := filepath.Join(tempDir, "site")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	sigPath := filepath.Join(seedDir, "sigs", "example", "app@sha256="+strings.Repeat("a", 64), "signature-1")
+	if err := os.MkdirAll(filepath.Dir(sigPath), 0755); err != nil {
+		t.Fatalf("failed to create seed signature directory: %v", err)
+	}
+	if err := os.WriteFile(sigPath, []byte("seed-signature"), 0644); err != nil {
+		t.Fatalf("failed to write seed signature: %v", err)
+	}
+
+	err := BuildSite(SiteOptions{
+		SeedDir:    seedDir,
+		RecordsDir: filepath.Join(tempDir, "records"),
+		SiteDir:    siteDir,
+		DryRun:     true,
+		NoSign:     true,
+	})
+	if err != nil {
+		t.Fatalf("BuildSite dry run failed: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(siteDir, "sigs")); !os.IsNotExist(statErr) {
+		t.Errorf("dry run wrote signatures: %v", statErr)
+	}
+}
+
+func TestBuildSiteSeedDirRejectsNonRegularFile(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	sigsDir := filepath.Join(seedDir, "sigs")
+	if err := os.MkdirAll(sigsDir, 0755); err != nil {
+		t.Fatalf("failed to create seed signature directory: %v", err)
+	}
+	if err := os.Symlink("/etc/hostname", filepath.Join(sigsDir, "leak")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	err := BuildSite(SiteOptions{
+		SeedDir:       seedDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		SiteDir:       filepath.Join(tempDir, "site"),
+		AllowUnsigned: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "non-regular file") {
+		t.Fatalf("BuildSite error = %v, want a non-regular file error", err)
+	}
+}
+
+func TestBuildSiteSeedDirSignaturesNotDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+	if err := os.WriteFile(filepath.Join(seedDir, "sigs"), []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("failed to write sigs file: %v", err)
+	}
+
+	err := BuildSite(SiteOptions{
+		SeedDir:       seedDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		SiteDir:       filepath.Join(tempDir, "site"),
+		AllowUnsigned: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("BuildSite error = %v, want a not-a-directory error", err)
+	}
+}
+
+func TestBuildSiteSeedDirRejectsEscapingLookaside(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+
+	outside := filepath.Join(tempDir, "outside")
+	if err := os.MkdirAll(filepath.Join(outside, "sub"), 0755); err != nil {
+		t.Fatalf("failed to create outside directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "sub", "secret"), []byte("secret"), 0644); err != nil {
+		t.Fatalf("failed to write outside file: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(seedDir, "sigs")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	err := BuildSite(SiteOptions{
+		SeedDir:       seedDir,
+		RecordsDir:    filepath.Join(tempDir, "records"),
+		SiteDir:       filepath.Join(tempDir, "site"),
+		AllowUnsigned: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "escape the seed site directory") {
+		t.Fatalf("BuildSite error = %v, want an escaping lookaside error", err)
+	}
+}
+
+func TestBuildSiteSeedDirDryRunValidatesLookaside(t *testing.T) {
+	tempDir := t.TempDir()
+	seedDir := filepath.Join(tempDir, "seed")
+	writeSeedIndex(t, seedDir, singleImageSeed())
+	if err := os.WriteFile(filepath.Join(seedDir, "sigs"), []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("failed to write sigs file: %v", err)
+	}
+
+	err := BuildSite(SiteOptions{
+		SeedDir:    seedDir,
+		RecordsDir: filepath.Join(tempDir, "records"),
+		SiteDir:    filepath.Join(tempDir, "site"),
+		DryRun:     true,
+		NoSign:     true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("BuildSite error = %v, want the lookaside validated during a dry run", err)
+	}
+}
+
+func TestCopyTreeSkipsNonRegular(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "regular"), []byte("data"), 0644); err != nil {
+		t.Fatalf("failed to write regular file: %v", err)
+	}
+	if err := os.Symlink("/etc/hostname", filepath.Join(srcDir, "link")); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	if err := copyTree(srcDir, dstDir); err != nil {
+		t.Fatalf("copyTree failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "regular")); err != nil {
+		t.Errorf("regular file was not copied: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dstDir, "link")); !os.IsNotExist(err) {
+		t.Errorf("non-regular file was copied: %v", err)
+	}
+}
+
+func TestMissingSignatureRefs(t *testing.T) {
+	siteDir := t.TempDir()
+	present := filepath.Join(siteDir, "sigs", "example", "a@sha256="+strings.Repeat("a", 64), "signature-1")
+	if err := os.MkdirAll(filepath.Dir(present), 0755); err != nil {
+		t.Fatalf("failed to create signature directory: %v", err)
+	}
+	if err := os.WriteFile(present, []byte("sig"), 0644); err != nil {
+		t.Fatalf("failed to write signature: %v", err)
+	}
+
+	missingImage := func(pkg, digest, ref string) IndexResultPackage {
+		return IndexResultPackage{Name: pkg, Images: []IndexImage{{
+			Digest: digest,
+			Labels: map[string]string{"org.flatpak.ref": ref, "org.flatpak.metadata": "meta"},
+		}}}
+	}
+	index := FlatpakIndex{Results: []IndexResultPackage{
+		missingImage("example/a", "sha256:"+strings.Repeat("a", 64), "app/a"),
+		missingImage("example/b", "sha256:"+strings.Repeat("b", 64), "app/b"),
+		missingImage("example/b", "sha256:"+strings.Repeat("b", 64), "app/b"), // duplicate
+		{Name: "example/noref", Images: []IndexImage{{
+			Digest: "sha256:" + strings.Repeat("c", 64),
+			Labels: map[string]string{"org.flatpak.metadata": "meta"},
+		}}},
+		missingImage("../../../outside", "sha256:"+strings.Repeat("d", 64), "app/escape"),
+		missingImage("example/sha512", "sha512:"+strings.Repeat("e", 64), "app/sha512"),
+		missingImage("example/sha384", "sha384:"+strings.Repeat("f", 64), "app/sha384"),
+		missingImage("example/badhex", "sha256:zzzz", "app/badhex"),
+		{Name: "example/nometa", Images: []IndexImage{{
+			Digest: "sha256:" + strings.Repeat("9", 64),
+			Labels: map[string]string{"org.flatpak.ref": "app/nometa"},
+		}}},
+	}}
+
+	got := missingSignatureRefs(index, siteDir, "sigs")
+	want := []string{
+		"app/b",
+		"example/noref@sha256:" + strings.Repeat("c", 64),
+		"app/escape",
+		"app/sha512",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("missingSignatureRefs = %v, want %v", got, want)
+	}
+}
+
+func TestLoadSeedIndexRejectsBothLocalSeeds(t *testing.T) {
+	_, _, err := loadSeedIndex(SiteOptions{IndexFile: "index/static", SeedDir: "site"})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("loadSeedIndex error = %v, want a mutually exclusive error", err)
+	}
+}
+
+func TestCopyFileHardlink(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, []byte("payload"), 0644); err != nil {
+		t.Fatalf("failed to write source: %v", err)
+	}
+	if err := os.Link(src, dst); err != nil {
+		t.Skipf("hardlinks unsupported: %v", err)
+	}
+
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile failed for hardlinked files: %v", err)
+	}
+	for _, path := range []string{src, dst} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", path, err)
+		}
+		if string(got) != "payload" {
+			t.Errorf("%s = %q, want payload", path, got)
+		}
 	}
 }
 

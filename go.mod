@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
-	github.com/aymanbagabas/go-udiff v0.4.1
+	github.com/aymanbagabas/go-udiff v0.4.2
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
